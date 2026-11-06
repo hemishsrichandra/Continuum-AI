@@ -2,7 +2,7 @@ import { createHandler } from '../server/app.js';
 import { invoke } from './invoke.js';
 
 try { process.loadEnvFile('.env'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-const config = { ...process.env };
+const config = { ...process.env, ENABLE_DEMO_MODE: 'true' };
 // Keep the CLI comparison separate from the workspace's existing demo records.
 if (config.HINDSIGHT_BASE_URL) config.HINDSIGHT_BANK_PREFIX = (config.HINDSIGHT_BANK_PREFIX || 'continuum') + '-cli';
 const handler = createHandler({ config });

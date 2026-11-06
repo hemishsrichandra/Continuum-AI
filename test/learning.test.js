@@ -1,0 +1,32 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHandler } from '../server/app.js';
+import { invoke } from '../scripts/invoke.js';
+test('human resolution for A improves B, preserves private context, and supports retirement',async t=>{
+ const h=createHandler({config:{ENABLE_DEMO_MODE:'true'}});t.after(()=>h.close());
+ const api=(r,o)=>invoke(h,r,o);
+ const a=(await api('session',{body:{profileId:'alice',pin:'246810'}})).data.token;
+ const b=(await api('session',{body:{profileId:'bob',pin:'246810'}})).data.token;
+ const question='The display flickers after startup on Model X firmware 4.';
+ const target=await api('request',{token:b,body:{title:'Model X display',issueDesc:question,confirmed:true}});const ticketId=target.data.ticketId;
+ const before=await api('chat',{token:b,body:{ticketId,message:question,retain:false}});
+ assert.equal(before.data.trace.learnedResolutions,0);
+ const handoff=await api('handoff',{token:a,body:{summary:'Display flickers after startup. Private callback context.',confirmed:true}});
+ assert.equal((await api('operator',{token:b})).status,403);
+ // Explicitly provision a staff role on a real account; public registration never grants it.
+ const registered=await api('auth/register',{body:{name:'Specialist',email:'specialist@example.test',password:'a long specialist passphrase 49',provider:'repair'}});
+ const cookie=registered.headers['Set-Cookie'].split(';')[0];
+ h.store.db.prepare('INSERT INTO staff_access VALUES(?,?)').run(registered.data.profile.id,'repair');
+ const headers={cookie,'x-csrf-token':registered.data.csrfToken};
+ const resolved=await api('operator/resolve',{headers,body:{handoffId:handoff.data.id,title:'Display flicker after startup',symptoms:'Display flickers after startup',environment:'Model X firmware 4',solution:'Disable adaptive refresh in Display settings, then install the verified display driver version 4.2.',confirmed:true,reviewedForPrivacy:true}});
+ assert.equal(resolved.status,201);
+ const after=await api('chat',{token:b,body:{ticketId,message:question,retain:false}});
+ assert.equal(after.data.trace.learnedResolutions,1);assert.match(after.data.reply,/adaptive refresh/);
+ assert.ok(!after.data.reply.includes('Alice'));assert.ok(!after.data.reply.includes('Private callback'));
+ const off=await api('chat',{token:b,body:{ticketId,message:question,memory:false,retain:false}});
+ assert.equal(off.data.trace.learnedResolutions,0);assert.ok(!off.data.reply.includes('adaptive refresh'));
+ const unrelated=await api('chat',{token:b,body:{ticketId,message:'How do I change my invoice address?',retain:false}});
+ assert.equal(unrelated.data.trace.learnedResolutions,0);
+ assert.equal((await api('operator/retire',{headers,body:{id:resolved.data.id,confirmed:true}})).status,200);
+ assert.equal((await api('chat',{token:b,body:{ticketId,message:question,retain:false}})).data.trace.learnedResolutions,0);
+});

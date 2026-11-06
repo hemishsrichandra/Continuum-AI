@@ -1,0 +1,26 @@
+{
+  "name": "Continuum",
+  "framework": "Buildless HTML, CSS, ES modules with Node HTTP server",
+  "tokens": {
+    "accent": "#4F75FE",
+    "ink": "#181818",
+    "white": "#FFFFFF",
+    "surface": "#F7F7F8",
+    "muted": "rgba(24,24,24,0.65)",
+    "border": "rgba(24,24,24,0.08)",
+    "buttonRadius": "6px",
+    "cardRadius": "8px",
+    "pillRadius": "9999px",
+    "container": "1280px",
+    "onAccent": "#101010",
+    "secondaryText": "#56647A"
+  },
+  "decisions": [
+    "Continuum is the sole public brand; keep legacy receipt/calendar identifiers compatible.",
+    "Personal accounts and SQLite persistence are the default; demo access is opt-in and never enabled in production.",
+    "Account settings show actual integration setup, connection and delivery state.",
+    "Use corrected text contrast, adequate pointer targets, explicit labels and keyboard focus. Keep technical response evidence behind disclosures.",
+    "Preserve restrained blue/charcoal surfaces and existing vanilla primitives; no invented endorsements."
+  ],
+  "inspiration": "21st catalog metadata: App Dashboard Layout (28770), Notification Panel (27135); implemented using existing vanilla components without paid code retrieval."
+}

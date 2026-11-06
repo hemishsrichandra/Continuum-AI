@@ -1,0 +1,17 @@
+import { request, escapeHtml as q } from './client.js';
+export async function mountOperator() {
+ const app=document.querySelector('#app');
+ async function load() {
+  try {
+   const data=await request('operator');
+   app.innerHTML=`<section class="wrap section"><span class="eyebrow">HUMAN RESOLUTION → REUSABLE KNOWLEDGE</span><h1>Specialist console.</h1><p class="lead">Resolve the case. Publish only reviewed, reusable steps. The next customer can benefit without seeing the first customer’s private history.</p><p id="operator-result" role="status"></p><h2>Service queue</h2>${data.cases.map(h=>`<article class="card"><span class="pill">${q(h.status)}</span><h3>${q(h.ticketId)}</h3><p>${q(h.summary)}</p>${h.resolutionId?'':`<details><summary>Review context and resolve</summary><pre class="operator-context">${q(JSON.stringify(h.context,null,2))}</pre><form data-handoff="${q(h.id)}"><label>Reusable resolution title<input name="title" required maxlength="100"></label><label>Matching symptoms<textarea name="symptoms" required maxlength="1000"></textarea></label><label>Applicable product / version / environment<input name="environment" required maxlength="500"></label><label>Human-verified solution steps<textarea name="solution" required maxlength="2000"></textarea></label><label class="privacy-check"><input type="checkbox" name="reviewedForPrivacy" required> I verified this solution and removed customer-identifying information and secrets.</label><button class="button primary" type="submit">Resolve and publish reviewed knowledge →</button><p class="notice" role="alert" hidden></p></form></details>`}</article>`).join('')||'<p>No handoffs yet. A customer can request a specialist from their workspace.</p>'}<h2 class="spec-block">Resolution library</h2>${data.resolutions.map(r=>`<article class="card"><span class="pill">${r.retiredAt?'Retired':q(r.sync)}</span><h3>${q(r.title)}</h3><p>${q(r.symptoms)}</p><p><b>Applies to:</b> ${q(r.environment)}</p><p>${q(r.solution)}</p>${!r.retiredAt?`<button class="button small" data-retire-resolution="${q(r.id)}">Retire resolution</button>`:''}</article>`).join('')||'<p>No published resolutions. Knowledge is created by staff after a real case is resolved.</p>'}</section>`;
+   app.querySelectorAll('form[data-handoff]').forEach(form=>form.addEventListener('submit',async e=>{
+    e.preventDefault(); const button=form.querySelector('button');button.disabled=true;
+    try { await request('operator/resolve',{body:{...Object.fromEntries(new FormData(form)),handoffId:form.dataset.handoff,reviewedForPrivacy:true,confirmed:true}});await load();document.querySelector('#operator-result').textContent='Resolution saved. Shared memory is available for matching cases; check the library sync status for live Hindsight.'; }
+    catch(error){const p=form.querySelector('[role=alert]');p.hidden=false;p.textContent=error.message;}finally{button.disabled=false;}
+   }));
+   app.querySelectorAll('[data-retire-resolution]').forEach(button=>button.addEventListener('click',async()=>{button.disabled=true;try{await request('operator/retire',{body:{id:button.dataset.retireResolution,confirmed:true}});await load();}catch(e){document.querySelector('#operator-result').textContent=e.message;button.disabled=false;}}));
+  }catch(e){app.innerHTML=`<section class="wrap section"><h1>Specialist access</h1><p class="lead">${q(e.message)}</p><a class="button primary" href="/desk">Sign in to your workspace</a></section>`;}
+ }
+ await load();
+}

@@ -1,12 +1,23 @@
 {
   "name": "continuum-ai",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20.12" },
+  "engines": {
+    "node": ">=20.12"
+  },
   "scripts": {
     "start": "node server/start.js",
     "test": "node --test",
-    "demo": "node scripts/demo.js"
+    "demo": "node scripts/demo.js",
+    "test:http": "node scripts/check-http.js",
+    "secrets:generate": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
+    "db:backup": "node scripts/db-backup.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
+  },
+  "devDependencies": {
+    "axe-core": "^4.10.3"
   }
 }

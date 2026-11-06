@@ -7,7 +7,7 @@ import { createHandler } from '../server/app.js';
 import { invoke } from '../scripts/invoke.js';
 
 function start(options) {
-  const handler = createHandler({ config: {}, ...options });
+  const handler = createHandler({ ...options, config: { ENABLE_DEMO_MODE: 'true', ...options?.config } });
   const api = (route, args) => invoke(handler, route, args);
   const login = async (profileId) => (await api('session', { body: { profileId, pin: '246810' } })).data;
   return { api, login };
@@ -96,6 +96,7 @@ test('live mode uses the Hindsight and model REST contracts', async (t) => {
       return Response.json({ choices: [{ message: { content: 'Provider update from the test model.' } }] });
     }
     assert.equal(options.headers.Authorization, 'Bearer hindsight-key');
+    if (pathname.includes('/test-knowledge-')) return Response.json(pathname.endsWith('/memories/recall') ? { results: [] } : {});
     assert.match(pathname, /^\/v1\/default\/banks\/test-repair-alice/);
     if (options.method === 'PUT') return Response.json({});
     if (pathname.endsWith('/memories') && options.method === 'POST') {
@@ -107,7 +108,7 @@ test('live mode uses the Hindsight and model REST contracts', async (t) => {
     }
     if (pathname.endsWith('/memories/recall')) {
       assert.deepEqual(body.tags, ['ticket:SR-2048']);
-      return Response.json({ results: [...documents.values()].filter((item) => item.state === 'valid') });
+      return Response.json({ results: [...documents.values()].filter((item) => item.state === 'valid').flatMap((item) => [item, { ...item, id: item.id + '-second-extracted-fact' }]) });
     }
     if (pathname.endsWith('/reflect')) {
       assert.equal(body.tags_match, 'all_strict');
@@ -138,6 +139,7 @@ test('live mode uses the Hindsight and model REST contracts', async (t) => {
   assert.equal(calls.length, 1);
   const on = await api('chat', { token, body: { message: profile.prompt } });
   assert.equal(on.data.trace.memory, 'Hindsight');
+  assert.equal(on.data.trace.recalled, 1);
   assert.equal(on.data.evidence[1].kind, 'preference');
   const reflected = await api('reflect', { token, body: { ticketId: profile.ticketId } });
   assert.equal(reflected.data.text, 'Scoped reflection.');
