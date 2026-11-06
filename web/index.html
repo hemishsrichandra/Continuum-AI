@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Continuum is an AI front desk that remembers what happened, checks live service records, and takes the next step.">
+  <title>Continuum — Support that picks up where you left off</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/ui.js"></script>
+</head>
+<body>
+  <header class="nav"><div class="wrap nav-inner">
+    <a class="brand" href="/"><span class="logo" aria-hidden="true">∿</span> Continuum<span class="brand-dot">.</span></a>
+    <nav aria-label="Main navigation"><a href="/#how">How it works</a><a href="/#scenarios">Scenarios</a><a href="/#faq">FAQ</a></nav>
+    <a class="button primary small" href="/desk">Open front desk <span aria-hidden="true">↗</span></a>
+  </div></header>
+  <main id="app"></main>
+  <template id="home">
+    <section class="hero wrap">
+      <div class="eyebrow"><span class="pulse"></span> A FRONT DESK WITH MEMORY</div>
+      <h1>Good support<br> <span class="inline-art" aria-hidden="true"><i></i><i></i><i></i></span> picks up where<br class="mobile-only"> you left off<span class="brand-dot">.</span></h1>
+      <p class="lead">Continuum remembers what happened last time, checks what’s happening now, and helps customers take the next step.</p>
+      <div class="hero-buttons"><a class="button primary" href="/desk">Try the front desk <span aria-hidden="true">↗</span></a><a class="button" href="/desk?lab=1">Compare memory on and off <span aria-hidden="true">→</span></a></div>
+      <div class="visual">
+        <svg class="flow-art" viewBox="0 0 1200 540" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs>
+          <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#7393fa" opacity=".35"/></pattern>
+          <linearGradient id="blue" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#597bff"/><stop offset="1" stop-color="#bfd5ff"/></linearGradient>
+          <linearGradient id="line"><stop stop-color="#c9daff"/><stop offset=".55" stop-color="#6c94ff"/><stop offset="1" stop-color="#f4f8ff"/></linearGradient>
+        </defs><path fill="url(#dots)" d="M0 0h1200v540H0z"/><path fill="url(#blue)" opacity=".3" d="M-80 470C330 450 120 40 560 145c275 65 420 310 715 70v340H-80z"/>
+        <g fill="none" stroke="url(#line)" stroke-width="2" opacity=".8">
+          <path d="M-60 470C350 450 126 30 564 145c275 70 420 310 710 55"/><path d="M-60 489C363 462 127 42 569 162c275 73 414 307 710 54"/><path d="M-60 508C369 474 128 56 574 180c275 78 409 300 710 53"/><path d="M-60 527C377 486 134 74 578 197c275 83 405 295 710 51"/><path d="M-60 546C389 498 135 86 584 214c275 88 399 290 710 50"/>
+        </g></svg>
+        <div class="visual-label"><span>01 / 03</span><span>THE CUSTOMER JOURNEY</span></div>
+        <div class="preview">
+          <div class="preview-header"><span class="logo">∿</span><div><b>Continuum front desk</b><small>Device Repair · Alice Morgan</small></div><span class="pill green">● Memory on</span></div>
+          <div class="preview-body">
+            <div class="bubble customer">Any update on my laptop repair?</div>
+            <div class="bubble answer">Your MacBook Pro repair is waiting for a part. I also found your preference for a call before any paid work goes ahead.<div class="evidence"><span>◈ SR-2048 · Provider record</span><span>↺ Callback preference</span></div></div>
+          </div>
+          <div class="preview-footer"><span>Ask about your service request…</span><span class="send-icon">↑</span></div>
+        </div>
+        <div class="visual-label end"><span>LIVE STATUS + RELEVANT HISTORY</span><span>CONTINUUM / 01</span></div>
+      </div>
+      <div class="stack"><span>BUILT FOR THE SERVICE DESK</span><strong>◈ &nbsp; Hindsight memory</strong><strong>▣ &nbsp; Device Repair</strong><strong>⎋ &nbsp; IT Support</strong></div>
+    </section>
+    <section id="how" class="band"><div class="wrap section">
+      <div class="eyebrow">THE WORKFLOW</div><h2>One desk. Three jobs.</h2>
+      <p class="lead">Live service records tell the agent where things stand. Past interactions tell it how to help.</p>
+      <div class="cards">
+        <article class="card"><span class="tile-icon">↺</span><span class="index">01</span><h3>Remember</h3><p>Recall preferences, attempted fixes, and missed commitments when a verified customer returns.</p></article>
+        <article class="card"><span class="tile-icon">✓</span><span class="index">02</span><h3>Resolve</h3><p>Check current status and ETA, update a request, or book a slot through the connected provider.</p></article>
+        <article class="card"><span class="tile-icon">↗</span><span class="index">03</span><h3>Recover</h3><p>Recognize when a fix failed or a promise slipped, then prepare a human handoff with the relevant context.</p></article>
+      </div>
+    </div></section>
+    <section id="scenarios" class="wrap section">
+      <div class="eyebrow">DEMO SCENARIOS</div><h2>See what memory changes.</h2>
+      <div class="cards">
+        <a class="card scenario" href="/desk?profile=alice"><span class="pill">Device Repair</span><h3>Alice returns</h3><p>Check a laptop repair without repeating the callback preference.</p><strong>Open scenario →</strong></a>
+        <a class="card scenario" href="/desk?profile=bob"><span class="pill">Device Repair</span><h3>Bob is still offline</h3><p>Compare what the agent suggests before and after it recalls a failed reboot.</p><strong>Open scenario →</strong></a>
+        <a class="card scenario" href="/desk?profile=carol"><span class="pill">IT Support</span><h3>Carol needs an owner</h3><p>Pick up two missed VPN deadlines and prepare a handoff for network operations.</p><strong>Open scenario →</strong></a>
+      </div>
+    </section>
+    <section id="faq" class="band"><div class="wrap section faq">
+      <div><div class="eyebrow">THE DETAILS</div><h2>Questions, answered.</h2></div>
+      <div>
+        <details><summary>Where does the status come from?</summary><p>Each provider adapter reads and normalizes its own service records. Status and ETA come from those records.</p></details>
+        <details><summary>What changes when memory is off?</summary><p>The agent still sees the current ticket. It skips history recall and does not save that interaction to memory.</p></details>
+        <details><summary>Can the agent make changes automatically?</summary><p>It can prepare a request, note, booking, or handoff. You review the details and confirm before the provider record changes.</p></details>
+        <details><summary>Can I try both provider systems?</summary><p>Yes. Verify one of the Device Repair profiles or choose Carol to try the IT Support adapter. Demo records are fictional.</p></details>
+      </div>
+    </div></section>
+    <section class="wrap section"><div class="cta"><div class="eyebrow">CONTINUUM FRONT DESK</div><h2>Give the next conversation a head start.</h2><a class="button primary" href="/desk">Launch the demo ↗</a></div></section>
+    <footer class="wrap footer"><a class="brand" href="/"><span class="logo">∿</span> Continuum<span class="brand-dot">.</span></a><span>HackwithHyderabad 3.0 · Interactive prototype</span></footer>
+  </template>
+</body>
+</html>
