@@ -11,6 +11,9 @@
     "test": "node --test",
     "demo": "node scripts/demo.js",
     "test:http": "node scripts/check-http.js",
+    "verify:live": "node scripts/verify-live.js",
+    "evaluate": "node scripts/evaluate.js",
+    "evaluate:live": "node scripts/evaluate.js --live",
     "secrets:generate": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
     "db:backup": "node scripts/db-backup.js"
   },

@@ -1,29 +1,23 @@
 # Continuum verification record
 
-## Current implementation
+Current architecture, boundaries, database gateway contract, and verified live behavior are maintained in [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
-| Area | Result |
-| --- | --- |
-| Branding | Continuum across the site, workspace, emails, calendar summaries, and documentation. Legacy browser receipt keys and calendar UIDs remain compatible. |
-| Authentication | Personal accounts, scrypt hashes, database sessions, HttpOnly cookies, CSRF, verification/reset links, device revocation, and password changes. Production enforces HTTPS and verified email; demo access is disabled. |
-| Storage | Indexed SQLite records, dedicated authentication/connection tables, immediate transactions, WAL, booking constraints, one-time legacy JSON migration, and online backup command. |
-| Email | Resend API client with encrypted durable outbox, provider idempotency keys, bounded retries, expired-link checks, and visible delivery status. |
-| Calendar | Google authorization code + PKCE, one-use session-bound state, encrypted refresh tokens, busy-event checks, stable event IDs, and cancellation sync. |
-| Workspace | Persistent chat, once-only proposals, retry receipts, notes, booking/cancellation, outcomes, feedback metrics, archive, and memory lab. |
-| Accessibility | Contrast corrections based on axe findings, larger controls, password manager/paste support, explicit form labels, visible focus, dialog focus, keyboard navigation, and a dedicated response announcement region. |
+The November 6, 2026 update adds company isolation, owner/team controls, specialist assignment, progress and troubleshooting, customer acceptance/rejection, conservative environment checks, live semantic relevance validation, customer-wide preferences, retired-context filtering, and a read-only database gateway.
 
-## Verification
+Verification commands:
 
-`npm test`: **28 passing tests**. The suite exercises the original provider/memory behavior and new auth/database/integration contracts. `npm run test:http` checks real routes, proxy behavior, cookie authentication, CSRF, account isolation, logout, and safe replay using temporary data.
+```sh
+npm test
+npm run test:http
+npm run verify:live
+```
 
-Browser checks use a separate SQLite fixture: registration, new-account empty state, request creation, persisted login, account settings, sign-out across devices, reauthentication, chat, and responsive/keyboard behavior. The dev-only axe scanner runs WCAG A/AA checks across the seven pages and important authentication/dialog states. Final axe scans reported **0 WCAG A/AA violations** across all seven routes at desktop and 390px mobile widths, and in sign-in, sign-up, chat, and account-dialog states. No horizontal overflow was found at those widths. This is not a full accessibility certification.
+The live report `data/live-verification-fe1d76c0.json` passed all 14 checks with the locally configured Hindsight and model services. It uses synthetic accounts and one reviewed resolution with five held-out paraphrases and negative controls. It does not verify email inbox delivery, real Google consent/calendar sync, or a real business database gateway.
 
-The 21st CLI review now runs. The final review reported 184 informational hardcoded-color notices and no warnings/errors, including intentional token definitions; deterministic accessibility findings are checked separately through axe and browser inspection.
+The browser workflow was checked with isolated local records through owner/customer signup, team links, handoff, assignment, progress, proposed solution, and customer acceptance. These checks are distinct from the previous version's axe results; no new full accessibility certification is claimed.
 
-## External activation boundary
+The outcome-loop update adds recommendation-specific success/failure receipts, automatic contextual recovery cases, pause-and-review controls, safe structured action proposals, and optional durable provider writes. The latter is unconnected to any real business service and tested against an isolated HTTP gateway.
 
-No email or Google credentials were supplied in this session. Provider contracts are tested with mocks; actual inbox delivery, Google consent, and live calendar sync require completing [SETUP.md](SETUP.md) with the owner's credentials and account. No real emails were sent and no real Google calendar was modified during testing.
+The broader live report `data/evaluation-e5bcf3de.json` passed ten issue scenarios, with 20/20 correct fixes on memory ON, 0/20 on OFF, zero inappropriate recommendations across 30 negative cases, and no repeated failed fixes in ten recovery cases. Local regression results are in `data/evaluation-fde7affd.json`.
 
-The repair/IT adapters still operate on Continuum's own service data. They are not connected to an external repair vendor or ticketing service. Paid billing is not enabled, calendar events have no video link, and inbox delivery is not independently verified by webhook.
-
-SQLite supports multiple processes on a single persistent host, not a horizontally scaled multi-host deployment. Database growth, retention policy, backups, provider quotas, and production monitoring remain operational responsibilities.
+Remaining rollout boundaries include SQLite single-host operation, one company per account, a real provider pilot, broader independent semantic-quality evaluation, operational monitoring, and further assistive-technology testing. Do not equate passing synthetic tests with a production security audit.

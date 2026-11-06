@@ -1,0 +1,774 @@
+{
+  "run": "ea7648c4",
+  "startedAt": "2026-11-06T16:22:48.747Z",
+  "dataset": "synthetic challenge v1",
+  "datasetSha256": "fca84197c9a223a295f345436f572442d3b4fe6de9333192403a1834af82098d",
+  "plannedCases": 10,
+  "plannedPositiveQuestions": 30,
+  "namespace": "continuum-evaluation-ea7648c4",
+  "mode": "local deterministic regression",
+  "synthetic": true,
+  "cases": [
+    {
+      "id": "display",
+      "positive": [
+        {
+          "question": "Every time the computer starts, the picture rapidly alternates between bright and dark.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Display flicker (SR-D3F4FB60-4980-46F0-95CA-8F0110B79624) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 30
+          },
+          "off": {
+            "reply": "Display flicker (SR-D3F4FB60-4980-46F0-95CA-8F0110B79624) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 9
+          }
+        },
+        {
+          "question": "During boot the built-in panel keeps flashing, although the machine finishes starting.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Display flicker (SR-D3F4FB60-4980-46F0-95CA-8F0110B79624) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model X firmware 4:\nDisable Adaptive Refresh in Display Settings, then install the approved display driver 4.2.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 10
+          },
+          "off": {
+            "reply": "Display flicker (SR-D3F4FB60-4980-46F0-95CA-8F0110B79624) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 9
+          }
+        },
+        {
+          "question": "Startup completes but the image on the notebook is blinking. Is there an approved remedy?",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Display flicker (SR-D3F4FB60-4980-46F0-95CA-8F0110B79624) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model X firmware 4:\nDisable Adaptive Refresh in Display Settings, then install the approved display driver 4.2.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 13
+          },
+          "off": {
+            "reply": "Display flicker (SR-D3F4FB60-4980-46F0-95CA-8F0110B79624) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 12
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "Every time the computer starts, the picture rapidly alternates between bright and dark. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Display flicker (SR-D3F4FB60-4980-46F0-95CA-8F0110B79624) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "Every time the computer starts, the picture rapidly alternates between bright and dark.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Service issue (SR-126768EE-1A63-4006-83C3-AB36C3F706E7) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Display flicker (SR-D3F4FB60-4980-46F0-95CA-8F0110B79624) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": false,
+      "passed": false
+    },
+    {
+      "id": "wireless",
+      "positive": [
+        {
+          "question": "I keep getting kicked off the wireless network and have to reconnect.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Wireless disconnect (SR-F8783261-FB79-433B-85FB-2E8E8C146037) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 23
+          },
+          "off": {
+            "reply": "Wireless disconnect (SR-F8783261-FB79-433B-85FB-2E8E8C146037) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 13
+          }
+        },
+        {
+          "question": "The Wi-Fi works briefly, loses its connection, then does it all over again.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Wireless disconnect (SR-F8783261-FB79-433B-85FB-2E8E8C146037) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 15
+          },
+          "off": {
+            "reply": "Wireless disconnect (SR-F8783261-FB79-433B-85FB-2E8E8C146037) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 15
+          }
+        },
+        {
+          "question": "My internet connection repeatedly drops while I am working over Wi-Fi.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Wireless disconnect (SR-F8783261-FB79-433B-85FB-2E8E8C146037) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model R firmware 2:\nRemove the stale saved network profile, then reconnect using the company-provided wireless profile.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 11
+          },
+          "off": {
+            "reply": "Wireless disconnect (SR-F8783261-FB79-433B-85FB-2E8E8C146037) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 9
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "I keep getting kicked off the wireless network and have to reconnect. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Wireless disconnect (SR-F8783261-FB79-433B-85FB-2E8E8C146037) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "I keep getting kicked off the wireless network and have to reconnect.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Service issue (SR-1463F8A3-1F7A-4BDA-BAC8-B7DE91693C09) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Wireless disconnect (SR-F8783261-FB79-433B-85FB-2E8E8C146037) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": false,
+      "passed": false
+    },
+    {
+      "id": "battery",
+      "positive": [
+        {
+          "question": "A full charge disappears far too soon, even when the computer is doing very little.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Battery drain (SR-73A9F1E8-020C-48F6-943A-2A9E9791A9DE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 25
+          },
+          "off": {
+            "reply": "Battery drain (SR-73A9F1E8-020C-48F6-943A-2A9E9791A9DE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 16
+          }
+        },
+        {
+          "question": "The battery percentage falls unusually fast while the notebook sits idle.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Battery drain (SR-73A9F1E8-020C-48F6-943A-2A9E9791A9DE) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "memory": "Local demo memory",
+            "elapsedMs": 15
+          },
+          "off": {
+            "reply": "Battery drain (SR-73A9F1E8-020C-48F6-943A-2A9E9791A9DE) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 14
+          }
+        },
+        {
+          "question": "I unplug the laptop and it runs out of battery much sooner than it should.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Battery drain (SR-73A9F1E8-020C-48F6-943A-2A9E9791A9DE) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "memory": "Local demo memory",
+            "elapsedMs": 20
+          },
+          "off": {
+            "reply": "Battery drain (SR-73A9F1E8-020C-48F6-943A-2A9E9791A9DE) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 21
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "A full charge disappears far too soon, even when the computer is doing very little. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Battery drain (SR-73A9F1E8-020C-48F6-943A-2A9E9791A9DE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "A full charge disappears far too soon, even when the computer is doing very little.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Service issue (SR-5FD5601B-44A3-432D-AB63-E21F2BE23D2D) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Battery drain (SR-73A9F1E8-020C-48F6-943A-2A9E9791A9DE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": false,
+      "passed": false
+    },
+    {
+      "id": "printer",
+      "positive": [
+        {
+          "question": "A sheet is trapped in the printer and the job cannot continue.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Paper jam (SR-660FFCE2-67FC-47F6-A0DB-A21836500672) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 31
+          },
+          "off": {
+            "reply": "Paper jam (SR-660FFCE2-67FC-47F6-A0DB-A21836500672) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 19
+          }
+        },
+        {
+          "question": "The printer stopped feeding paper and says a page is jammed inside.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Paper jam (SR-660FFCE2-67FC-47F6-A0DB-A21836500672) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model P firmware 6:\nRemove the folded sheet from the rear paper guide, then reload flat paper within the marked tray limit.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 19
+          },
+          "off": {
+            "reply": "Paper jam (SR-660FFCE2-67FC-47F6-A0DB-A21836500672) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 24
+          }
+        },
+        {
+          "question": "Printing has stopped because paper is wedged in the feed path.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Paper jam (SR-660FFCE2-67FC-47F6-A0DB-A21836500672) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 24
+          },
+          "off": {
+            "reply": "Paper jam (SR-660FFCE2-67FC-47F6-A0DB-A21836500672) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 26
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "A sheet is trapped in the printer and the job cannot continue. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Paper jam (SR-660FFCE2-67FC-47F6-A0DB-A21836500672) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "A sheet is trapped in the printer and the job cannot continue.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Service issue (SR-5576D7EE-8482-4044-9705-0E8504E64A16) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Paper jam (SR-660FFCE2-67FC-47F6-A0DB-A21836500672) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": false,
+      "passed": false
+    },
+    {
+      "id": "vpn",
+      "positive": [
+        {
+          "question": "I reach the VPN sign-in screen but it will not accept my authentication.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "VPN authentication (SR-B7BC1F30-3D97-4723-A668-100D7A18E9F4) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 11:\nRemove the expired VPN certificate and import the replacement certificate issued by the company support team.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 40
+          },
+          "off": {
+            "reply": "VPN authentication (SR-B7BC1F30-3D97-4723-A668-100D7A18E9F4) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 29
+          }
+        },
+        {
+          "question": "The corporate VPN turns down my login attempt instead of connecting.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "VPN authentication (SR-B7BC1F30-3D97-4723-A668-100D7A18E9F4) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 11:\nRemove the expired VPN certificate and import the replacement certificate issued by the company support team.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 25
+          },
+          "off": {
+            "reply": "VPN authentication (SR-B7BC1F30-3D97-4723-A668-100D7A18E9F4) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 25
+          }
+        },
+        {
+          "question": "VPN authentication fails every time I try to sign in.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "VPN authentication (SR-B7BC1F30-3D97-4723-A668-100D7A18E9F4) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 11:\nRemove the expired VPN certificate and import the replacement certificate issued by the company support team.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 26
+          },
+          "off": {
+            "reply": "VPN authentication (SR-B7BC1F30-3D97-4723-A668-100D7A18E9F4) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 21
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "I reach the VPN sign-in screen but it will not accept my authentication. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "handoff",
+          "reply": "VPN authentication (SR-B7BC1F30-3D97-4723-A668-100D7A18E9F4) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it."
+        },
+        {
+          "question": "I reach the VPN sign-in screen but it will not accept my authentication.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-6270C7A3-13B0-417E-95F7-FB38BCF53823) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Windows 11"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "VPN authentication (SR-B7BC1F30-3D97-4723-A668-100D7A18E9F4) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "audio",
+      "positive": [
+        {
+          "question": "A video is playing but nothing can be heard from the built-in speakers.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Silent audio (SR-B0F97FD4-6F96-4C8D-BD69-C0D25D8936C2) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 40
+          },
+          "off": {
+            "reply": "Silent audio (SR-B0F97FD4-6F96-4C8D-BD69-C0D25D8936C2) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 27
+          }
+        },
+        {
+          "question": "There is no sound coming out of the laptop audio output.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Silent audio (SR-B0F97FD4-6F96-4C8D-BD69-C0D25D8936C2) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model A firmware 2:\nSelect the internal audio output in the approved audio utility and disable the disconnected docking-station output.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 23
+          },
+          "off": {
+            "reply": "Silent audio (SR-B0F97FD4-6F96-4C8D-BD69-C0D25D8936C2) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 22
+          }
+        },
+        {
+          "question": "The speakers stay completely quiet when I play audio.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Silent audio (SR-B0F97FD4-6F96-4C8D-BD69-C0D25D8936C2) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 33
+          },
+          "off": {
+            "reply": "Silent audio (SR-B0F97FD4-6F96-4C8D-BD69-C0D25D8936C2) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 39
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "A video is playing but nothing can be heard from the built-in speakers. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Silent audio (SR-B0F97FD4-6F96-4C8D-BD69-C0D25D8936C2) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "A video is playing but nothing can be heard from the built-in speakers.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Service issue (SR-37E3AC2F-CE29-4352-8A9F-47B4513653B6) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Silent audio (SR-B0F97FD4-6F96-4C8D-BD69-C0D25D8936C2) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": false,
+      "passed": false
+    },
+    {
+      "id": "camera",
+      "positive": [
+        {
+          "question": "My meeting camera preview is just an empty black rectangle.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Camera preview (SR-5557489A-7BD6-4684-A979-19E1BE528651) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model C firmware 3:\nOpen the physical camera privacy shutter and reselect the internal camera in the meeting application.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 42
+          },
+          "off": {
+            "reply": "Camera preview (SR-5557489A-7BD6-4684-A979-19E1BE528651) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 36
+          }
+        },
+        {
+          "question": "The webcam is selected but its preview contains no picture, only black.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Camera preview (SR-5557489A-7BD6-4684-A979-19E1BE528651) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model C firmware 3:\nOpen the physical camera privacy shutter and reselect the internal camera in the meeting application.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 37
+          },
+          "off": {
+            "reply": "Camera preview (SR-5557489A-7BD6-4684-A979-19E1BE528651) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 38
+          }
+        },
+        {
+          "question": "Instead of showing me, the camera preview stays blank.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Camera preview (SR-5557489A-7BD6-4684-A979-19E1BE528651) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model C firmware 3:\nOpen the physical camera privacy shutter and reselect the internal camera in the meeting application.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 37
+          },
+          "off": {
+            "reply": "Camera preview (SR-5557489A-7BD6-4684-A979-19E1BE528651) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 41
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "My meeting camera preview is just an empty black rectangle. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Camera preview (SR-5557489A-7BD6-4684-A979-19E1BE528651) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "My meeting camera preview is just an empty black rectangle.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-08477A12-4F87-4714-A89D-934F37F07F95) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Model C firmware 3"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Camera preview (SR-5557489A-7BD6-4684-A979-19E1BE528651) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "storage",
+      "positive": [
+        {
+          "question": "I cannot save anything because the drive has no room left.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Storage capacity (SR-FEB7684A-5B1A-4797-83F9-13794E9741FE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 61
+          },
+          "off": {
+            "reply": "Storage capacity (SR-FEB7684A-5B1A-4797-83F9-13794E9741FE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 36
+          }
+        },
+        {
+          "question": "The computer reports that its storage capacity is completely used up.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Storage capacity (SR-FEB7684A-5B1A-4797-83F9-13794E9741FE) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 10:\nUse the built-in Storage settings to remove temporary update files, preserving personal files and installed applications.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 34
+          },
+          "off": {
+            "reply": "Storage capacity (SR-FEB7684A-5B1A-4797-83F9-13794E9741FE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 32
+          }
+        },
+        {
+          "question": "The disk is full and there is no free space for another file.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Storage capacity (SR-FEB7684A-5B1A-4797-83F9-13794E9741FE) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 10:\nUse the built-in Storage settings to remove temporary update files, preserving personal files and installed applications.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 41
+          },
+          "off": {
+            "reply": "Storage capacity (SR-FEB7684A-5B1A-4797-83F9-13794E9741FE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 33
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "I cannot save anything because the drive has no room left. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Storage capacity (SR-FEB7684A-5B1A-4797-83F9-13794E9741FE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "I cannot save anything because the drive has no room left.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Service issue (SR-34B1D782-9287-45E1-9730-C70F95CA409C) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Storage capacity (SR-FEB7684A-5B1A-4797-83F9-13794E9741FE) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": false,
+      "passed": false
+    },
+    {
+      "id": "email",
+      "positive": [
+        {
+          "question": "My mailbox has stopped updating with new messages.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Email synchronization (SR-84E5451C-40CF-4BCE-A268-DA8F1BE4C4B0) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 48
+          },
+          "off": {
+            "reply": "Email synchronization (SR-84E5451C-40CF-4BCE-A268-DA8F1BE4C4B0) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 34
+          }
+        },
+        {
+          "question": "Email synchronization has stalled and the message list never refreshes.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Email synchronization (SR-84E5451C-40CF-4BCE-A268-DA8F1BE4C4B0) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model M firmware 5:\nResume synchronization for the affected mailbox and replace its expired sign-in session using the approved account flow.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 44
+          },
+          "off": {
+            "reply": "Email synchronization (SR-84E5451C-40CF-4BCE-A268-DA8F1BE4C4B0) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 37
+          }
+        },
+        {
+          "question": "New mail is not being synchronized into my inbox.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Email synchronization (SR-84E5451C-40CF-4BCE-A268-DA8F1BE4C4B0) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model M firmware 5:\nResume synchronization for the affected mailbox and replace its expired sign-in session using the approved account flow.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 71
+          },
+          "off": {
+            "reply": "Email synchronization (SR-84E5451C-40CF-4BCE-A268-DA8F1BE4C4B0) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 41
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "My mailbox has stopped updating with new messages. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Email synchronization (SR-84E5451C-40CF-4BCE-A268-DA8F1BE4C4B0) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "My mailbox has stopped updating with new messages.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Service issue (SR-C70B8698-4274-4F9B-9CCE-A95D7E349E55) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Email synchronization (SR-84E5451C-40CF-4BCE-A268-DA8F1BE4C4B0) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": false,
+      "passed": false
+    },
+    {
+      "id": "application",
+      "positive": [
+        {
+          "question": "The program quits unexpectedly as soon as I launch it.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Application crash (SR-3CA6B583-9195-4545-8167-61BB35EB4DA9) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 53
+          },
+          "off": {
+            "reply": "Application crash (SR-3CA6B583-9195-4545-8167-61BB35EB4DA9) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 45
+          }
+        },
+        {
+          "question": "Opening the application immediately makes it crash.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Application crash (SR-3CA6B583-9195-4545-8167-61BB35EB4DA9) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model K firmware 7:\nDisable the incompatible reporting extension and reopen the application with the verified extension profile.",
+            "decision": "recommend",
+            "memory": "Local demo memory",
+            "elapsedMs": 95
+          },
+          "off": {
+            "reply": "Application crash (SR-3CA6B583-9195-4545-8167-61BB35EB4DA9) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 75
+          }
+        },
+        {
+          "question": "I launch the app, then its window unexpectedly closes before I can use it.",
+          "correct": false,
+          "offWithheld": true,
+          "on": {
+            "reply": "Application crash (SR-3CA6B583-9195-4545-8167-61BB35EB4DA9) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "memory": "Local demo memory",
+            "elapsedMs": 68
+          },
+          "off": {
+            "reply": "Application crash (SR-3CA6B583-9195-4545-8167-61BB35EB4DA9) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability.",
+            "decision": "status",
+            "elapsedMs": 77
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "The program quits unexpectedly as soon as I launch it. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Application crash (SR-3CA6B583-9195-4545-8167-61BB35EB4DA9) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "The program quits unexpectedly as soon as I launch it.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Service issue (SR-EE178210-6F07-4A9D-B241-74C4FCF6F7A0) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Application crash (SR-3CA6B583-9195-4545-8167-61BB35EB4DA9) is marked “Received.” The provider has not posted an ETA.\n\nI can also add a note or check appointment availability."
+        }
+      ],
+      "failedRecovery": false,
+      "passed": false
+    }
+  ],
+  "counts": {
+    "positiveQuestions": 30,
+    "correctMemoryOn": 16,
+    "correctMemoryOff": 0,
+    "memoryOffWithheld": 30,
+    "negativeQuestions": 30,
+    "incorrectRecommendations": 0,
+    "failedFixRepeated": 0
+  },
+  "passed": false,
+  "completedAt": "2026-11-06T16:22:54.315Z"
+}

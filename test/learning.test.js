@@ -14,12 +14,16 @@ test('human resolution for A improves B, preserves private context, and supports
  const handoff=await api('handoff',{token:a,body:{summary:'Display flickers after startup. Private callback context.',confirmed:true}});
  assert.equal((await api('operator',{token:b})).status,403);
  // Explicitly provision a staff role on a real account; public registration never grants it.
- const registered=await api('auth/register',{body:{name:'Specialist',email:'specialist@example.test',password:'a long specialist passphrase 49',provider:'repair'}});
+ const registered=await api('auth/register',{body:{createCompany:true,companyName:'Learning fixture',name:'Specialist',email:'specialist@example.test',password:'a long specialist passphrase 49',provider:'repair'}});
  const cookie=registered.headers['Set-Cookie'].split(';')[0];
  h.store.db.prepare('INSERT INTO staff_access VALUES(?,?)').run(registered.data.profile.id,'repair');
+ h.store.db.prepare("UPDATE accounts SET company_id='legacy',role='staff' WHERE id=?").run(registered.data.profile.id);
  const headers={cookie,'x-csrf-token':registered.data.csrfToken};
- const resolved=await api('operator/resolve',{headers,body:{handoffId:handoff.data.id,title:'Display flicker after startup',symptoms:'Display flickers after startup',environment:'Model X firmware 4',solution:'Disable adaptive refresh in Display settings, then install the verified display driver version 4.2.',confirmed:true,reviewedForPrivacy:true}});
+ assert.equal((await api('operator/assign',{headers,body:{handoffId:handoff.data.id,assignedTo:registered.data.profile.id,revision:0,confirmed:true}})).status,200);
+ const resolved=await api('operator/resolve',{headers,body:{handoffId:handoff.data.id,revision:1,title:'Display flicker after startup',symptoms:'Display flickers after startup',environment:'Model X firmware 4',solution:'Disable adaptive refresh in Display settings, then install the verified display driver version 4.2.',confirmed:true,reviewedForPrivacy:true}});
  assert.equal(resolved.status,201);
+ assert.equal((await api('chat',{token:b,body:{ticketId,message:question,retain:false}})).data.trace.learnedResolutions,0);
+ assert.equal((await api('resolutions/confirm',{token:a,body:{id:resolved.data.id,accepted:true,confirmed:true}})).status,200);
  const after=await api('chat',{token:b,body:{ticketId,message:question,retain:false}});
  assert.equal(after.data.trace.learnedResolutions,1);assert.match(after.data.reply,/adaptive refresh/);
  assert.ok(!after.data.reply.includes('Alice'));assert.ok(!after.data.reply.includes('Private callback'));

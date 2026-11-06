@@ -1,5 +1,7 @@
 # Continuum connection setup
 
+Company signup, specialist invitations, customer confirmation, and the read-only database gateway are documented in [IMPLEMENTATION.md](IMPLEMENTATION.md). Start a new business with **Create a company**; customers and specialists join using the owner's links. Use Node 22 inside WSL on this computer.
+
 The implementation is ready to connect, but actual email delivery and calendar consent require credentials from your own provider accounts. Enter secrets in the ignored local `.env` or your deployment's environment settings. Do not put keys in chat, frontend files, source control, or screenshots.
 
 ## Local authentication and database
@@ -52,3 +54,7 @@ Set `HINDSIGHT_BASE_URL`, `HINDSIGHT_API_KEY`, and a unique `HINDSIGHT_BANK_PREF
 - Monitor failed outbox jobs and provider quotas. Multiple hosts require a shared SQL database; the current SQLite deployment is for one persistent host.
 
 A local installation without a configured encryption key creates a private `.sqlite.key` file for development integrations. Production never generates a replacement key silently. Losing that key requires reconnecting calendars and regenerating outstanding private-link emails; password hashes and account records do not depend on it.
+
+## Optional provider writes
+
+No business gateway is connected by default. See [PROVIDER-GATEWAY.md](PROVIDER-GATEWAY.md) before enabling confirmed-action sync. The gateway must implement durable idempotency and exact action receipts. The current adapter has been verified against an isolated HTTP service, not a live business database.

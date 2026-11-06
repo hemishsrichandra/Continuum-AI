@@ -14,7 +14,7 @@ try {
     server.stderr.on('data', (chunk) => { clearTimeout(timer); reject(new Error(chunk.toString())); });
     server.stdout.on('data', (chunk) => { const match = chunk.toString().match(/Continuum: (http:\/\/localhost:\d+)/); if (match) { clearTimeout(timer); resolve(match[1]); } });
   });
-  for (const route of ['/', '/about', '/services', '/pricing', '/book-a-session', '/style-guide', '/desk', '/desk/', '/pages.js', '/client.js', '/auth-ui.js', '/ui.js', '/styles.css']) {
+  for (const route of ['/', '/about', '/services', '/pricing', '/book-a-session', '/style-guide', '/desk', '/desk/', '/operator/', '/team', '/team.js', '/connector-ui.js', '/operator.js', '/pages.js', '/client.js', '/auth-ui.js', '/ui.js', '/styles.css']) {
     const response = await fetch(base + route); assert.equal(response.status, 200, route);
     assert.ok(response.headers.get('content-security-policy'));
   }
@@ -30,7 +30,7 @@ try {
   const first = await (await fetch(base + '/api/request', opts)).json();
   const replay = await (await fetch(base + '/api/request', opts)).json(); assert.equal(first.ticketId, replay.ticketId);
   const workspace = await (await fetch(base + '/api/workspace', { headers })).json(); assert.equal(workspace.tickets.length, 2);
-  const registration = await fetch(base + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'HTTP test account', email: 'http-test@example.test', password: 'a long isolated test passphrase 43', provider: 'repair' }) });
+  const registration = await fetch(base + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ createCompany:true, companyName:'HTTP test company', name: 'HTTP test account', email: 'http-test@example.test', password: 'a long isolated test passphrase 43', provider: 'repair' }) });
   assert.equal(registration.status, 201); assert.match(registration.headers.get('set-cookie'), /HttpOnly/);
   const cookie = registration.headers.get('set-cookie').split(';')[0], account = await registration.json(); assert.ok(!account.token);
   const accountHeaders = { 'Content-Type': 'application/json', Cookie: cookie, 'X-CSRF-Token': account.csrfToken };
