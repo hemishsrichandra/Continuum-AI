@@ -389,6 +389,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
             limit(session.token_hash + ':ai', 20);
             const started = Date.now();
             const enabled = body.memory !== false;
+            const statedFacts = extractFacts(message);
             const saveResponse = (result) => {
               if (body.retain === false) return result;
               return store.update((data) => {
@@ -446,7 +447,18 @@ export function createHandler({ file, config = process.env, service } = {}) {
                 .filter((m) => ['failed', 'missed'].includes(m.kind))
                 .map((m) => m.id),
             );
-            const facts = recall.facts.filter((f) => !superseded.has(f.id));
+            const statedPreferences = statedFacts.filter(f => f.kind === 'preference');
+            const facts = recall.facts.filter((f) => {
+              if (superseded.has(f.id)) return false;
+              const saved = store.data.memories.find(m => m.id === f.id);
+              return !statedPreferences.some(p => f.kind === 'preference' &&
+                (saved?.category || 'contact') === p.category);
+            });
+            // The latest instruction is part of this message even before it is
+            // retained. Never answer with the preference it replaces.
+            facts.unshift(...statedPreferences.map((f, i) => ({
+              ...f, id:'current-message-' + i, source:'Current message',
+            })));
             const learned =
               enabled && !direct
                 ? await learning.recall(profile.companyId, profile.provider, message, ticket, profile.id)
@@ -455,7 +467,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
             const decision = direct ? requestedDecision : await decide({ message, ticket, facts, learned });
             const action = decision.action;
             if (reportedUse && action?.kind === 'handoff') action.failedUseId = reportedUse.id;
-            const history = body.retain === false ? [] : safeHistory(store, db.scope, ticket.id, enabled);
+            const history = body.retain === false ? [] : safeHistory(store, db.scope, ticket.id, enabled, statedPreferences);
             const response = await compose(
               {
                 message,
@@ -478,7 +490,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
               throw fault(409, 'A referenced resolution was retired while answering. Please ask again.');
             let retained = null;
             if (enabled && body.retain !== false) {
-              for (const fact of extractFacts(message))
+              for (const fact of statedFacts)
                 retained = await retain({
                   id: randomUUID(),
                   scope: db.scope,
@@ -501,7 +513,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
                 ...facts.map((fact) => ({
                   id: fact.id,
                   resolutionId: fact.resolutionId,
-                  type: fact.kind === 'verified_resolution' ? learned.source : recall.source,
+                  type: fact.source || (fact.kind === 'verified_resolution' ? learned.source : recall.source),
                   text: fact.text,
                   kind: fact.kind,
                 })),

@@ -117,6 +117,7 @@ async function refresh() {
   state.workspace = workspace;
   state.ticketId = selected;
   state.ledger = memories.ledger;
+  state.reflection = null;
   state.messages = conversation.messages;
   saveSession('supportly-ticket', selected);
   state.account = workspace.profile;
@@ -475,6 +476,7 @@ app.addEventListener('click', async (event) => {
     }
     if (action === 'toggle') {
       state.memory = !state.memory;
+      state.reflection = null;
       state.pendingChat = null;
       render();
     }

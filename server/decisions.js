@@ -27,6 +27,11 @@ export async function decide({ message, ticket, facts, learned }, config = {}) {
     /\b(?:what happens if|what would|how (?:do|can|would) (?:i|you)\b|explain how|example of)\b/i.test(
       message,
     );
+  if (hypothetical && /\b(?:book|schedule|reserve|arrange)\b.*\b(?:appointment|visit|slot|time)\b/i.test(message))
+    return {
+      mode: 'inform', action: null,
+      question: 'Booking lets you review available times. Nothing is booked until you select a time and confirm. Calendar synchronization requires a connected calendar.',
+    };
   let action = null,
     clarify = null;
   if (!negated && !hypothetical) {
@@ -116,6 +121,20 @@ export async function decide({ message, ticket, facts, learned }, config = {}) {
       action: null,
       question: 'No action has been prepared. Tell me what you would like to check.',
     };
+  const preferenceQuery =
+    /\b(?:prefer\w*|contact (?:method|channel))\b|\bhow\b.*\b(?:contact\w*|reach\w*)\b/i.test(message) &&
+    /\b(?:contact\w*|reach\w*|email|phone|call\w*|text|sms)\b/i.test(message) &&
+    !extractFacts(message).some(f => f.kind === 'preference');
+  if (preferenceQuery) {
+    const preference = facts.find(f => f.kind === 'preference' &&
+      /\b(?:email|call\w*|phone|text|sms|contact\w*|reach\w*)\b/i.test(f.text));
+    return {
+      mode:'inform', action:null,
+      question:preference
+        ? 'Your recorded contact preference is: ' + preference.text
+        : 'I don’t have an active contact preference available for this reply. You can tell me how you would like to be contacted.',
+    };
+  }
   if (ticket.status === 'Resolved') return { mode: 'status', action: null };
   if (learned?.reviewRequired || learned?.failedBefore) return handoff('reviewed_fix_unavailable');
   if (learned?.clarification?.length)

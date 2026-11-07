@@ -788,6 +788,129 @@ test('pending specialist confirmation cannot be bypassed by generic outcomes; la
   assert.equal((await f.a.api('resolutions/confirm',{id:proposed.id,accepted:false,confirmed:true})).status,200);
 });
 
+test('customer resolution closes an active specialist case without publishing knowledge or accepting stale edits', async (t) => {
+  const f = await fixture(t);
+  const result = await f.a.api('outcome', {
+    ticketId: f.ticketA, outcome: 'resolved', note: 'The issue is fixed now.', confirmed: true,
+  });
+  assert.equal(result.status, 201);
+  const queue = (await f.owner.api('operator')).data;
+  const closed = queue.cases.find(h => h.id === f.handoff);
+  assert.equal(closed.status, 'Resolved');
+  assert.equal(closed.revision, 2);
+  assert.equal(queue.resolutions.length, 0);
+  assert.equal((await f.owner.api('operator/progress', {
+    handoffId: f.handoff, revision: 1, status: 'In progress', note: 'Stale update', confirmed: true,
+  })).status, 409);
+  assert.equal((await f.a.api('status?ticketId=' + f.ticketA)).data.status, 'Resolved');
+});
+
+test('reassignment rejects an actual former staff identity and its stale progress form', async (t) => {
+  const f = await fixture(t);
+  const staff = f.client();
+  const url = (await f.owner.api('company/invitations', {
+    email: 'assigned@example.test', role: 'staff', provider: 'repair',
+  })).data.url;
+  const invitation = new URLSearchParams(new URL(url).hash.slice(1)).get('invite');
+  const registration = await staff.api('auth/register', {
+    invitation, name: 'Assigned specialist', email: 'assigned@example.test', password,
+  });
+  assert.equal(registration.status, 201);
+  const assignment = await f.owner.api('operator/assign', {
+    handoffId: f.handoff, assignedTo: registration.data.profile.id, revision: 1, confirmed: true,
+  });
+  assert.equal(assignment.status, 200);
+  const stale = (await staff.api('operator')).data.cases.find(h => h.id === f.handoff);
+  assert.equal((await f.owner.api('operator/assign', {
+    handoffId: f.handoff, assignedTo: f.ownerId, revision: stale.revision, confirmed: true,
+  })).status, 200);
+  const update = {handoffId:f.handoff,revision:stale.revision,status:'In progress',note:'Stale staff edit',confirmed:true};
+  assert.equal((await staff.api('operator/progress', update)).status, 409);
+  const current = (await staff.api('operator')).data.cases.find(h => h.id === f.handoff);
+  assert.equal(current.assignedTo, f.ownerId);
+  assert.equal((await staff.api('operator/progress', {...update,revision:current.revision})).status, 403);
+  assert.equal((await f.a.api('status?ticketId=' + f.ticketA)).data.assignedTo, 'Owner');
+});
+
+test('credential-bearing chat creates no extracted facts and memory-off handoff carries no recalled preferences', async (t) => {
+  const f = await fixture(t);
+  await f.b.api('chat', {ticketId:f.ticketB,message:'api_key=synthetic-not-a-real-key Please email me.'});
+  let ledger = (await f.b.api('memory?ticketId=' + f.ticketB)).data.ledger;
+  assert.equal(ledger.filter(m => m.kind === 'preference').length, 0);
+  await f.b.api('chat', {ticketId:f.ticketB,message:'Please email me instead of calling.'});
+  const prepared = (await f.b.api('chat', {ticketId:f.ticketB,message:'Please get a human specialist to help me.',memory:false})).data;
+  assert.equal(prepared.action.kind, 'handoff');
+  const sent = await f.b.api('handoff', {ticketId:f.ticketB,summary:prepared.action.summary,memory:false,confirmed:true});
+  assert.equal(sent.status, 201);
+  const handoff = (await f.owner.api('operator')).data.cases.find(h => h.id === sent.data.id);
+  assert.deepEqual(handoff.context.memories, []);
+});
+
+test('a replacement preference is used immediately and retired facts cannot return through model history', async (t) => {
+  const prompts = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    const context = JSON.parse(JSON.parse(options.body).messages[1].content);
+    prompts.push(context);
+    return Response.json({choices:[{message:{content:context.guidance.join('\n')}}]});
+  });
+  const f = await fixture(t, {OPENAI_API_KEY:'synthetic'});
+  await f.b.api('chat', {ticketId:f.ticketB,message:'Please email me instead of calling.'});
+  const changed = (await f.b.api('chat', {ticketId:f.ticketB,message:'Please text me instead of calling.'})).data;
+  assert.match(changed.reply, /text me/);
+  assert.doesNotMatch(changed.reply, /email me/);
+  assert.equal(prompts.length, 0, 'Explicit preferences do not need a model rewrite');
+  const ledger = (await f.b.api('memory?ticketId='+f.ticketB)).data.ledger;
+  const current = ledger.find(m=>m.kind==='preference' && !m.invalidatedAt);
+  await f.b.api('memory', {ticketId:f.ticketB,id:current.id}, {method:'PATCH'});
+  await f.b.api('chat', {ticketId:f.ticketB,message:'How do I prefer to be contacted?'});
+  assert.equal(prompts.length, 0, 'Preference queries use active facts directly');
+  await f.b.api('chat', {ticketId:f.ticketB,message:'What is the current status?'});
+  assert.doesNotMatch(JSON.stringify(prompts.at(-1)), /email me|text me/);
+});
+
+test('asking about a preference never replaces the saved contact instruction', async (t) => {
+  const f = await fixture(t);
+  await f.b.api('chat', {ticketId:f.ticketB,message:'Please email me instead of calling.'});
+  for (const message of ['How do I prefer to be contacted?', 'How should the team contact me?', 'What contact method do I prefer?', 'Can you tell me my contact preference?']) {
+    assert.equal(extractFacts(message).filter(f=>f.kind==='preference').length, 0);
+    const result = (await f.b.api('chat', {ticketId:f.ticketB,message})).data;
+    assert.ok(result.evidence.some(e=>e.kind==='preference' && /email me/.test(e.text)));
+    assert.equal(result.model, 'Support workflow');
+  }
+  assert.equal((await f.b.api('memory?ticketId='+f.ticketB)).data.ledger.filter(m=>m.kind==='preference' && !m.invalidatedAt).length, 1);
+  assert.ok(extractFacts('Could you please text me instead of calling?').some(f=>f.kind==='preference'));
+});
+
+test('comparison can retrieve a published fix without saving a chat, action, fact or reuse receipt', async (t) => {
+  const f = await fixture(t);
+  const r = await f.propose();
+  await f.a.api('resolutions/confirm', {id:r.id,accepted:true,confirmed:true});
+  const before = JSON.stringify(f.h.store.data);
+  const receipts = f.h.store.db.prepare('SELECT COUNT(*) AS n FROM resolution_uses').get().n;
+  const off = (await f.ask('The monitor flashes when booting the notebook.', {memory:false,retain:false})).data;
+  const on = (await f.ask('The monitor flashes when booting the notebook.', {memory:true,retain:false})).data;
+  assert.equal(off.trace.learnedResolutions, 0);
+  assert.equal(on.trace.learnedResolutions, 1);
+  assert.match(on.reply, /Disable adaptive refresh/);
+  assert.equal(JSON.stringify(f.h.store.data), before);
+  assert.equal(f.h.store.db.prepare('SELECT COUNT(*) AS n FROM resolution_uses').get().n, receipts);
+});
+
+test('two genuinely retrieved applicable procedures require clarification instead of merging steps', async (t) => {
+  const f = await fixture(t);
+  const r = await f.propose();
+  await f.a.api('resolutions/confirm', {id:r.id,accepted:true,confirmed:true});
+  const original = f.h.store.data.resolutions.find(x=>x.id===r.id);
+  const second = {...original,id:'competing-qa',memoryId:'competing-qa-memory',solution:'A distinct synthetic procedure.'};
+  f.h.store.update(data=>data.resolutions.push(second));
+  const learning = createLearning(f.h.store, {
+    recall:async()=>({source:'Local demo memory',facts:[original,second].map(x=>({id:x.memoryId,text:x.solution}))}),
+  },null,{});
+  const result = await learning.recall(original.companyId,'repair',f.question,{issue:f.question});
+  assert.deepEqual(result.facts, []);
+  assert.match(result.clarification[0].environment, /Multiple reviewed fixes match/);
+});
+
 test('a named different request prompts a safe switch instead of answering the selected case', async(t)=>{
   const f=await fixture(t);
   const battery=(await f.a.api('request',{title:'QA battery drain',issueDesc:'Model B firmware 3 loses charge.',confirmed:true,memory:false})).data.ticketId;

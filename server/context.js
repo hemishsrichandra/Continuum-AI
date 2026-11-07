@@ -1,3 +1,5 @@
+import { extractFacts } from './facts.js';
+
 // Conservative local language normalization supplements Hindsight's semantic recall.
 // Environment compatibility is enforced independently of relevance.
 export const resolutionSignature = (r) =>
@@ -88,7 +90,7 @@ export function compatibility(environment, query) {
   for (const word of extra) if (!queryWords.has(word)) missing.push(word);
   return { compatible: !missing.length && !conflicts.length, missing, conflicts };
 }
-export function safeHistory(store, scope, ticketId, enabled) {
+export function safeHistory(store, scope, ticketId, enabled, statedPreferences = []) {
   if (!enabled) return [];
   const data = store.data;
   const inactive = data.resolutions.filter(
@@ -98,9 +100,17 @@ export function safeHistory(store, scope, ticketId, enabled) {
       (r.status && r.status !== 'published'),
   );
   const blocked = new Set(inactive.flatMap((r) => [r.id, r.memoryId]));
+  const retiredFacts = data.memories.filter(m => m.scope === scope && m.invalidatedAt);
+  const retiredIds = new Set(retiredFacts.map(m => m.id));
   return (
     data.conversations
       .filter((c) => c.scope === scope && c.ticketId === ticketId && !c.archivedAt)
+      .filter(c => !(c.response.evidence || []).some(e => retiredIds.has(e.id)))
+      .filter(c => !retiredFacts.some(m => m.text &&
+        (c.message.includes(m.text) || c.response.reply?.includes(m.text))))
+      .filter(c => !statedPreferences.some(p =>
+        extractFacts(c.message).some(f => f.kind === 'preference' && f.category === p.category) ||
+        (c.response.evidence || []).some(e => e.kind === 'preference')))
       .filter(
         (c) =>
           !c.response.resolutionId &&

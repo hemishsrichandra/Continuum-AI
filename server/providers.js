@@ -283,6 +283,18 @@ export function provider(store, profile) {
         if (profile.provider === 'repair') row.status = status;
         else row.state = status;
         row.updatedAt = result.createdAt;
+        // A customer can resolve a request without accepting a specialist fix.
+        // Close its active work too, but never publish knowledge from this path.
+        if (body.outcome === 'resolved') {
+          for (const handoff of data.handoffs) {
+            if (handoff.scope === scope && handoff.ticketId === ticketId &&
+                !['Resolved', 'Closed'].includes(handoff.status)) {
+              handoff.status = 'Resolved';
+              handoff.updatedAt = result.createdAt;
+              handoff.revision = (handoff.revision || 0) + 1;
+            }
+          }
+        }
         result.outcome = body.outcome;
         result.note = body.note;
         result.status = status;

@@ -1,5 +1,11 @@
 # Manual testing findings
 
+## Latest verification — November 7, 2026
+
+The B10–B13 and C1–C7 / D1–D12 pass found and corrected new defects after the earlier checklist: questions could replace a real contact preference; a replacement reply could use the old preference; retired facts could return through chat history; an already displayed summary could remain stale; generic customer resolution left an active specialist case open; hypothetical booking wording could promise unconfigured delivery behavior. Contact-method answers now use active facts directly. Existing historical chats are preserved.
+
+Current evidence: **67/67 automated tests**, HTTP checks, **14/14 live learning checks**, **5/5 live preference checks**, plus browser interaction and controlled lost-response/failed-refresh checks. [VERIFICATION-2026-11-07.md](VERIFICATION-2026-11-07.md) lists each requested check and whether it was verified manually, automatically, or live. No failure remains open in those tested scenarios. The external email/calendar/business-gateway requirements and conservative language/fallback limitations below remain distinct.
+
 ## Current checklist — rechecked November 6, 2026
 
 ### November 7 follow-up: asking about another request — fixed
