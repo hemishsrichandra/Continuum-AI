@@ -1,6 +1,6 @@
 # Multi-company verification — November 7, 2026
 
-Follow-up: the charging issue reported during manual testing is now covered by a complete browser test and regression test. The latest full run passed **78 tests, 0 failures**, plus HTTP checks. See [CHARGING-TEST.md](CHARGING-TEST.md) for the observed Customer A → specialist → Customer B sequence and the prompt/playbook corrections. The 77-test results below describe the preceding implementation run.
+Follow-up: the charging issue reported during manual testing is now covered by a complete browser test and regression test. The latest full run passed **79 tests, 0 failures**, plus HTTP checks, including the subsequent customer-facing advice presentation test. See [CHARGING-TEST.md](CHARGING-TEST.md) for the observed Customer A → specialist → Customer B sequence and the prompt/playbook corrections. The 77-test results below describe the preceding implementation run.
 
 All database and integration checks used newly created temporary SQLite databases, fictional accounts and mocked/local providers. No user's existing database was opened for migration testing. Nothing was deployed, no real messages were sent, and no live Hindsight, model, calendar or company gateway was contacted.
 
