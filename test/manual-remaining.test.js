@@ -68,6 +68,8 @@ test('IT workflow publishes and reuses confirmed IT knowledge while Standard req
  const proposal=await staff('operator/resolve',{handoffId:handoff.id,revision:2,title:'QA AcmeVPN disconnects',symptoms:'VPN disconnects after sign-in',environment:'Windows 11 version 7',solution,reviewedForPrivacy:true,confirmed:true});assert.equal(proposal.status,201);
  assert.equal((await b('chat',{ticketId:ticketB,message:issue})).data.trace.learnedResolutions,0);
  assert.equal((await a('resolutions/confirm',{id:proposal.data.id,accepted:true,confirmed:true})).status,200);
+ const standard=(await b('conversation?ticketId='+ticketB)).data.messages.at(-1).response.attempt;
+ await b('troubleshooting/outcome',{attemptId:standard.id,worked:false,confirmed:true});
  const answer=(await b('chat',{ticketId:ticketB,message:'The VPN keeps disconnecting after I log in.'})).data;
  assert.equal(answer.trace.learnedResolutions,1);assert.ok(answer.reply.includes(solution));
  assert.equal((await b('chat',{ticketId:ticketB,message:issue,memory:false,retain:false})).data.trace.learnedResolutions,0);
@@ -86,7 +88,7 @@ test('revoking a specialist awaiting confirmation preserves the proposal, releas
  await staff('operator/assign',{handoffId:handoff.id,assignedTo:registered.data.profile.id,revision:0,confirmed:true});
  const r=await staff('operator/resolve',{handoffId:handoff.id,revision:1,title:'Synthetic display',symptoms:'Display flicker',environment:'Model X firmware 4',solution:'Synthetic fixture only.',reviewedForPrivacy:true,confirmed:true});assert.equal(r.status,201);
  assert.equal((await f.owner('company/revoke-staff',{id:registered.data.profile.id,confirmed:true})).status,200);
- assert.equal((await staff('operator')).status,401);
+ assert.equal((await staff('operator')).status,403);
  assert.equal((await staff('auth/login',{email:'staff@example.test',password})).data.profile.role,'customer');
  assert.equal((await staff('operator')).status,403);
  const h=(await f.owner('operator')).data.cases.find(x=>x.id===handoff.id);

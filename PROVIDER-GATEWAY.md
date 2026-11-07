@@ -51,3 +51,7 @@ Supported details are the validated local action fields: request title/descripti
 Local commits and outgoing jobs are saved in one SQLite transaction. Encrypted jobs have leases, bounded backoff, stable replay keys, and visible pending/confirmed/failed status. A response for another customer or action is rejected. Configuration/mapping changes stop old jobs for review. Calendar bookings remain on their existing calendar integration and are not sent through this contract.
 
 The integration tests use a real isolated HTTP gateway, deliberately lose an acknowledgement after saving a request, restart Continuum, and verify one remote request plus an ordered note. A second test rejects a receipt belonging to another customer. These tests validate the adapter contract; they do not constitute a live vendor integration or pilot deployment.
+
+## Customer directory extension
+
+Owner-triggered lookup/import and secure account linking are documented in [MULTI-COMPANY.md](MULTI-COMPANY.md#customer-gateway-and-secure-linking). The gateway's customer endpoint returns a stable external `id`, normalized `email`, and `displayName`. Importing never creates an authenticated account. Linking requires an active customer membership and verified email matching that imported record. External account mappings are unique per company/account and company/external ID; a single account can map into several companies. The existing service-request and confirmed-action contracts above remain supported.

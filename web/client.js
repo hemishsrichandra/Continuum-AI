@@ -1,4 +1,5 @@
 let csrfToken = null;
+let workspace = null;
 export const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export function readSession(key) { try { return sessionStorage.getItem(key); } catch { return null; } }
 export function saveSession(key, value) { try { value === null ? sessionStorage.removeItem(key) : sessionStorage.setItem(key, value); } catch { /* The current page remains usable if browser storage is unavailable. */ } }
@@ -8,11 +9,14 @@ export async function request(route, { body, method, key, timeout = 55000 } = {}
     const verb = method || (body ? 'POST' : 'GET');
     if (!['GET', 'HEAD'].includes(verb) && !csrfToken) {
       const session = await fetch('/api/auth/session', { credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
-      if (session.ok) csrfToken = (await session.json()).csrfToken;
+      if (session.ok) {
+        const data=await session.json(); csrfToken=data.csrfToken;
+        if(data.profile?.chatbotId) workspace=data.profile.companyId+'|'+data.profile.chatbotId;
+      }
     }
     response = await fetch('/api/' + route, {
       method: verb, credentials: 'same-origin', signal: AbortSignal.timeout(timeout),
-      headers: { ...(csrfToken && { 'X-CSRF-Token': csrfToken }), ...(body && { 'Content-Type': 'application/json' }), ...(key && { 'Idempotency-Key': key }) },
+      headers: { ...(csrfToken && { 'X-CSRF-Token': csrfToken }), ...(workspace && { 'X-Workspace': workspace }), ...(body && { 'Content-Type': 'application/json' }), ...(key && { 'Idempotency-Key': key }) },
       ...(body && { body: JSON.stringify(body) }),
     });
   } catch (error) {
@@ -22,6 +26,7 @@ export async function request(route, { body, method, key, timeout = 55000 } = {}
   if (response.status === 401) csrfToken = null;
   if (!response.ok) throw Object.assign(new Error(result.error || 'Something went wrong. Try again.'), { status: response.status, requestId: result.requestId, retryAfter: result.retryAfter });
   if (result.csrfToken) csrfToken = result.csrfToken;
+  if (result.profile?.chatbotId) workspace=result.profile.companyId+'|'+result.profile.chatbotId;
   if (route === 'session' && method === 'DELETE' || route === 'auth/logout-all' || route === 'auth/change-password' || route === 'auth/reset') csrfToken = null;
   return result;
 }

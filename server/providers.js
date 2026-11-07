@@ -1,3 +1,4 @@
+import { botId, privateScope, defaultBotId } from './chatbots.js';
 import { randomUUID } from 'node:crypto';
 import { SqliteStore } from './database.js';
 
@@ -165,12 +166,13 @@ export function provider(store, profile) {
   const companyId = profile.companyId;
   if (!companyId) throw fault(403, 'A company workspace is required.');
   const adapter = adapters[profile.provider];
-  const scope = companyId + ':' + profile.provider + ':' + profile.id;
+  const scope = privateScope(profile);
   const list = () =>
     store.data[profile.provider]
-      .filter((row) => row.companyId === companyId && adapter.owns(row, profile.id))
+      .filter((row) => row.companyId === companyId && (row.chatbotId || defaultBotId(companyId,profile.provider)) === botId(profile) && adapter.owns(row, profile.id))
       .map((row) => ({
         ...adapter.normalize(row),
+        chatbotId: botId(profile),
         external: Boolean(row.externalId),
         syncedAt: row.syncedAt || null,
         createdAt: row.createdAt || null,
@@ -248,6 +250,7 @@ export function provider(store, profile) {
         data[profile.provider].push({
           ...adapter.create(result.ticketId, profile.id, body.title, body.issueDesc),
           companyId,
+          chatbotId: botId(profile),
           createdAt: result.createdAt,
         });
       } else if (kind === 'requirement') {
@@ -302,17 +305,14 @@ export function provider(store, profile) {
         result.summary = body.summary;
         result.context = body.context;
         result.status = 'Queued';
-        if (
-          data.handoffs.some(
-            (h) => h.scope === scope && h.ticketId === ticketId && !['Resolved', 'Closed'].includes(h.status),
-          )
-        )
-          throw fault(409, 'A specialist case is already open for this request.');
-        data.handoffs.push({
+        const active = data.handoffs.find(h=>h.scope === scope && h.ticketId === ticketId && !['Resolved','Closed'].includes(h.status));
+        if(active) Object.assign(result,active);
+        else data.handoffs.push({
           ...result,
           scope,
           companyId,
           provider: profile.provider,
+          chatbotId: botId(profile),
           customerId: profile.id,
           assignedTo: null,
           revision: 0,

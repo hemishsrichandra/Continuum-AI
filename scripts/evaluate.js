@@ -85,6 +85,8 @@ export async function evaluate({ live = false, challenge = false, log = () => {}
       password,
       provider: 'repair',
     });
+    const bots=await owner.api('company/chatbots');
+    await owner.api('company/chatbots',{...bots.chatbots.find(b=>b.adapter==='repair'),playbooks:[]});
     const { code } = await owner.api('company/customer-code', { confirmed: true });
     for (const [client, name] of [
       [a, 'a'],

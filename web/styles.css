@@ -729,3 +729,104 @@ form[data-handoff] label { margin-block: 18px; }
 
 /* Keep native checkboxes comfortably clickable. */
 input[type=checkbox] { min-width: 24px; min-height: 24px; }
+
+/* Support pages share one compact workspace bar and a consistent spacing scale. */
+.support-shell { background: #f4f6fb; color: #202b43; }
+.support-shell .wrap { width: min(calc(100% - 64px),1440px); }
+.support-shell .nav { background: #fffffff5; border-bottom-color: #e4e9f3; }
+.support-shell .nav-inner { min-height: 72px; }
+.support-shell .nav-actions>a { display: none; }
+.workspace-nav-label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #54647c; }
+.workspace-switcher { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; position: relative; margin-top: 24px; padding: 16px 20px; background: white; border: 1px solid #e1e7f2; border-radius: 14px; box-shadow: 0 4px 18px #253b6205; }
+.workspace-switcher-intro { display: flex; align-items: center; gap: 12px; padding-right: 20px; border-right: 1px solid #e7ebf3; }
+.workspace-emblem { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #edf2ff; color: #4b68d7; font-size: 25px; }
+.switcher-caption { display: block; font-size: 10px; font-weight: 700; letter-spacing: .12em; color: #435473; }
+.switcher-hint { display: block; margin-top: 3px; font-size: 11px; color: #68758b; }
+#select-workspace { display: grid; grid-template-columns: minmax(160px,1.2fr) minmax(150px,1fr); gap: 16px; flex: 1; }
+#select-workspace label { font-size: 10px; color: #66748a; font-weight: 600; }
+#select-workspace select { width: 100%; min-height: 40px; margin-top: 4px; padding: 8px 32px 8px 12px; background-color: #f7f9fd; border-color: #e6ebf4; border-radius: 8px; color: #253653; font-size: 13px; font-weight: 600; }
+#select-workspace select:hover { border-color: #a8b9e8; background-color: #f0f4ff; }
+.workspace-role { padding: 5px 10px; border: 1px solid #dce6fb; border-radius: 999px; background: #f3f6ff; color: #4c63a4; font-size: 11px; text-transform: capitalize; }
+.workspace-join { position: relative; }
+.workspace-join summary { display: flex; align-items: center; gap: 10px; padding: 8px 0; color: #53627a; font-size: 12px; font-weight: 600; cursor: pointer; list-style: none; }
+.workspace-join summary::-webkit-details-marker { display: none; }
+.workspace-join summary:hover { color: #3456d6; }
+.workspace-join[open] summary { color: #3456d6; }
+.workspace-join form { position: absolute; right: 0; top: calc(100% + 14px); width: 340px; z-index: 30; padding: 24px; background: white; border: 1px solid #dfe6f3; border-radius: 14px; box-shadow: 0 16px 48px #263d6d24; }
+.workspace-join form h2 { font-size: 19px; letter-spacing: -.03em; }
+.workspace-join form p { margin: 10px 0 20px; font-size: 12px; color: #65738b; }
+.workspace-join form label { margin-bottom: 16px; }
+.workspace-switch-message { flex-basis: 100%; margin: 0; font-size: 12px; color: #4261be; }
+.workspace-switch-message.error { color: #a04732; }
+.support-shell .workspace { padding-block: 24px 48px; }
+.support-shell .workspace-heading { position: relative; overflow: hidden; padding: 28px; border: 1px solid #dce5f7; border-radius: 16px; background: linear-gradient(110deg,#edf2ff 0%,#f7f9ff 52%,#fff 100%); }
+.support-shell .workspace-heading::after { content: ''; position: absolute; width: 250px; height: 250px; border: 42px solid #5078ed06; border-radius: 50%; top: -115px; right: 20%; pointer-events: none; }
+.support-shell .workspace-heading>div { position: relative; z-index: 1; }
+.support-shell .workspace-heading .eyebrow { margin-bottom: 8px; font-size: 10px; color: #4565b7; }
+.support-shell .workspace-heading>div>p { margin: 0 0 8px; font-size: 13px; color: #596b8a; }
+.support-shell .workspace-heading h1 { font-size: 32px; font-weight: 700; color: #1e3159; }
+.support-shell .account { flex-wrap: wrap; justify-content: flex-end; }
+.support-shell .workspace-stats { gap: 12px; margin-block: 20px 24px; padding: 0; background: transparent; border: 0; }
+.support-shell .workspace-stats>div { position: relative; gap: 14px; min-height: 88px; padding: 18px 22px; border: 1px solid #e1e7f2; border-radius: 12px; background: #fff; }
+.support-shell .workspace-stats strong { font-size: 30px; font-weight: 600; color: #2f4c8b; }
+.support-shell .workspace-stats span { font-size: 12px; color: #65738b; }
+.support-shell .workspace-grid { grid-template-columns: 230px minmax(0,1fr) 270px; gap: 20px; }
+.support-shell .workspace .panel { border-color: #e1e7f2; border-radius: 12px; box-shadow: 0 3px 12px #253b6204; }
+.support-shell .request-sidebar>.sidebar-heading { padding: 20px 16px 0; }
+.support-shell .request-row.selected { border-color: #cddafa; background: #edf3ff; box-shadow: inset 3px 0 #577aee; }
+.support-shell .ticket-summary { padding: 24px; background: linear-gradient(135deg,#fff,#f9fbff); }
+.support-shell .ticket-summary h2 { color: #263b62; font-size: 23px; }
+.support-shell .ticket-summary dl { padding-top: 18px; }
+.support-shell .desk-tabs { gap: 24px; margin: 12px 0 16px; }
+.support-shell .desk-tabs button { font-size: 12px; padding: 13px 2px; }
+.support-shell .conversation { border-top: 3px solid #6d8bf3; }
+.support-shell .conversation-header { padding: 18px 22px; background: #fbfcff; }
+.support-shell .assistant-mark { background: #eaf0ff; color: #4c6bd9; }
+.support-shell .thread { height: clamp(360px,48vh,560px); padding: 24px; }
+.support-shell .bubble.customer { background: #edf2ff; border: 1px solid #e1e8fb; border-radius: 14px 14px 3px 14px; color: #334f88; }
+.support-shell .response-controls { flex-wrap: wrap; }
+.support-shell .composer { padding: 0 20px; }
+.support-shell .composer textarea { background: #f8faff; border-color: #dce4f4; border-radius: 10px; }
+.support-shell .composer .primary { color: white; background: #4668e0; border-color: #4668e0; border-radius: 10px; }
+.support-shell .composer-footer { padding: 10px 22px 16px; }
+.support-shell .context-panel { padding: 20px; }
+.support-shell .context-sidebar .context-panel:first-child { background: #f9fbff; }
+.support-shell .action-list button { background: transparent; color: #425b87; padding-block: 14px; }
+.support-shell .site-footer { display: none; }
+.support-shell #app>.section { padding-block: 28px 56px; }
+.support-shell #app>.section>h1 { font-size: clamp(30px,3vw,42px); color: #253b62; }
+.support-shell #app>.section>.lead { margin-top: 16px; font-size: 16px; }
+.support-shell #app>.section>.content-panel { margin-top: 20px; padding: 28px; border-radius: 14px; border-color: #e1e7f2; }
+.support-shell #app>.section>.content-panel h2 { font-size: 22px; margin-bottom: 12px; }
+.support-shell #app>.section>.content-panel>p { font-size: 13px; color: #617088; }
+.support-shell #app>.section>.content-panel details { padding-block: 12px; border-top: 1px solid #e7ebf3; }
+.support-shell #app>.section form>label { margin-block: 16px; }
+@media(max-width:1150px) {
+  .workspace-switcher-intro { display: none; }
+  .support-shell .workspace-grid { grid-template-columns: 210px minmax(0,1fr); }
+}
+@media(max-width:720px) {
+  .support-shell .wrap { width: calc(100% - 32px); }
+  .workspace-switcher { gap: 12px; margin-top: 16px; padding: 16px; }
+  #select-workspace { flex-basis: 100%; gap: 12px; grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  #select-workspace select { font-size: 16px; min-height: 44px; }
+  .workspace-role { margin-right: auto; }
+  .workspace-join { position: static; }
+  .workspace-join form { top: calc(100% + 8px); left: 0; right: 0; width: 100%; }
+  .workspace-nav-label { display: none; }
+  .support-shell .workspace { padding-top: 16px; }
+  .support-shell .workspace-heading { padding: 22px; flex-direction: column; align-items: flex-start; gap: 20px; }
+  .support-shell .workspace-heading h1 { font-size: 28px; }
+  .support-shell .account { justify-content: flex-start; gap: 10px; }
+  .support-shell .workspace-stats { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-block: 16px; }
+  .support-shell .workspace-stats>div { min-height: 90px; padding: 14px; gap: 10px; }
+  .support-shell .workspace-stats strong { font-size: 25px; }
+  .support-shell .workspace-stats span { font-size: 11px; }
+  .support-shell .workspace-grid { grid-template-columns: minmax(0,1fr); gap: 16px; }
+  .support-shell .context-sidebar { grid-column: 1; }
+  .support-shell .ticket-summary { padding: 20px; }
+  .support-shell .thread { height: 400px; padding: 20px; }
+  .support-shell .composer { padding-inline: 14px; }
+  .support-shell .composer textarea { font-size: 16px; }
+  .support-shell .conversation-header { padding: 16px; }
+}

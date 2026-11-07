@@ -87,7 +87,14 @@ export async function renderAuth(app, { onSession, error = '', initialMode = 'lo
             return;
           }
         }
-        if (result.profile) await onSession(result);
+        if (result.profile) {
+          if(!register && !demo && (link?.invitation || link?.companyCode)) {
+            const joined=await request('auth/join',{body:link});
+            const selected=await request('auth/workspace',{body:{companyId:joined.companyId}});
+            result.profile=selected.profile;
+          }
+          await onSession(result);
+        }
         else {
           mode = 'login';
           link = null;

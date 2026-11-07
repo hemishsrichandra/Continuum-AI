@@ -7,13 +7,13 @@ export async function mountOperator() {
     const formStart = (h, kind) =>
       `<form data-case="${q(h.id)}" data-revision="${h.revision || 0}" data-kind="${kind}" data-key="${crypto.randomUUID()}">`;
     const error = '<p class="notice error" role="alert" hidden></p>';
-    app.innerHTML = `<section class="wrap section"><span class="eyebrow">${data.role === 'owner' ? 'OWNER' : 'SPECIALIST'} · ${data.provider === 'it' ? 'IT INCIDENTS' : 'STANDARD REQUESTS'}</span><h1>${data.role === 'owner' ? 'Customer cases.' : 'Resolve with context.'}</h1><p class="lead">Claim a case, track troubleshooting, and ask the customer to confirm the solution before it becomes reusable knowledge.</p><div class="actions">${staffAccountControls}${data.role === 'owner' ? '<a class="button" href="/team">Company & team</a><a class="button" href="/operator?provider=repair">Standard cases</a><a class="button" href="/operator?provider=it">IT cases</a>' : ''}<button class="button" id="refresh-queue">Refresh queue</button></div><p id="operator-result" role="status"></p><h2>Service queue</h2>${
+    app.innerHTML = `<section class="wrap section"><span class="eyebrow">${data.role === 'owner' ? 'OWNER' : 'SPECIALIST'} · ${data.provider === 'it' ? 'IT INCIDENTS' : 'STANDARD REQUESTS'}</span><h1>${data.role === 'owner' ? 'Customer cases.' : 'Resolve with context.'}</h1><p class="lead">Claim a case, track troubleshooting, and ask the customer to confirm the solution before it becomes reusable knowledge.</p><div class="actions">${staffAccountControls}${data.role === 'owner' ? '<a class="button" href="/team">Company & team</a><a class="button" href="/operator?provider=repair">Standard cases</a><a class="button" href="/operator?provider=it">IT cases</a>' : ''}<button class="button" id="refresh-queue">Refresh queue</button></div><p id="operator-result" role="status"></p><h2>${q(data.chatbot.name)} · Service queue</h2>${
       data.cases
         .map((h) => {
           const current = data.resolutions.find((r) => r.id === h.resolutionId);
           const editable =
             (!h.assignedTo || h.assignedTo === data.self || data.role === 'owner') && h.status !== 'Resolved';
-          return `<article class="panel content-panel"><span class="pill">${q(h.status)}</span><h3>${q(h.context?.ticket?.title || h.ticketId)}</h3><p>${q(h.summary)}</p><p>Assigned: ${q(data.staff.find((s) => s.id === h.assignedTo)?.name || 'Unassigned')}</p><details><summary>Conversation and service history</summary><p><b>Status:</b> ${q(h.context?.ticket?.status || h.status)} · <b>ETA:</b> ${q(h.context?.ticket?.eta || 'Not posted')} · <b>Team:</b> ${q(h.context?.ticket?.assignedTo || 'Not assigned')}</p>${(h.context?.memories || []).map((m) => `<p class="memory-entry">${q(m.text)}</p>`).join('')}${h.conversation.map((c) => `<div class="memory-entry"><b>${c.system ? 'Specialist' : 'Customer'}</b><p>${q(c.message)}</p><p>${q(c.response.reply)}</p></div>`).join('')}<h4>Request notes</h4>${(h.context?.ticket?.requirements || []).map((r) => `<p class="memory-entry">${q(r.note)}</p>`).join('') || '<p>No notes recorded.</p>'}<h4>Troubleshooting</h4>${(h.troubleshooting || []).map((s) => `<p><span class="pill">${q(s.outcome)}</span> ${q(s.step)}</p>`).join('') || '<p>No steps recorded yet.</p>'}</details>${
+          return `<article class="panel content-panel"><span class="pill">${q(h.status)}</span><h3>${q(h.context?.ticket?.title || h.ticketId)}</h3><p>${q(h.summary)}</p><p>Assigned: ${q(data.staff.find((s) => s.id === h.assignedTo)?.name || 'Unassigned')}</p><details><summary>Conversation and service history</summary><p><b>Status:</b> ${q(h.context?.ticket?.status || h.status)} · <b>ETA:</b> ${q(h.context?.ticket?.eta || 'Not posted')} · <b>Team:</b> ${q(h.context?.ticket?.assignedTo || 'Not assigned')}</p>${(h.context?.memories || []).map((m) => `<p class="memory-entry">${q(m.text)}</p>`).join('')}${h.conversation.map((c) => `<div class="memory-entry"><b>${c.system ? 'Specialist' : 'Customer'}</b><p>${q(c.message)}</p><p>${q(c.response.reply)}</p></div>`).join('')}<h4>Request notes</h4>${(h.context?.ticket?.requirements || []).map((r) => `<p class="memory-entry">${q(r.note)}</p>`).join('') || '<p>No notes recorded.</p>'}<h4>Customer fix attempts</h4>${(h.attempts || []).map(a=>`<p>${q(a.source)} · ${q(a.outcome)} · ${q(JSON.parse(a.snapshot).steps || JSON.parse(a.snapshot).solution || JSON.parse(a.snapshot).reason)}</p>`).join('')}<h4>Troubleshooting</h4>${(h.troubleshooting || []).map((s) => `<p><span class="pill">${q(s.outcome)}</span> ${q(s.step)}</p>`).join('') || '<p>No steps recorded yet.</p>'}</details>${
             editable && h.status !== 'Awaiting confirmation'
               ? `${formStart(h, 'assign')}<label>Assign case<select name="assignedTo">${data.staff
                   .filter((s) => data.role === 'owner' || s.id === data.self)
@@ -36,7 +36,7 @@ export async function mountOperator() {
         const button = form.querySelector('button');
         button.disabled = true;
         try {
-          await request('operator/review-resolution?provider=' + encodeURIComponent(data.provider), {
+          await request('operator/review-resolution?chatbotId=' + encodeURIComponent(data.chatbot.id), {
             body: {
               ...Object.fromEntries(new FormData(form)),
               id: form.dataset.review,
@@ -75,7 +75,7 @@ export async function mountOperator() {
           delete body.stepOutcome;
         }
         try {
-          await request('operator/' + form.dataset.kind + '?provider=' + encodeURIComponent(data.provider), {
+          await request('operator/' + form.dataset.kind + '?chatbotId=' + encodeURIComponent(data.chatbot.id), {
             body,
             key: form.dataset.key,
           });
@@ -93,7 +93,7 @@ export async function mountOperator() {
       button.addEventListener('click', async () => {
         button.disabled = true;
         try {
-          await request('operator/retire?provider=' + encodeURIComponent(data.provider), {
+          await request('operator/retire?chatbotId=' + encodeURIComponent(data.chatbot.id), {
             body: { id: button.dataset.retire, confirmed: true },
           });
           await mountOperator();

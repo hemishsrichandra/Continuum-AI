@@ -26,6 +26,8 @@ const routes = {
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
   '/auth-ui.js': ['auth-ui.js', 'text/javascript; charset=utf-8'],
   '/client.js': ['client.js', 'text/javascript; charset=utf-8'],
+  '/workspace-control.js': ['workspace-control.js', 'text/javascript; charset=utf-8'],
+  '/chatbot-config.js': ['chatbot-config.js', 'text/javascript; charset=utf-8'],
   '/ui.js': ['ui.js', 'text/javascript; charset=utf-8'],
 };
 process.env.APP_URL ||= 'http://localhost:' + frontendPort;

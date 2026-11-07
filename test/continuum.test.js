@@ -13,30 +13,18 @@ function start(options) {
   return { api, login };
 }
 
-test('same provider record, three different reasons to recall memory', async () => {
-  const { api, login } = start();
-  const cases = [
-    ['alice', 'preference', 'callback', null],
-    ['bob', 'failed', 'earlier fix failed|human handoff', 'handoff'],
-    ['carol', 'missed', '(?:human|specialist) handoff', 'handoff'],
-  ];
-  for (const [profileId, kind, pattern, action] of cases) {
-    const { token, profile } = await login(profileId);
-    const ask = async (memory) =>
-      (await api('chat', { token, body: { message: profile.prompt, memory, retain: false } })).data;
-    const off = await ask(false);
-    const on = await ask(true);
-    assert.deepEqual(on.ticket, off.ticket);
-    assert.equal(off.trace.recalled, 0);
-    assert.equal(off.action?.kind ?? null, profileId === 'alice' ? null : 'handoff');
-    assert.equal(on.trace.recalled, 1);
-    assert.equal(on.evidence[1].kind, kind);
-    assert.match(on.reply, new RegExp(pattern, 'i'));
-    assert.equal(on.action?.kind ?? null, action);
-    if (profileId === 'bob') {
-      assert.match(off.reply, /verified fix|specialist/i);
-      assert.doesNotMatch(off.reply, /try restarting/i);
-    }
+test('status recalls private preferences while issue troubleshooting requests required context', async () => {
+  const {api,login}=start();
+  const alice=await login('alice');
+  const off=(await api('chat',{token:alice.token,body:{message:alice.profile.prompt,memory:false,retain:false}})).data;
+  const on=(await api('chat',{token:alice.token,body:{message:alice.profile.prompt,memory:true,retain:false}})).data;
+  assert.deepEqual(on.ticket,off.ticket);assert.equal(off.trace.recalled,0);
+  assert.ok(on.evidence.some(e=>e.kind==='preference'));assert.match(on.reply,/callback/i);
+  for(const id of ['bob','carol']) {
+    const {token,profile}=await login(id);
+    const result=(await api('chat',{token,body:{message:profile.prompt,retain:false}})).data;
+    assert.equal(result.workflow.stage,'context');assert.equal(result.action,null);
+    assert.match(result.reply,/device model and operating-system version/i);
   }
 });
 

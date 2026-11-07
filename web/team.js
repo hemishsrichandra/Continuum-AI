@@ -1,12 +1,14 @@
 import {staffAccountControls, bindStaffAccount} from './staff-account.js';
 import { request, escapeHtml as q } from './client.js';
 import { mountConnector } from './connector-ui.js';
+import { mountChatbotConfig } from './chatbot-config.js';
 export async function mountTeam() {
   const app = document.querySelector('#app');
   try {
     const data = await request('company');
-    app.innerHTML = `<section class="wrap section"><span class="eyebrow">OWNER · COMPANY & TEAM</span><h1>${q(data.company.name)}</h1><p class="lead">Manage your team and connections. Handle customer cases in the specialist console.</p><div class="actions">${staffAccountControls}<a class="button" href="/operator">Customer cases</a></div><p id="team-result" role="status"></p><section class="panel content-panel"><h2>Customer registration</h2><p>Create a signup link for your customers. Generating another link disables the previous signup link. Existing accounts stay active.</p><button class="button" id="customer-code">Generate customer signup link</button><label id="customer-link-label" hidden>Customer signup link<input id="customer-link" readonly></label></section><section class="panel content-panel"><h2>Invite a team member</h2><form id="invite-form"><label>Email<input name="email" type="email" required maxlength="254"></label><label>Access<select name="role"><option value="staff">Specialist</option><option value="customer">Customer</option></select></label><label>Schema adapter<select name="provider"><option value="repair">Standard service requests</option><option value="it">IT incidents</option></select></label><button class="button primary">Create private invitation</button></form><label id="invitation-label" hidden>Share this link with the invited person<input id="invitation-link" readonly></label><p>Invitations expire after 48 hours and work only for the specified email address.</p></section><section class="panel content-panel"><h2>Members</h2>${data.members.map((m) => `<article class="memory-entry"><b>${q(m.name)}</b><p>${q(m.email)} · ${q(m.role)} · ${q(m.provider)}</p>${m.role === 'staff' ? `<button class="button small" data-revoke="${q(m.id)}">Remove specialist access</button>` : ''}</article>`).join('')}</section></section>`;
+    app.innerHTML = `<section class="wrap section"><span class="eyebrow">OWNER · COMPANY & TEAM</span><h1>${q(data.company.name)}</h1><p class="lead">Manage your team and connections. Handle customer cases in the specialist console.</p><div class="actions">${staffAccountControls}<a class="button" href="/operator">Customer cases</a></div><p id="team-result" role="status"></p><section class="panel content-panel"><h2>Customer registration</h2><p>Create a signup link for your customers. Generating another link disables the previous signup link. Existing accounts stay active.</p><button class="button" id="customer-code">Generate customer signup link</button><label id="customer-link-label" hidden>Customer signup link<input id="customer-link" readonly></label></section><section class="panel content-panel"><h2>Invite a team member</h2><form id="invite-form"><label>Email<input name="email" type="email" required maxlength="254"></label><label>Access<select name="role"><option value="staff">Specialist</option><option value="customer">Customer</option></select></label><label>Schema adapter<select name="provider"><option value="repair">Standard service requests</option><option value="it">IT incidents</option></select></label><button class="button primary">Create private invitation</button></form><label id="invitation-label" hidden>Share this link with the invited person<input id="invitation-link" readonly></label><p>Invitations expire after 48 hours and work only for the specified email address.</p></section><section class="panel content-panel"><h2>Members</h2>${data.members.map((m) => `<article class="memory-entry"><b>${q(m.name)}</b><p>${q(m.email)} · ${q(m.role)} · ${q(m.provider)} · ${q(m.status)}</p>${m.role !== 'owner' && m.status === 'active' ? `<button class="button small" data-revoke-membership="${q(m.id)}">Revoke company access</button>` : ''}${m.role === 'staff' ? `<button class="button small" data-revoke="${q(m.id)}">Remove specialist access</button>` : ''}</article>`).join('')}</section></section>`;
     bindStaffAccount(app);
+    await mountChatbotConfig(app);
     const notice = (text) => {
       document.querySelector('#team-result').textContent = text;
     };
@@ -53,9 +55,14 @@ export async function mountTeam() {
         }
       }),
     );
+    app.querySelectorAll('[data-revoke-membership]').forEach(button=>button.addEventListener('click',async()=>{
+      button.disabled=true;
+      try {await request('company/revoke-membership',{body:{id:button.dataset.revokeMembership,confirmed:true}});await mountTeam();}
+      catch(error){notice(error.message);button.disabled=false;}
+    }));
     async function loadConnector() {
       app.querySelector('#connector-load-error')?.remove();
-      try { await mountConnector(app, data.members); }
+      try { await mountConnector(app, data.members.filter(m=>m.role==='customer' && m.status==='active')); }
       catch {
         const panel = document.createElement('section');
         panel.id = 'connector-load-error';

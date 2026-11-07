@@ -1,3 +1,6 @@
+import { botId, getBot } from './chatbots.js';
+import {customerAdvice} from './customer-advice.js';
+import { createTroubleshooting } from './troubleshooting.js';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { Store, fault, profiles, provider } from './providers.js';
@@ -40,6 +43,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
   const providerActions = createProviderActions(store, delivery, config);
   const reuse = createReuse(store, memory, providerActions);
   const learning = createLearning(store, memory, companies, config, reuse, providerActions);
+  const troubleshooting = createTroubleshooting(store, learning, reuse, providerActions);
   if (config.ENABLE_OUTBOX_WORKER === 'true') providerActions.start();
   if (config.ENABLE_OUTBOX_WORKER === 'true') memory.start?.();
   const pending = new Map();
@@ -190,12 +194,17 @@ export function createHandler({ file, config = process.env, service } = {}) {
       if (!session) throw fault(401, 'Sign in to your Continuum account to continue.');
       limit(session.token_hash, 120);
       const { profile } = session;
+      const selectedBot = getBot(store.db, profile.companyId, botId(profile));
+      if (!selectedBot.active && !(profile.role === 'owner' && url.pathname.startsWith('/api/company')))
+        throw fault(403, 'This service is inactive. Select another workspace.');
+      if (req.headers['x-workspace'] && req.headers['x-workspace'] !== profile.companyId + '|' + botId(profile))
+        throw fault(409, 'Your workspace changed. Reload before submitting.');
       const customerRoutes = new Set([
         '/api/workspace', '/api/status', '/api/analytics', '/api/conversation',
         '/api/conversation/archive', '/api/feedback', '/api/slots', '/api/memory',
         '/api/reflect', '/api/chat', '/api/request', '/api/requirement', '/api/book',
         '/api/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
-        '/api/resolutions/outcome', '/api/connector/sync',
+        '/api/resolutions/outcome', '/api/connector/sync', '/api/troubleshooting/outcome',
       ]);
       if (['owner', 'staff'].includes(profile.role) && customerRoutes.has(url.pathname))
         throw fault(403, 'Customer accounts handle personal requests and confirmations. Use the company dashboard or specialist console.');
@@ -212,9 +221,16 @@ export function createHandler({ file, config = process.env, service } = {}) {
           throw fault(400, 'Choose a valid schema adapter.');
         if (selectedProvider && selectedProvider !== staff.provider && staff.role !== 'owner')
           throw fault(403, 'This service workspace requires owner access.');
-        const operator = { ...staff, provider: selectedProvider || staff.provider };
+        const operatorBot = url.searchParams.get('chatbotId')
+          ? getBot(store.db,profile.companyId,url.searchParams.get('chatbotId'))
+          : selectedProvider ? getBot(store.db,profile.companyId,profile.companyId+':'+selectedProvider) : selectedBot;
+        if (!operatorBot.active || (staff.role !== 'owner' && operatorBot.adapter !== staff.provider))
+          throw fault(403,'This service queue is not available to your membership.');
+        const operator = { ...staff, provider: operatorBot.adapter, chatbotId: operatorBot.id };
         if (endpoint === 'GET /api/operator')
           return write(200, {
+            chatbot: operatorBot,
+            companyId: operator.companyId,
             provider: operator.provider,
             self: operator.id,
             role: operator.role,
@@ -223,6 +239,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
               .filter(
                 (h) =>
                   h.companyId === operator.companyId &&
+                  h.chatbotId === operator.chatbotId &&
                   (h.provider || h.scope.split(':')[1]) === operator.provider,
               )
               .map((h) => ({
@@ -232,14 +249,16 @@ export function createHandler({ file, config = process.env, service } = {}) {
                   ticket: provider(store, {
                     companyId: operator.companyId,
                     provider: operator.provider,
+                    chatbotId: operator.chatbotId,
                     id: h.customerId,
                   }).ticket(h.ticketId),
                 },
+                attempts: troubleshooting.attempts({...operator,id:h.customerId},{id:h.ticketId}),
                 conversation: store.data.conversations
                   .filter((c) => c.scope === h.scope && c.ticketId === h.ticketId && !c.archivedAt)
                   .slice(-50),
               })),
-            resolutions: learning.list(operator.companyId, operator.provider),
+            resolutions: learning.list(operator.companyId, operator.provider, operator.chatbotId),
           });
         if (
           ['POST /api/operator/resolve', 'POST /api/operator/assign', 'POST /api/operator/progress'].includes(
@@ -292,11 +311,18 @@ export function createHandler({ file, config = process.env, service } = {}) {
       };
       if (endpoint === 'POST /api/resolutions/confirm')
         return write(200, await learning.confirm(profile, await json(req)));
-      if (endpoint === 'POST /api/resolutions/outcome')
-        return write(200, await reuse.feedback(profile, await json(req)));
+      if (endpoint === 'POST /api/troubleshooting/outcome')
+        return write(200, await troubleshooting.feedback(profile, await json(req)));
+      if (endpoint === 'POST /api/resolutions/outcome') {
+        const body = await json(req);
+        body.allowHandoff=selectedBot.allowedActions.includes('handoff');
+        const a = store.db.prepare('SELECT id FROM troubleshooting_attempts WHERE use_id=? AND company_id=? AND chatbot_id=? AND customer_id=?').get(body.useId,profile.companyId,botId(profile),profile.id);
+        return write(200, a ? await troubleshooting.feedback(profile,{...body,attemptId:a.id}) : await reuse.feedback(profile,body));
+      }
       if (endpoint === 'GET /api/workspace')
         return write(200, {
           profile,
+          chatbot: selectedBot,
           tickets: db.list(),
           activity: db.history(),
           integration,
@@ -324,6 +350,8 @@ export function createHandler({ file, config = process.env, service } = {}) {
               ...c,
               response: {
                 ...c.response,
+                ...(!c.response.human && c.response.evidence?.some(e=>e.kind==='verified_resolution') && {reply:customerAdvice(c.response.reply)}),
+                ...(c.response.attempt && {attempt: troubleshooting.attempts(profile,{id:requested}).find(a=>a.id===c.response.attempt.id)}),
                 ...(c.response.resolutionUse && {
                   resolutionUse: reuse.current(db.scope, c.response.resolutionUse.id),
                 }),
@@ -407,7 +435,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
                   if (existing.fingerprint !== operation.fingerprint) throw fault(409, 'Submission details changed.');
                   return existing.response;
                 }
-                result.resolutionUse = reuse.record(profile, ticket, result, result.id, new Date().toISOString());
+                result.resolutionUse ||= reuse.record(profile, ticket, result, result.id, new Date().toISOString());
                 data.conversations.push({id:result.id,scope:db.scope,ticketId:ticket.id,message,response:result,memory:enabled,createdAt:new Date().toISOString()});
                 data.audit.push({id:result.id,scope:db.scope,ticketId:ticket.id,kind:'chat',createdAt:new Date().toISOString(),source:result.trace.memory,model:result.model,elapsedMs:result.trace.elapsedMs});
                 if (operation.key) data.operations.push({scope:db.scope,...operation,response:result});
@@ -425,6 +453,16 @@ export function createHandler({ file, config = process.env, service } = {}) {
               { message, ticket, facts: [], learned: { facts: [] } },
               config,
             );
+            if(requestedDecision.action?.kind==='handoff' && !selectedBot.allowedActions.includes('handoff'))
+              return saveResponse({id:randomUUID(),reply:'For human support, '+selectedBot.escalationRules.supportRoute,model:'Support workflow',ticket,action:null,decision:{mode:'inform',action:null},evidence:[],retained:null,workflow:{stage:'support_route'},trace:{knowledge:'Disabled',memory:'Not recalled',recalled:0,learnedResolutions:0,elapsedMs:Date.now()-started}});
+            const informational = /\b(?:password|api[ _-]?key|access[ _-]?token)\s*[:=]|\bsk-[\w-]+|\bgsk_[\w-]+/i.test(message) || statedFacts.some(f=>f.kind==='preference') || /\b(?:status|eta|progress|prefer|contact|remember|what (?:did|have)|why|explain)\b/i.test(message) && !/^(?:it worked|still need help)/i.test(message);
+            const legacyFailureProposal = statedFacts.some(f=>f.kind==='failed') && troubleshooting.attempts(profile,ticket).some(a=>a.source==='learned' && a.outcome==='pending') && !/^(?:still need help|it (?:did not|didn't) work|that (?:did not|didn't) work|the fix failed|still not working)[.!\s]*$/i.test(message);
+            const explicitAction = legacyFailureProposal || requestedDecision.mode === 'action' || requestedDecision.reason === 'customer_request';
+            if (!explicitAction && !informational && !['clarify','inform'].includes(requestedDecision.mode)) {
+              const result = await troubleshooting.process(profile,ticket,message,body.context,enabled,randomUUID(),body.retain === false);
+              if (result.action && !selectedBot.allowedActions.includes(result.action.kind)) result.action=null;
+              return saveResponse(result);
+            }
             const reportedUse = extractFacts(message).some((f) => f.kind === 'failed')
               ? store.db
                   .prepare(
@@ -468,13 +506,12 @@ export function createHandler({ file, config = process.env, service } = {}) {
             facts.unshift(...statedPreferences.map((f, i) => ({
               ...f, id:'current-message-' + i, source:'Current message',
             })));
-            const learned =
-              enabled && !direct
-                ? await learning.recall(profile.companyId, profile.provider, message, ticket, profile.id)
-                : { source: 'Disabled', facts: [] };
+            // Verified recommendations are only retrieved through the durable workflow above.
+            const learned = { source: 'Disabled', facts: [] };
             facts.push(...learned.facts);
             const decision = direct ? requestedDecision : await decide({ message, ticket, facts, learned });
             const action = decision.action;
+            if (action && !selectedBot.allowedActions.includes(action.kind)) throw fault(403,'This service does not permit that action.');
             if (reportedUse && action?.kind === 'handoff') action.failedUseId = reportedUse.id;
             const history = body.retain === false ? [] : safeHistory(store, db.scope, ticket.id, enabled, statedPreferences);
             const response = await compose(
@@ -550,6 +587,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
       };
       const kind = actionRoutes[url.pathname];
       if (req.method === 'POST' && kind) {
+        if (!selectedBot.allowedActions.includes(kind)) throw fault(403,'This service does not permit that action.');
         const body = await json(req);
         flags(body);
         if (body.confirmed !== true)
@@ -592,6 +630,8 @@ export function createHandler({ file, config = process.env, service } = {}) {
                 },
               };
             if (kind === 'outcome') {
+              if(troubleshooting.attempts(profile,{id:ticketId}).some(a=>a.outcome==='pending'))
+                throw fault(409,'Use It worked or Still need help on the pending fix so its outcome is recorded correctly.');
               if (db.ticket(ticketId).handoffs.some((h) => h.status === 'Awaiting confirmation'))
                 throw fault(409, 'Confirm or reject the pending specialist solution before recording another outcome.');
               const outcome = field(body.outcome, 'outcome', 20);
@@ -620,13 +660,16 @@ export function createHandler({ file, config = process.env, service } = {}) {
               operation.proposalId = proposalId;
             }
             if (kind === 'handoff' && body.failedUseId) {
-              const reviewed = await reuse.feedback(profile, {
+              const attempt=store.db.prepare('SELECT id FROM troubleshooting_attempts WHERE use_id=? AND company_id=? AND chatbot_id=? AND customer_id=?').get(body.failedUseId,profile.companyId,botId(profile),profile.id);
+              const feedback = {
                 useId: body.failedUseId,
                 ticketId,
                 worked: false,
                 confirmed: true,
                 note: data.summary,
-              });
+                memory: body.memory,
+              };
+              const reviewed = attempt ? await troubleshooting.feedback(profile,{...feedback,attemptId:attempt.id}) : await reuse.feedback(profile,feedback);
               const saved = {
                 success: true,
                 id: reviewed.handoffId,

@@ -124,6 +124,8 @@ async function setup(t, { wrongReceipt = false } = {}) {
     ).status,
     200,
   );
+  h.store.db.prepare('UPDATE accounts SET email_verified=1 WHERE id=?').run(registered.data.profile.id);
+  h.store.db.prepare('INSERT INTO customer_directory VALUES(?,?,?,?,?)').run(registered.data.profile.companyId,'customer-1','customer@example.test','Customer',new Date().toISOString());
   assert.equal(
     (
       await owner.api('company/connector/customer', {

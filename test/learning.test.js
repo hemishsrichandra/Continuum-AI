@@ -17,7 +17,8 @@ test('human resolution for A improves B, preserves private context, and supports
  const registered=await api('auth/register',{body:{createCompany:true,companyName:'Learning fixture',name:'Specialist',email:'specialist@example.test',password:'a long specialist passphrase 49',provider:'repair'}});
  const cookie=registered.headers['Set-Cookie'].split(';')[0];
  h.store.db.prepare('INSERT INTO staff_access VALUES(?,?)').run(registered.data.profile.id,'repair');
- h.store.db.prepare("UPDATE accounts SET company_id='legacy',role='staff' WHERE id=?").run(registered.data.profile.id);
+ h.store.db.prepare("INSERT INTO company_memberships VALUES('legacy',?,'staff','active','repair',0)").run(registered.data.profile.id);
+ h.store.db.prepare("UPDATE sessions SET active_company_id='legacy',active_chatbot_id='legacy:repair' WHERE account_id=?").run(registered.data.profile.id);
  const headers={cookie,'x-csrf-token':registered.data.csrfToken};
  assert.equal((await api('operator/assign',{headers,body:{handoffId:handoff.data.id,assignedTo:registered.data.profile.id,revision:0,confirmed:true}})).status,200);
  const resolved=await api('operator/resolve',{headers,body:{handoffId:handoff.data.id,revision:1,title:'Display flicker after startup',symptoms:'Display flickers after startup',environment:'Model X firmware 4',solution:'Disable adaptive refresh in Display settings, then install the verified display driver version 4.2.',confirmed:true,reviewedForPrivacy:true}});

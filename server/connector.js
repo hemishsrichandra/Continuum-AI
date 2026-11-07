@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { field, json } from './requests.js';
 import { fault } from './providers.js';
 import { providerKinds } from './provider-actions.js';
+import { botId } from './chatbots.js';
 
 // A company's own gateway translates its database to JSON. This bridge imports
 // read-only snapshots; local actions never pretend to write to that database.
@@ -140,12 +141,16 @@ export function createConnector(store, delivery, config) {
       const body = await json(req),
         id = field(body.accountId, 'account ID', 100),
         externalId = field(body.externalId, 'external customer ID', 200);
-      if (!sql.prepare('SELECT 1 FROM accounts WHERE id=? AND company_id=?').get(id, companyId))
+      const account = sql.prepare("SELECT a.* FROM accounts a JOIN company_memberships m ON m.account_id=a.id WHERE a.id=? AND m.company_id=? AND m.status='active' AND m.role='customer'").get(id,companyId);
+      if (!account)
         throw fault(404, 'Account not found in this company.');
+      if (!account.email_verified) throw fault(403,'The customer must verify their email before linking an external record.');
+      const imported = sql.prepare('SELECT * FROM customer_directory WHERE company_id=? AND external_id=?').get(companyId,externalId);
+      if (!imported || imported.email !== account.email.toLowerCase()) throw fault(403,'Import the customer record and match its verified email before linking.');
       try {
         sql
           .prepare(
-            'INSERT INTO external_customers VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET external_id=excluded.external_id',
+            'INSERT INTO external_customers VALUES(?,?,?) ON CONFLICT(company_id,account_id) DO UPDATE SET external_id=excluded.external_id',
           )
           .run(id, companyId, externalId);
       } catch (e) {
@@ -155,6 +160,30 @@ export function createConnector(store, delivery, config) {
       }
       send(200, { success: true });
       return true;
+    }
+    if (endpoint === 'POST /api/company/connector/lookup-customer') {
+      const body=await json(req);
+      const externalId=field(body.externalId,'external customer ID',200);
+      const connection=sql.prepare('SELECT * FROM provider_connections WHERE company_id=?').get(companyId);
+      if(!connection) throw fault(400,'Configure a company gateway first.');
+      const {token}=delivery.unseal(connection.encrypted_token,'provider:'+companyId);
+      let customer;
+      try {
+        const r=await fetch(connection.base_url+'/customers/'+encodeURIComponent(externalId),{headers:{Authorization:'Bearer '+token,Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(12000)});
+        if(!r.ok) throw new Error();
+        let raw='', size=0;
+        for await(const chunk of r.body){size+=chunk.length;if(size>10000) throw new Error();raw+=Buffer.from(chunk).toString();}
+        customer=JSON.parse(raw);
+      } catch {throw fault(503,'The customer could not be fetched. Existing records were preserved.');}
+      if(customer?.id!==externalId || typeof customer.email!=='string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email) || customer.email.length>254 || typeof customer.displayName!=='string' || !customer.displayName.trim() || customer.displayName.length>100 || (customer.companyId !== undefined && customer.companyId!==companyId))
+        throw fault(502,'Invalid or mismatched customer response. No records were imported.');
+      customer={id:externalId,email:customer.email.trim().toLowerCase(),displayName:customer.displayName.trim()};
+      sql.transaction(()=>{
+        const linked=sql.prepare('SELECT a.email FROM external_customers e JOIN accounts a ON a.id=e.account_id WHERE e.company_id=? AND e.external_id=?').get(companyId,externalId);
+        if(linked && linked.email.toLowerCase()!==customer.email) throw fault(409,'This external identity is already linked. Resolve the email change before importing.');
+        sql.prepare('INSERT INTO customer_directory VALUES(?,?,?,?,?) ON CONFLICT(company_id,external_id) DO UPDATE SET email=excluded.email,display_name=excluded.display_name,imported_at=excluded.imported_at').run(companyId,externalId,customer.email,customer.displayName,new Date().toISOString());
+      }).immediate();
+      send(200,{customer,imported:true,accountCreated:false});return true;
     }
     if (endpoint === 'DELETE /api/company/connector') {
       sql.prepare('DELETE FROM provider_connections WHERE company_id=?').run(companyId);
@@ -217,7 +246,7 @@ export function createConnector(store, delivery, config) {
         const id =
           'EXT-' +
           createHash('sha256')
-            .update(companyId + ':' + profile.provider + ':' + externalId)
+            .update(companyId + ':' + botId(profile) + ':' + externalId)
             .digest('hex')
             .slice(0, 24);
         const eta = item[m.eta] || null;
@@ -230,7 +259,7 @@ export function createConnector(store, delivery, config) {
           throw fault(502, 'The provider ETA is invalid.');
         const assigned =
           typeof item[m.assignedTo] === 'string' ? item[m.assignedTo].slice(0, 100) : 'Service team';
-        const common = { companyId, externalId, syncedAt: now };
+        const common = { companyId, chatbotId: botId(profile), externalId, syncedAt: now };
         return profile.provider === 'repair'
           ? {
               ...common,
@@ -259,6 +288,7 @@ export function createConnector(store, delivery, config) {
             previous = data[profile.provider].find(
               (r) =>
                 r.companyId === companyId &&
+                r.chatbotId === botId(profile) &&
                 (r.externalId === item.externalId || (r.ticket_id || r.id) === id),
             );
           if (previous && (previous.customer_id || previous.user_id) !== profile.id)

@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { field, json } from './requests.js';
 import { fault } from './providers.js';
+import { ensureBots, botId, getBot, validateBot } from './chatbots.js';
 
 export const tokenHash = (value) => createHash('sha256').update(value).digest('hex');
 const secret = () => randomBytes(24).toString('base64url');
@@ -35,18 +36,19 @@ export function createCompanies(store, config) {
     const companyId = randomUUID(),
       name = field(body.companyName, 'company name', 100);
     sql.prepare('INSERT INTO companies VALUES(?,?,NULL,?)').run(companyId, name, Date.now());
+    ensureBots(sql, companyId);
     return { companyId, role: 'owner', provider: body.provider };
   }
   function staff(profile) {
     if (!profile || profile.demo) return null;
     const account = sql
-      .prepare('SELECT * FROM accounts WHERE id=? AND company_id=?')
+      .prepare("SELECT account_id AS id,company_id,role,provider FROM company_memberships WHERE account_id=? AND company_id=? AND status='active'")
       .get(profile.id, profile.companyId);
     if (!account || !['owner', 'staff'].includes(account.role)) return null;
-    const access = sql.prepare('SELECT provider FROM staff_access WHERE account_id=?').get(account.id);
     return {
       id: account.id,
-      provider: access?.provider || account.provider,
+      provider: profile.provider,
+      chatbotId: botId(profile),
       companyId: account.company_id,
       role: account.role,
     };
@@ -54,14 +56,13 @@ export function createCompanies(store, config) {
   function roster(operator) {
     return sql
       .prepare(
-        "SELECT id,name,provider,role FROM accounts WHERE company_id=? AND role IN ('owner','staff') ORDER BY name",
+        "SELECT a.id,a.name,m.provider,m.role FROM accounts a JOIN company_memberships m ON a.id=m.account_id WHERE m.company_id=? AND m.status='active' AND m.role IN ('owner','staff') ORDER BY name",
       )
       .all(operator.companyId)
       .filter(
         (a) =>
           a.role === 'owner' ||
-          (sql.prepare('SELECT provider FROM staff_access WHERE account_id=?').get(a.id)?.provider ||
-            a.provider) === operator.provider,
+          a.provider === operator.provider,
       );
   }
   async function handle(req, endpoint, session, send) {
@@ -69,11 +70,43 @@ export function createCompanies(store, config) {
     if (!session?.account_id || session.profile.role !== 'owner')
       throw fault(403, 'Only a company owner can manage the team.');
     const companyId = session.profile.companyId;
+    if (endpoint === 'GET /api/company/chatbots') {
+      send(200, { chatbots: sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(companyId).map(r=>JSON.parse(r.config)) });
+      return true;
+    }
+    if (endpoint === 'POST /api/company/chatbots') {
+      const body = await json(req);
+      const previous = body.id ? getBot(sql,companyId,body.id) : null;
+      const b = validateBot({...body,id:previous?.id || randomUUID()},companyId,previous);
+      sql.transaction(()=>{
+        sql.prepare('INSERT INTO chatbots VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config').run(b.id,companyId,b.adapter,JSON.stringify(b));
+        store.update(data=>data.audit.push({id:randomUUID(),scope:`company:${companyId}`,kind:'chatbot_config',chatbotId:b.id,authorId:session.account_id,revision:b.revision,createdAt:new Date().toISOString()}));
+      }).immediate();
+      send(200,{chatbot:b}); return true;
+    }
+    if (endpoint === 'POST /api/company/revoke-membership') {
+      const body = await json(req);
+      if (body.confirmed !== true || body.id === session.account_id) throw fault(400,'Confirm revoking another member.');
+      sql.transaction(()=>{
+        const result = sql.prepare("UPDATE company_memberships SET status='revoked' WHERE company_id=? AND account_id=? AND role<>'owner'").run(companyId,body.id);
+        if (!result.changes) throw fault(404,'Member not found or owner cannot be revoked.');
+        store.update(data=>{
+          data.audit.push({id:randomUUID(),scope:`company:${companyId}`,kind:'membership_revoked',accountId:body.id,authorId:session.account_id,createdAt:new Date().toISOString()});
+          for(const h of data.handoffs) if(h.companyId===companyId && h.assignedTo===body.id && !['Resolved','Closed'].includes(h.status)) {
+            h.assignedTo=null;h.revision=(h.revision||0)+1;
+            if(h.status!=='Awaiting confirmation') h.status='Queued';
+            const row=data[h.provider]?.find(r=>r.companyId===companyId && r.chatbotId===h.chatbotId && (r.ticket_id||r.id)===h.ticketId);
+            if(row) row[h.provider==='it'?'owner':'assigned_to']=h.provider==='it'?'IT service desk':'Device repair team';
+          }
+        });
+      }).immediate();
+      send(200,{success:true});return true;
+    }
     if (endpoint === 'GET /api/company') {
       send(200, {
         company: sql.prepare('SELECT id,name FROM companies WHERE id=?').get(companyId),
         members: sql
-          .prepare('SELECT id,name,email,role,provider FROM accounts WHERE company_id=? ORDER BY name')
+          .prepare('SELECT a.id,a.name,a.email,m.role,m.provider,m.status FROM accounts a JOIN company_memberships m ON m.account_id=a.id WHERE m.company_id=? ORDER BY a.name')
           .all(companyId),
         invitations: sql
           .prepare(
@@ -118,10 +151,11 @@ export function createCompanies(store, config) {
       sql
         .transaction(() => {
           const result = sql
-            .prepare("UPDATE accounts SET role='customer' WHERE id=? AND company_id=? AND role='staff'")
+            .prepare("UPDATE company_memberships SET role='customer' WHERE account_id=? AND company_id=? AND role='staff'")
             .run(field(body.id, 'staff account', 100), companyId);
           if (!result.changes) throw fault(404, 'Staff account not found.');
           store.update((data) => {
+            data.audit.push({id:randomUUID(),scope:`company:${companyId}`,kind:'staff_access_removed',accountId:body.id,authorId:session.account_id,createdAt:new Date().toISOString()});
             for (const h of data.handoffs) {
               if (h.companyId !== companyId || h.assignedTo !== body.id ||
                   ['Resolved', 'Closed'].includes(h.status)) continue;
@@ -140,7 +174,7 @@ export function createCompanies(store, config) {
             }
           });
           sql.prepare('DELETE FROM staff_access WHERE account_id=?').run(body.id);
-          sql.prepare('DELETE FROM sessions WHERE account_id=?').run(body.id);
+
         })
         .immediate();
       send(200, { success: true });

@@ -1,10 +1,11 @@
 import { mountTeam } from './team.js';
+import { mountWorkspaceControl } from './workspace-control.js';
 import { mountOperator } from './operator.js';
 import { renderAuth, openAccount } from './auth-ui.js';
 import { mountSite } from './pages.js';
 import { request, escapeHtml as q, readSession, saveSession, formatDate, calendarLink } from './client.js';
-
 mountSite();
+await mountWorkspaceControl();
 if (location.pathname.replace(/\/+$/, '') === '/operator') await mountOperator();
 if (location.pathname.replace(/\/+$/, '') === '/team') await mountTeam();
 const app = document.querySelector('#app');
@@ -51,6 +52,14 @@ const suggestedQuestion = (profile) =>
     ? profile.prompt
     : 'What is the status of my ' + ticket().title + ' request?';
 const disabled = () => (state.busy ? 'disabled' : '');
+function applyServicePolicy() {
+  const policy=state.workspace?.chatbot?.allowedActions || [];
+  for(const button of app.querySelectorAll('[data-action]')) {
+    if(['request','requirement','book','cancel','handoff','outcome'].includes(button.dataset.action) && !policy.includes(button.dataset.action)) {
+      button.disabled=true;button.title='This service does not offer this action.';
+    }
+  }
+}
 let calendarUrl;
 async function api(route, options = {}) {
   try {
@@ -73,11 +82,15 @@ function message(text, isError = false) {
   }
 }
 async function login(error = '') {
+  document.querySelector('#workspace-control')?.remove();
+  document.querySelector('#workspace-nav-label')?.remove();
+  document.body.classList.remove('support-shell');
   const announcer = document.querySelector('#announcer');
   if (announcer) announcer.textContent = '';
   await renderAuth(app, {
     error,
     onSession: async (session) => {
+      await mountWorkspaceControl();
       if (roleHome(session.profile)) return;
       state.authenticated = true;
       state.ticketId = session.profile.ticketId;
@@ -160,11 +173,12 @@ function render() {
   const t = ticket();
   const p = state.workspace.profile;
   if (!t) {
-    app.innerHTML = `<section class="wrap workspace"><div class="workspace-heading"><div><span class="eyebrow">${q(p.role === 'owner' ? 'OWNER · MY REQUESTS' : p.role === 'staff' ? 'SPECIALIST · MY REQUESTS' : 'CUSTOMER WORKSPACE')}</span><p>${q(p.companyName || 'Demo')}</p><h1>Welcome, ${q(p.name.split(' ')[0])}.</h1></div><div class="account">${state.workspace.staff ? '<a class="button small" href="/operator">Specialist console</a>' : ''}${p.role === 'owner' ? '<a class="button small" href="/team">Company & team</a>' : ''}<button class="button small" data-action="account">Account & connections</button>${state.workspace.canSync ? '<button class="button small" data-action="sync">Import service records</button>' : ''}<button class="text-button" data-action="switch">Sign out</button></div></div><section class="panel onboarding-empty"><span class="assistant-mark large" aria-hidden="true">∿</span><h2>Your service history starts here.</h2><p>Create your first request to start a conversation, add notes, or schedule a visit.</p><button class="button primary" data-action="request">Create your first request →</button></section><p id="desk-error" class="notice error" role="alert" hidden></p></section><dialog id="action-dialog" aria-labelledby="dialog-title"></dialog>`;
+    app.innerHTML = `<section class="wrap workspace"><div class="workspace-heading"><div><span class="eyebrow">${q(p.role === 'owner' ? 'OWNER · MY REQUESTS' : p.role === 'staff' ? 'SPECIALIST · MY REQUESTS' : 'CUSTOMER WORKSPACE')}</span><p>${q(p.companyName || 'Demo')} · ${q(p.chatbotName || p.label)}</p><h1>Welcome, ${q(p.name.split(' ')[0])}.</h1></div><div class="account">${state.workspace.staff ? '<a class="button small" href="/operator">Specialist console</a>' : ''}${p.role === 'owner' ? '<a class="button small" href="/team">Company & team</a>' : ''}<button class="button small" data-action="account">Account & connections</button>${state.workspace.canSync ? '<button class="button small" data-action="sync">Import service records</button>' : ''}<button class="text-button" data-action="switch">Sign out</button></div></div><section class="panel onboarding-empty"><span class="assistant-mark large" aria-hidden="true">∿</span><h2>Your service history starts here.</h2><p>Create your first request to start a conversation, add notes, or schedule a visit.</p><button class="button primary" data-action="request">Create your first request →</button></section><p id="desk-error" class="notice error" role="alert" hidden></p></section><dialog id="action-dialog" aria-labelledby="dialog-title"></dialog>`;
+    applyServicePolicy();
     return;
   }
   const active = state.ledger.filter((m) => !m.invalidatedAt);
-  app.innerHTML = `<section class="wrap workspace"><div class="workspace-heading"><div><div class="eyebrow">${q(p.role === 'owner' ? 'OWNER · MY REQUESTS' : p.role === 'staff' ? 'SPECIALIST · MY REQUESTS' : 'CUSTOMER WORKSPACE')}</div><p>${q(p.companyName || 'Demo')}</p><h1>My requests.</h1>${state.workspace.staff ? '<a class="button small" href="/operator">Specialist console →</a>' : ''}</div><div class="account"><span class="avatar">${q(p.initials)}</span><div><b>${q(p.name)}</b><small>${q(p.label)}</small></div><button class="icon-button" data-action="refresh" aria-label="Refresh workspace" ${disabled()}>↻</button><button class="text-button" data-action="account" ${disabled()}>${p.demo ? 'Demo account' : 'Account'}</button>${state.workspace.canSync ? '<button class="button small" data-action="sync">Sync service records</button>' : ''}<button class="text-button" data-action="switch" ${disabled()}>Sign out</button></div></div>${p.role === 'owner' ? '<a class="button small" href="/team">Company & team</a>' : ''}${stats()}<p id="desk-notice" class="notice success" role="status" ${state.notice ? '' : 'hidden'}>${q(state.notice)}</p><p id="desk-error" class="notice error" role="alert" ${state.error ? '' : 'hidden'}>${q(state.error)}</p><div class="workspace-grid"><aside class="request-sidebar panel"><div class="sidebar-heading"><h2>Requests <span>${state.workspace.tickets.length}</span></h2><button class="icon-button" aria-label="Create a new request" data-action="request" ${disabled()}>+</button></div><div class="request-filters"><label class="sr-only" for="request-search">Search requests</label><input id="request-search" type="search" placeholder="Search requests…" value="${q(state.search)}" ${disabled()}><label class="sr-only" for="request-filter">Filter requests</label><select id="request-filter" ${disabled()}><option value="all" ${state.filter === 'all' ? 'selected' : ''}>All requests</option><option value="open" ${state.filter === 'open' ? 'selected' : ''}>Open</option><option value="resolved" ${state.filter === 'resolved' ? 'selected' : ''}>Resolved</option></select></div><div id="request-list">${requestList()}</div><div class="sidebar-foot"><span class="status-dot"></span> ${p.demo ? 'Demo workspace' : 'Personal workspace'}</div></aside><section class="desk-center"><div class="ticket-summary panel"><div><span class="eyebrow" title="${q(t.id)}">${q(short(t.id))}</span><h2>${q(t.title)}</h2><p>${q(t.issue)}</p></div><span class="pill ${t.status === 'Resolved' ? 'green' : 'blue'}">${q(t.status)}</span><dl><div><dt>Assigned team</dt><dd>${q(t.assignedTo)}</dd></div><div><dt>Estimated completion</dt><dd>${q(formatDate(t.eta))}${state.workspace.metrics.overdue && t.eta && new Date(t.eta + 'T23:59:59+05:30') < new Date() && t.status !== 'Resolved' ? ' <span class="overdue">Overdue</span>' : ''}</dd></div></dl></div><div class="desk-tabs" role="group" aria-label="Workspace view">${[
+  app.innerHTML = `<section class="wrap workspace"><div class="workspace-heading"><div><div class="eyebrow">${q(p.role === 'owner' ? 'OWNER · MY REQUESTS' : p.role === 'staff' ? 'SPECIALIST · MY REQUESTS' : 'CUSTOMER WORKSPACE')}</div><p>${q(p.companyName || 'Demo')} · ${q(p.chatbotName || p.label)}</p><h1>My requests.</h1>${state.workspace.staff ? '<a class="button small" href="/operator">Specialist console →</a>' : ''}</div><div class="account"><span class="avatar">${q(p.initials)}</span><div><b>${q(p.name)}</b><small>${q(p.label)}</small></div><button class="icon-button" data-action="refresh" aria-label="Refresh workspace" ${disabled()}>↻</button><button class="text-button" data-action="account" ${disabled()}>${p.demo ? 'Demo account' : 'Account'}</button>${state.workspace.canSync ? '<button class="button small" data-action="sync">Sync service records</button>' : ''}<button class="text-button" data-action="switch" ${disabled()}>Sign out</button></div></div>${p.role === 'owner' ? '<a class="button small" href="/team">Company & team</a>' : ''}${stats()}<p id="desk-notice" class="notice success" role="status" ${state.notice ? '' : 'hidden'}>${q(state.notice)}</p><p id="desk-error" class="notice error" role="alert" ${state.error ? '' : 'hidden'}>${q(state.error)}</p><div class="workspace-grid"><aside class="request-sidebar panel"><div class="sidebar-heading"><h2>Requests <span>${state.workspace.tickets.length}</span></h2><button class="icon-button" aria-label="Create a new request" data-action="request" ${disabled()}>+</button></div><div class="request-filters"><label class="sr-only" for="request-search">Search requests</label><input id="request-search" type="search" placeholder="Search requests…" value="${q(state.search)}" ${disabled()}><label class="sr-only" for="request-filter">Filter requests</label><select id="request-filter" ${disabled()}><option value="all" ${state.filter === 'all' ? 'selected' : ''}>All requests</option><option value="open" ${state.filter === 'open' ? 'selected' : ''}>Open</option><option value="resolved" ${state.filter === 'resolved' ? 'selected' : ''}>Resolved</option></select></div><div id="request-list">${requestList()}</div><div class="sidebar-foot"><span class="status-dot"></span> ${p.demo ? 'Demo workspace' : 'Personal workspace'}</div></aside><section class="desk-center"><div class="ticket-summary panel"><div><span class="eyebrow" title="${q(t.id)}">${q(short(t.id))}</span><h2>${q(t.title)}</h2><p>${q(t.issue)}</p></div><span class="pill ${t.status === 'Resolved' ? 'green' : 'blue'}">${q(t.status)}</span><dl><div><dt>Assigned team</dt><dd>${q(t.assignedTo)}</dd></div><div><dt>Estimated completion</dt><dd>${q(formatDate(t.eta))}${state.workspace.metrics.overdue && t.eta && new Date(t.eta + 'T23:59:59+05:30') < new Date() && t.status !== 'Resolved' ? ' <span class="overdue">Overdue</span>' : ''}</dd></div></dl></div><div class="desk-tabs" role="group" aria-label="Workspace view">${[
     ['conversation', 'Conversation'],
     ['appointments', 'Visits'],
     ['activity', 'Activity'],
@@ -185,12 +199,13 @@ function render() {
       : ''
   }</section>${t.requirements.length ? `<section class="panel context-panel"><h2>Request notes</h2>${t.requirements.map((r) => `<div class="memory-entry"><p>${q(r.note)}</p><small>${formatDate(r.createdAt)}</small></div>`).join('')}</section>` : ''}</aside></div></section><dialog id="action-dialog" aria-labelledby="dialog-title"></dialog>`;
   const pending = t.handoffs.filter((h) => h.status === 'Awaiting confirmation');
+  applyServicePolicy();
   if (pending.length)
     document
       .querySelector('.desk-center')
       .insertAdjacentHTML(
         'afterbegin',
-        '<section class="panel content-panel"><h2>Did the specialist solution work?</h2><p>Review the specialist message below. Successful fixes become reusable knowledge only after you confirm.</p>' +
+        '<section class="panel content-panel"><h2>Did the specialist solution work?</h2><p>Review the specialist message below. ' + (state.memory ? 'Successful fixes become reusable knowledge only after you confirm.' : 'Memory is off. Confirmation closes your case without publishing AI knowledge.') + '</p>' +
           pending
             .map(
               (h) =>
@@ -215,18 +230,16 @@ function evidence(entry) {
   return `${choices ? `<div class="actions">${choices}</div>` : ""}<details class="response-details"><summary>Sources & response details</summary><div class="evidence">${(entry.evidence || []).map((fact) => `<div><span class="pill ${fact.type === 'provider' ? 'blue' : ''}">${fact.type === 'provider' ? 'Service record' : q(kinds[fact.kind] || 'Memory')}</span><p>${q(fact.text)}</p></div>`).join('')}</div><small>${entry.trace?.learnedResolutions ? entry.trace.learnedResolutions + ' verified resolutions · ' + q(entry.trace.knowledge) + ' · ' : ''}${q(entry.trace?.memory)} · ${entry.trace?.recalled || 0} recalled · ${q(entry.model)} · ${entry.trace?.elapsedMs || 0} ms</small></details>`;
 }
 function resolutionOutcome(response) {
+  if(response.attempt) {
+    const a=response.attempt;
+    if(a.outcome!=='pending') return `<p class="notice">Fix outcome: ${q(a.outcome)}.</p>`;
+    return `<div class="response-controls"><span>Did this fix solve your issue?</span><button class="button small" data-attempt="${q(a.id)}" data-worked="true">It worked</button><button class="button small" data-attempt="${q(a.id)}" data-worked="false">Still need help</button><button class="text-button" data-prompt="I need human help">Human help</button></div>`;
+  }
   const use = response.resolutionUse;
   if (!use) return '';
   if (use.status === 'failed')
     return '<p class="notice">Your specialist has the failed fix and service history. You will not be asked to repeat this fix.</p>';
-  if (use.status === 'succeeded')
-    return (
-      '<div class="response-controls"><span class="pill green">You confirmed this fix worked</span><button class="text-button" data-use="' +
-      q(use.id) +
-      '" data-worked="false" ' +
-      disabled() +
-      '>Issue returned — ask a specialist</button></div>'
-    );
+  if (use.status === 'succeeded') return '<p class="notice">You confirmed this fix worked. Create a new request if the issue returns.</p>';
   return (
     '<div class="response-controls"><span>Did this fix solve your issue?</span><button class="button small" data-use="' +
     q(use.id) +
@@ -240,7 +253,7 @@ function resolutionOutcome(response) {
   );
 }
 function chat(p) {
-  return `<section class="panel conversation"><header class="conversation-header"><span class="assistant-mark" aria-hidden="true">∿</span><div><b>Continuum assistant</b><small>Here to help you move forward</small></div><button class="memory-switch ${state.memory ? 'on' : ''}" data-action="toggle" role="switch" aria-checked="${state.memory}" ${disabled()}><span aria-hidden="true"></span>Memory ${state.memory ? 'on' : 'off'}</button></header><div class="thread" role="log" aria-label="Conversation" aria-live="off" tabindex="0">${state.messages.length ? state.messages.map((entry) => `<div class="message-pair">${entry.system ? '' : `<div class="bubble customer">${q(entry.message)}</div>`}<div class="assistant-response"><span class="assistant-mark" aria-hidden="true">∿</span><div class="answer-content">${entry.response.human ? '<span class="pill green">' + (entry.response.resolutionId ? 'Specialist solution' : 'Specialist update') + '</span>' : ''}<div class="bubble answer">${q(entry.response.reply)}</div>${resolutionOutcome(entry.response)}${evidence(entry.response)}<div class="response-controls"><small>${formatDate(entry.createdAt)}</small>${!entry.response.resolutionUse ? `<button class="text-button" data-rating="5" data-id="${q(entry.id)}" aria-label="Mark response helpful" aria-pressed="${entry.rating === 5}" ${disabled()}>Helpful</button><button class="text-button" data-rating="1" data-id="${q(entry.id)}" aria-label="Mark response needs improvement" aria-pressed="${entry.rating === 1}" ${disabled()}>Needs work</button>` : ''}</div>${entry.response.action?.completedAt ? '<span class="pill green">Action confirmed</span>' : entry.response.action ? `<button class="button small" data-proposal="${q(entry.id)}" ${disabled()}>Review ${q(names[entry.response.action.kind].toLowerCase())} →</button>` : ''}</div></div></div>`).join('') : `<div class="welcome"><span class="assistant-mark large" aria-hidden="true">∿</span><h2>Good to see you, ${q(p.name.split(' ')[0])}.</h2><p>Ask a question. We’ll check the latest status<br>and pick up the relevant context.</p><button class="suggestion" data-prompt="${q(suggestedQuestion(p))}" ${disabled()}>${q(suggestedQuestion(p))} <span>↗</span></button><button class="suggestion" data-prompt="Please schedule an appointment for a visit" ${disabled()}>Find a time to visit <span>↗</span></button></div>`}${state.pendingMessage ? `<div class="bubble customer">${q(state.pendingMessage)}</div><div class="thinking" role="status"><span class="status-dot"></span>Checking your request…</div>` : ''}${state.pendingChat && !state.busy ? `<div class="notice error">Your message wasn’t confirmed. <button class="text-button" data-action="retry-chat">Retry safely →</button></div>` : ''}</div><form id="chat-form" class="composer"><label class="sr-only" for="message">Your message</label><textarea id="message" name="message" rows="1" required maxlength="1400" placeholder="Ask about your request…" ${disabled()}>${q(state.draft)}</textarea><button class="button primary" type="submit" ${disabled()} aria-label="Send message">${state.busy ? 'Sending…' : 'Send ↑'}</button></form><div class="composer-footer"><span>Conversation saved · ${state.memory ? 'Relevant context remembered' : 'Long-term memory paused'}</span>${state.messages.length ? `<button class="text-button" data-action="archive" ${disabled()}>New conversation</button>` : ''}</div></section>`;
+  return `<section class="panel conversation"><header class="conversation-header"><span class="assistant-mark" aria-hidden="true">∿</span><div><b>Continuum assistant</b><small>${q(p.chatbotName || p.label)} · <button class="text-button" data-prompt="I need human help">Human help</button></small></div><button class="memory-switch ${state.memory ? 'on' : ''}" data-action="toggle" role="switch" aria-checked="${state.memory}" ${disabled()}><span aria-hidden="true"></span>Memory ${state.memory ? 'on' : 'off'}</button></header><div class="thread" role="log" aria-label="Conversation" aria-live="off" tabindex="0">${state.messages.length ? state.messages.map((entry) => `<div class="message-pair">${entry.system ? '' : `<div class="bubble customer">${q(entry.message)}</div>`}<div class="assistant-response"><span class="assistant-mark" aria-hidden="true">∿</span><div class="answer-content">${entry.response.human ? '<span class="pill green">' + (entry.response.resolutionId ? 'Specialist solution' : 'Specialist update') + '</span>' : ''}<div class="bubble answer">${q(entry.response.reply)}</div>${resolutionOutcome(entry.response)}${evidence(entry.response)}<div class="response-controls"><small>${formatDate(entry.createdAt)}</small>${!entry.response.resolutionUse ? `<button class="text-button" data-rating="5" data-id="${q(entry.id)}" aria-label="Mark response helpful" aria-pressed="${entry.rating === 5}" ${disabled()}>Helpful</button><button class="text-button" data-rating="1" data-id="${q(entry.id)}" aria-label="Mark response needs improvement" aria-pressed="${entry.rating === 1}" ${disabled()}>Needs work</button>` : ''}</div>${entry.response.action?.completedAt ? '<span class="pill green">Action confirmed</span>' : entry.response.action ? `<button class="button small" data-proposal="${q(entry.id)}" ${disabled()}>Review ${q(names[entry.response.action.kind].toLowerCase())} →</button>` : ''}</div></div></div>`).join('') : `<div class="welcome"><span class="assistant-mark large" aria-hidden="true">∿</span><h2>Good to see you, ${q(p.name.split(' ')[0])}.</h2><p>Ask a question. We’ll check the latest status<br>and pick up the relevant context.</p><button class="suggestion" data-prompt="${q(suggestedQuestion(p))}" ${disabled()}>${q(suggestedQuestion(p))} <span>↗</span></button><button class="suggestion" data-prompt="Please schedule an appointment for a visit" ${disabled()}>Find a time to visit <span>↗</span></button></div>`}${state.pendingMessage ? `<div class="bubble customer">${q(state.pendingMessage)}</div><div class="thinking" role="status"><span class="status-dot"></span>Checking your request…</div>` : ''}${state.pendingChat && !state.busy ? `<div class="notice error">Your message wasn’t confirmed. <button class="text-button" data-action="retry-chat">Retry safely →</button></div>` : ''}</div><form id="chat-form" class="composer"><label class="sr-only" for="message">Your message</label><textarea id="message" name="message" rows="1" required maxlength="1400" placeholder="Ask about your request…" ${disabled()}>${q(state.draft)}</textarea><button class="button primary" type="submit" ${disabled()} aria-label="Send message">${state.busy ? 'Sending…' : 'Send ↑'}</button></form><div class="composer-footer"><span>Conversation saved · ${state.memory ? 'Relevant context remembered' : 'Long-term memory paused; operational case records still saved'}</span>${state.messages.length ? `<button class="text-button" data-action="archive" ${disabled()}>New conversation</button>` : ''}</div></section>`;
 }
 function appointments(t) {
   const visits = [...t.appointments].sort((a, b) => a.datetime.localeCompare(b.datetime));
@@ -391,18 +404,27 @@ app.addEventListener('click', async (event) => {
   } = button.dataset;
   if (state.busy && action !== 'close') return;
   try {
+    if(button.dataset.attempt) {
+      state.busy=true;
+      try {
+        await api('troubleshooting/outcome',{body:{attemptId:button.dataset.attempt,worked:button.dataset.worked==='true',confirmed:true,memory:state.memory}});
+        if(button.dataset.worked==='false') await api('chat',{body:{ticketId:state.ticketId,message:'Continue troubleshooting',memory:state.memory},key:crypto.randomUUID()});
+        await refresh();
+      } finally {state.busy=false;render();}
+      return;
+    }
     if (button.dataset.use) {
       state.busy = true;
       button.disabled = true;
       try {
         await api('resolutions/outcome', {
-          body: { useId: button.dataset.use, worked: button.dataset.worked === 'true', confirmed: true },
+          body: { useId: button.dataset.use, worked: button.dataset.worked === 'true', confirmed: true, memory: state.memory },
         });
         await refresh();
         state.notice =
           button.dataset.worked === 'true'
             ? 'Your request is resolved. Your result helps validate this fix.'
-            : 'Your specialist case is ready with the attempted fix and service history.';
+            : state.workspace.chatbot.allowedActions.includes('handoff') ? 'Your specialist case is ready with the attempted fix and service history.' : state.workspace.chatbot.escalationRules.supportRoute;
       } finally {
         state.busy = false;
         if (state.authenticated) render();
@@ -417,6 +439,7 @@ app.addEventListener('click', async (event) => {
           body: {
             id: button.dataset.confirmSolution,
             accepted: button.dataset.accepted === 'true',
+            memory: state.memory,
             confirmed: true,
           },
         });
@@ -673,10 +696,14 @@ if (location.pathname.replace(/\/+$/, '') === '/desk') {
       companyCode: fragment.get('company'),
     };
     history.replaceState(null, '', '/desk');
+    document.querySelector('#workspace-control')?.remove();
+    document.querySelector('#workspace-nav-label')?.remove();
+    document.body.classList.remove('support-shell');
     await renderAuth(app, {
       initialMode: mode,
       link,
       onSession: async (session) => {
+        await mountWorkspaceControl();
         if (roleHome(session.profile)) return;
         state.authenticated = true;
         await refresh();

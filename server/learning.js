@@ -1,3 +1,4 @@
+import { botId, defaultBotId, knowledgeScope, privateScope } from './chatbots.js';
 import { randomUUID } from 'node:crypto';
 import { fault } from './providers.js';
 import { field } from './requests.js';
@@ -6,12 +7,13 @@ import { rankRelevance } from './relevance.js';
 import { needsReview, failedResolutions } from './reuse.js';
 
 export function createLearning(store, memory, companies, config = {}, reuse, providerActions) {
-  const scope = (companyId, provider) => `knowledge:${companyId}:${provider}`;
+  const scope = (companyId, provider, chatbotId = defaultBotId(companyId,provider)) => knowledgeScope(companyId,chatbotId);
   function caseFor(data, staff, id, revision) {
     const h = data.handoffs.find(
       (h) =>
         h.id === id &&
         h.companyId === staff.companyId &&
+        h.chatbotId === botId(staff) &&
         (h.provider || h.scope.split(':')[1]) === staff.provider,
     );
     if (!h) throw fault(404, 'Case not found in your company and service workspace.');
@@ -22,7 +24,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
   }
   function rowFor(data, h, provider) {
     const row = data[provider].find(
-      (r) => r.companyId === h.companyId && (r.ticket_id || r.id) === h.ticketId,
+      (r) => r.companyId === h.companyId && r.chatbotId === h.chatbotId && (r.ticket_id || r.id) === h.ticketId,
     );
     if (!row) throw fault(404, 'Request not found.');
     return row;
@@ -69,7 +71,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
   async function publish(item) {
     const sync = await memory.remember({
       id: item.memoryId,
-      scope: scope(item.companyId, item.provider),
+      scope: scope(item.companyId, item.provider, item.chatbotId),
       ticketId: 'knowledge',
       kind: 'verified_resolution',
       resolutionId: item.id,
@@ -82,14 +84,15 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
     return sync;
   }
   return {
-    async recall(companyId, provider, message, ticket = {}, customerId) {
-      const result = await memory.recall(scope(companyId, provider), 'knowledge', message);
+    async recall(companyId, provider, message, ticket = {}, customerId, chatbotId = defaultBotId(companyId,provider)) {
+      const result = await memory.recall(scope(companyId, provider, chatbotId), 'knowledge', message);
       const active = store.data.resolutions.filter(
         (r) =>
           r.companyId === companyId &&
           r.provider === provider &&
+          r.chatbotId === chatbotId &&
           !r.retiredAt &&
-          (!r.status || r.status === 'published'),
+          r.allowMemoryPublication !== false && (!r.status || r.status === 'published'),
       );
       const linked = result.facts
         .map((f) => ({ f, r: active.find((r) => r.memoryId === f.id) }))
@@ -110,7 +113,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
       const matches = [],
         clarification = [];
       const failed = customerId
-        ? failedResolutions(store, companyId, provider, customerId)
+        ? failedResolutions(store, companyId, provider, customerId, chatbotId)
         : { ids: new Set(), signatures: new Set() };
       let reviewRequired = false,
         failedBefore = false;
@@ -151,10 +154,10 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
           : clarification.slice(0, 3),
       };
     },
-    list(companyId, provider) {
+    list(companyId, provider, chatbotId = defaultBotId(companyId,provider)) {
       const data = store.data;
       return data.resolutions
-        .filter((r) => r.companyId === companyId && r.provider === provider)
+        .filter((r) => r.companyId === companyId && r.provider === provider && r.chatbotId === chatbotId)
         .map(({ authorId, ...r }) => {
           const m = data.memories.find((m) => m.id === r.memoryId);
           return {
@@ -275,6 +278,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
             id: randomUUID(),
             companyId: staff.companyId,
             provider: staff.provider,
+            chatbotId: botId(staff),
             title,
             symptoms,
             environment,
@@ -311,7 +315,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
           r &&
           data.handoffs.find(
             (h) =>
-              h.id === r.handoffId && h.scope === `${profile.companyId}:${profile.provider}:${profile.id}`,
+              h.id === r.handoffId && h.scope === privateScope(profile),
           );
         if (!r || !h) throw fault(404, 'Solution not found in your account.');
         if (r.status !== 'pending_confirmation') {
@@ -320,10 +324,11 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
         }
         const now = new Date().toISOString();
         r.customerAccepted = body.accepted;
+        r.allowMemoryPublication = body.memory !== false;
         r.confirmedAt = now;
-        r.status = body.accepted ? 'published' : 'rejected';
-        r.publishedAt = body.accepted ? now : null;
-        r.sync = body.accepted ? 'pending' : 'not published';
+        r.status = body.accepted ? r.allowMemoryPublication ? 'published' : 'confirmed_private' : 'rejected';
+        r.publishedAt = body.accepted && r.allowMemoryPublication ? now : null;
+        r.sync = body.accepted && r.allowMemoryPublication ? 'pending' : 'not published';
         h.status = body.accepted ? 'Resolved' : 'In progress';
         h.revision++;
         setStatus(
@@ -337,7 +342,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
           : body.accepted
             ? 'Customer confirmed the specialist solution worked.'
             : 'Customer reported the specialist solution did not work.';
-        data.memories.push({
+        if (body.memory !== false) data.memories.push({
           id: randomUUID(),
           scope: h.scope,
           ticketId: h.ticketId,
@@ -353,12 +358,12 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
         });
         return { ...r };
       });
-      const sync = result.status === 'published' && !result.retiredAt ? await publish(result) : result.sync;
+      const sync = result.status === 'published' && result.allowMemoryPublication !== false && !result.retiredAt ? await publish(result) : result.sync;
       return { success: true, status: result.status, sync };
     },
     async retire(staff, body) {
       const item = store.data.resolutions.find(
-        (r) => r.id === body.id && r.companyId === staff.companyId && r.provider === staff.provider,
+        (r) => r.id === body.id && r.companyId === staff.companyId && r.provider === staff.provider && r.chatbotId === botId(staff),
       );
       if (!item) throw fault(404, 'Resolution not found.');
       if (body.confirmed !== true) throw fault(400, 'Confirm retiring this resolution.');
@@ -366,7 +371,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
         data.resolutions.find((r) => r.id === item.id).retiredAt ||= new Date().toISOString();
       });
       if (store.data.memories.some((m) => m.id === item.memoryId))
-        await memory.invalidate(scope(staff.companyId, staff.provider), 'knowledge', item.memoryId);
+        await memory.invalidate(scope(staff.companyId, staff.provider, botId(staff)), 'knowledge', item.memoryId);
       return { success: true };
     },
   };
