@@ -1,17 +1,17 @@
 # Continuum
 
-A support workspace with personal accounts, saved conversations, service history, memory, and confirmed next steps.
+A company-scoped support agent that combines service records, customer preferences, and customer-confirmed specialist resolutions. Businesses can import records from an allowlisted database gateway. See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the implemented workflow, verification, and connector contract.
 
 ## Run locally
 
-Requires Node.js **20.12+**.
+Use Node.js **22 in WSL** (`.nvmrc`). Install dependencies in WSL so the native SQLite module matches Linux. `bash scripts/start-wsl.sh` starts the app using Node in PATH or the local runtime configured on this computer.
 
 ```sh
 npm ci
 npm start
 ```
 
-Open `http://localhost:3100` when using the supplied local `.env`. Create an account in **Open workspace**. New accounts start with an empty workspace; create a request to begin. Passwords must contain 15–128 characters, and password managers/pasting are supported.
+Open `http://localhost:3100`. Select **Create a company** for an owner account. Owners use **Company & team** to generate customer signup links and email-bound specialist invitations. New accounts start with an empty workspace. Passwords must contain 15–128 characters.
 
 If `.env` is missing, copy `.env.example` to `.env`. Never commit credentials. See [SETUP.md](SETUP.md) for email, Google Calendar, and deployment configuration.
 
@@ -53,9 +53,11 @@ Missing credentials are reported as setup requirements. No emails are claimed as
 
 Search/filter requests; check status and ETA; add notes; book/cancel visits; download calendar files; record resolved, failed, or missed outcomes; prepare a specialist handoff; save/arch­ive conversations; inspect evidence; rate responses; summarize and retire remembered context.
 
-Memory-off pauses recall and long-term fact retention; the conversation still persists. The memory comparison does not write history or metrics. Retiring memory excludes it from future recall while preserving the audit entry. A resolved outcome suppresses earlier failed-fix recovery signals.
+Memory-off pauses recall and long-term fact retention and excludes previous conversation context from the model; displayed conversations remain saved. Customer-wide contact preferences carry across tickets within that customer account. Technical outcomes remain ticket-specific. Learned replies are freshly retrieved rather than recycled from assistant history. Retiring knowledge excludes it locally immediately; remote invalidation is retried if needed. Customer-confirmed resolutions suppress earlier failed-fix signals.
 
-The repair and IT provider adapters currently operate on Continuum's service records, not an external repair vendor or ticketing service. Hindsight and model connections remain optional; configure their keys for live AI, or use local responses without credentials.
+The standard and IT schema adapters operate on Continuum records. The optional gateway imports a company's existing service records with configurable field mapping and server-side customer binding. Compatible gateways can opt into confirmed-action delivery with durable retries and provider acknowledgements; see [PROVIDER-GATEWAY.md](PROVIDER-GATEWAY.md). No real business gateway is connected on this installation. Live Hindsight and model connections require credentials; `REQUIRE_LIVE_INTEGRATIONS=true` prevents silent fallback.
+
+Recommendations now have **It worked / Still need help** feedback. An unsuccessful fix reopens the request, sends its attempted steps and conversation to a specialist, and pauses further reuse until reviewed. A customer who failed a fix is not given the same resolution again after review. The existing specialist library shows follow-up outcomes and the review control; no new dashboard is required.
 
 ## Checks
 
@@ -63,6 +65,8 @@ The repair and IT provider adapters currently operate on Continuum's service rec
 npm test
 npm run test:http
 npm run demo
+npm run evaluate
+npm run evaluate:live
 ```
 
 Tests cover personal authentication, CSRF, recovery/verification, cookie/session persistence, tenant isolation, shared SQLite connections, booking collisions, safe replay, memory policies, feedback, Google OAuth/availability/events, and email retry contracts. External-provider tests use mocks and never send real messages or modify real calendars. `test:http` launches an isolated temporary server and database.

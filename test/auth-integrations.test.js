@@ -23,7 +23,7 @@ function browser(api) {
     return result;
   } };
 }
-const register = (client, email = 'alex@example.test') => client.call('auth/register', { body: { name: 'Alex Morgan', email, password, provider: 'repair' } });
+const register = (client, email = 'alex@example.test') => client.call('auth/register', { body: { createCompany:true, companyName:'Test company', name: 'Alex Morgan', email, password, provider: 'repair' } });
 
 test('personal accounts use hashed passwords, HttpOnly cookies, CSRF, and isolated empty workspaces', async (t) => {
   const { api, handler } = setup(t); const client = browser(api);

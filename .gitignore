@@ -3,3 +3,8 @@
 node_modules/
 data/
 .DS_Store
+
+# Keep local screenshots and delivery archives private; publish synthetic evaluation evidence only.
+/output/*
+!/output/CHALLENGE-RESULTS.md
+!/output/evaluation-results/

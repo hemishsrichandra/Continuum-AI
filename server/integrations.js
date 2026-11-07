@@ -115,8 +115,8 @@ export function createIntegrations(store, config) {
     return { providerId: id };
   }
   async function flush() {
-    if (running) return; running = true;
-    try {
+    if (running) return running;
+    running = Promise.resolve().then(async () => {
       for (let count = 0; count < 10; count++) {
         const job = store.update((data) => {
           const next = data.outbox.find((j) => {
@@ -141,7 +141,8 @@ export function createIntegrations(store, config) {
           store.update((data) => { const entry = data.outbox.find((j) => j.id === job.id); if (entry.worker === workerId) Object.assign(entry, { status: job.attempts >= 8 || [409, 422].includes(e.status) || [400, 401, 403, 404, 422].includes(e.remoteStatus) ? 'failed' : 'pending', nextAttemptAt: Date.now() + Math.min(3600000, 30000 * 2 ** (job.attempts - 1)), lastError: e.status ? e.message : 'Delivery could not complete. Please reconnect or retry.' }); });
         }
       }
-    } finally { running = false; }
+    }).finally(() => { running = false; });
+    return running;
   }
   function kick() { if (!stopped) setTimeout(() => flush().catch(() => {}), 0).unref(); }
   function start() { stopped = false; timer = setInterval(() => flush().catch(() => {}), 10000); timer.unref(); kick(); }

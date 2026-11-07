@@ -1,42 +1,197 @@
 import { createHandler } from '../server/app.js';
 import { invoke } from './invoke.js';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 process.loadEnvFile('.env');
-const run = randomUUID().slice(0,8);
-const directory = await mkdtemp(join(tmpdir(),'continuum-live-'));
-const config = {...process.env, APP_URL:'http://localhost:3100', NODE_ENV:'development', ENABLE_DEMO_MODE:'true', REQUIRE_EMAIL_VERIFICATION:'false', REQUIRE_LIVE_INTEGRATIONS:'true', ENABLE_OUTBOX_WORKER:'false', RESEND_API_KEY:'', EMAIL_FROM:'', GOOGLE_CLIENT_ID:'', GOOGLE_CLIENT_SECRET:'', HINDSIGHT_BANK_PREFIX:(process.env.HINDSIGHT_BANK_PREFIX || 'continuum')+'-verify-'+run};
-const handler = createHandler({file:join(directory,'verification.sqlite'),config});
-const report={run,bankPrefix:config.HINDSIGHT_BANK_PREFIX,syntheticData:true,checks:[]};
-async function api(route,options){const r=await invoke(handler,route,options);if(r.status>=400)throw new Error(route+': '+r.status+' '+r.data.error);return r.data;}
-const question='On a Model X laptop with display firmware 4, the display flickers after startup. How can I fix the flickering?';
+for (const key of ['HINDSIGHT_BASE_URL', 'HINDSIGHT_API_KEY', 'OPENAI_API_KEY'])
+  if (!process.env[key]) throw new Error('Missing ' + key + ' in .env');
+const run = randomUUID().slice(0, 8),
+  directory = await mkdtemp(join(tmpdir(), 'continuum-live-'));
+const config = {
+  ...process.env,
+  APP_URL: 'http://localhost:3100',
+  NODE_ENV: 'development',
+  ENABLE_DEMO_MODE: 'false',
+  REQUIRE_EMAIL_VERIFICATION: 'false',
+  REQUIRE_LIVE_INTEGRATIONS: 'true',
+  ENABLE_OUTBOX_WORKER: 'false',
+  RESEND_API_KEY: '',
+  EMAIL_FROM: '',
+  GOOGLE_CLIENT_ID: '',
+  GOOGLE_CLIENT_SECRET: '',
+  HINDSIGHT_BANK_PREFIX: (process.env.HINDSIGHT_BANK_PREFIX || 'continuum') + '-verify-' + run,
+};
+const handler = createHandler({ file: join(directory, 'verification.sqlite'), config });
+const report = { run, syntheticData: true, checks: [], startedAt: new Date().toISOString() };
+const password = randomUUID() + randomUUID();
+function client() {
+  let cookie = '',
+    csrf = '';
+  return {
+    async api(route, body) {
+      const r = await invoke(handler, route, { body, headers: { cookie, 'x-csrf-token': csrf } });
+      if (r.headers?.['Set-Cookie']) cookie = r.headers['Set-Cookie'].split(';')[0];
+      if (r.data.csrfToken) csrf = r.data.csrfToken;
+      if (r.status >= 400) throw new Error(route + ': ' + r.status + ' ' + r.data.error);
+      return r.data;
+    },
+  };
+}
+function check(name, passed, details = {}) {
+  report.checks.push({ name, passed, ...details });
+  console.log((passed ? 'PASS ' : 'FAIL ') + name);
+}
+const owner = client(),
+  a = client(),
+  b = client(),
+  other = client();
+const question =
+  'The display flickers after startup on a Model X laptop with display firmware 4. How can I fix it?';
+const solution =
+  'Disable Adaptive Refresh in Display Settings, then install verified display driver 4.2. Restart once after driver installation and confirm the flicker stops.';
 try {
- const a=(await api('session',{body:{profileId:'alice',pin:config.DEMO_PIN||'246810'}})).token;
- const b=(await api('session',{body:{profileId:'bob',pin:config.DEMO_PIN||'246810'}})).token;
- const ticket=(await api('request',{token:b,body:{title:'Model X laptop display',issueDesc:question,confirmed:true,memory:false}})).ticketId;
- const chat=(memory=true)=>api('chat',{token:b,body:{ticketId:ticket,message:question,memory,retain:false}});
- const before=await chat();report.checks.push({step:'Before human resolution',...before});console.log('Baseline: '+before.model+' / '+before.trace.memory+' / '+before.trace.learnedResolutions+' learned resolutions');
- const handoff=await api('handoff',{token:a,body:{summary:'Model X firmware 4 display flickers after startup; specialist investigation requested.',confirmed:true,memory:false}});
- const registration=await invoke(handler,'auth/register',{body:{name:'Synthetic Verification Specialist',email:'verify-'+run+'@example.test',password:randomUUID()+randomUUID(),provider:'repair'}});
- const staff=registration.data; const cookie=registration.headers['Set-Cookie'].split(';')[0];
- handler.store.db.prepare('INSERT INTO staff_access VALUES(?,?)').run(staff.profile.id,'repair');
- const headers={cookie:handlerCookie(staff), 'x-csrf-token':staff.csrfToken};
- function handlerCookie(){return cookie;}
-
- const resolution=await api('operator/resolve',{headers,body:{handoffId:handoff.id,title:'Model X display flicker after startup',symptoms:'Display flickers after startup on Model X firmware 4',environment:'Model X laptop, display firmware 4',solution:'Disable Adaptive Refresh in Display Settings, then install verified display driver 4.2. Restart once after driver installation and confirm the flicker stops.',confirmed:true,reviewedForPrivacy:true}});
- report.resolution=resolution;console.log('Resolution publication: '+resolution.sync);
- const after=await chat();report.checks.push({step:'After human resolution',...after});console.log('After: '+after.model+' / '+after.trace.knowledge+' / '+after.trace.learnedResolutions+' learned resolutions');
- const off=await chat(false);report.checks.push({step:'Memory OFF',...off});
- const retired=await api('operator/retire',{headers,body:{id:resolution.id,confirmed:true}});report.retirement=retired;
- const final=await chat();report.checks.push({step:'After retirement',...final});
- report.passed=resolution.sync==='synced'&&before.trace.learnedResolutions===0&&after.trace.learnedResolutions>0&&after.trace.knowledge==='Hindsight'&&/adaptive refresh|4\.2/i.test(after.reply)&&off.trace.learnedResolutions===0&&final.trace.learnedResolutions===0;
- console.log('Live learning verification: '+(report.passed?'PASS':'FAIL'));
- if(!report.passed)process.exitCode=1;
-} catch(error){report.error=error.message;report.passed=false;console.error(error.message);process.exitCode=1;}
-finally {
- await writeFile('data/live-verification-'+run+'.json',JSON.stringify(report,null,2),{mode:0o600});
- handler.close();await rm(directory,{recursive:true,force:true});
- console.log('Report: data/live-verification-'+run+'.json');
+  const account = await owner.api('auth/register', {
+    createCompany: true,
+    companyName: 'Synthetic evaluation company',
+    name: 'Synthetic specialist',
+    email: 'owner-' + run + '@example.test',
+    password,
+    provider: 'repair',
+  });
+  const { code } = await owner.api('company/customer-code', { confirmed: true });
+  for (const [c, name] of [
+    [a, 'a'],
+    [b, 'b'],
+  ])
+    await c.api('auth/register', {
+      companyCode: code,
+      name: 'Synthetic ' + name,
+      email: name + '-' + run + '@example.test',
+      password,
+      provider: 'repair',
+    });
+  const ticketA = (
+    await a.api('request', { title: 'Model X display', issueDesc: question, confirmed: true, memory: false })
+  ).ticketId;
+  const ticketB = (
+    await b.api('request', {
+      title: 'Model X laptop',
+      issueDesc: 'Display flickers after startup. Model X firmware 4.',
+      confirmed: true,
+      memory: false,
+    })
+  ).ticketId;
+  const ask = (message = question, extra = {}) => b.api('chat', { ticketId: ticketB, message, ...extra });
+  const baseline = await ask();
+  check('No learned fix before specialist work', baseline.trace.learnedResolutions === 0, {
+    response: baseline,
+  });
+  const handoff = await a.api('handoff', {
+    ticketId: ticketA,
+    summary: question,
+    confirmed: true,
+    memory: false,
+  });
+  await owner.api('operator/assign', {
+    handoffId: handoff.id,
+    assignedTo: account.profile.id,
+    revision: 0,
+    confirmed: true,
+  });
+  const resolution = await owner.api('operator/resolve', {
+    handoffId: handoff.id,
+    revision: 1,
+    title: 'Model X display flicker after startup',
+    symptoms: 'Display flickers after startup',
+    environment: 'Model X firmware 4',
+    solution,
+    confirmed: true,
+    reviewedForPrivacy: true,
+  });
+  check('Unconfirmed solution is not reused', (await ask()).trace.learnedResolutions === 0);
+  const confirmation = await a.api('resolutions/confirm', {
+    id: resolution.id,
+    accepted: true,
+    confirmed: true,
+  });
+  check('Confirmed resolution retained in Hindsight', confirmation.sync === 'synced');
+  const questions = [
+    'The monitor flashes when booting the notebook. What can I do?',
+    'My screen keeps blinking as the laptop starts up. Is there a known fix?',
+    'At power-on the panel flickers. How should I troubleshoot it?',
+    'The laptop starts normally but its screen flashes repeatedly. Can you help?',
+    'I see a blinking monitor immediately after boot. What resolved this previously?',
+  ];
+  for (const message of questions) {
+    const r = await ask(message);
+    check(
+      'Held-out paraphrase: ' + message,
+      r.trace.knowledge === 'Hindsight' && r.trace.learnedResolutions === 1 && r.reply.includes(solution),
+      { response: r },
+    );
+  }
+  for (const message of [
+    'The display flickers after startup on Model Z firmware 9.',
+    'How do I change my invoice address?',
+    'Please email me about my appointment.',
+  ]) {
+    const r = await ask(message);
+    check(
+      'Exclude unrelated or incompatible: ' + message,
+      r.trace.learnedResolutions === 0 && !r.reply.includes(solution),
+      { response: r },
+    );
+  }
+  const off = await ask(questions[0], { memory: false });
+  check(
+    'Memory OFF excludes learned fix',
+    off.trace.learnedResolutions === 0 && !off.reply.includes(solution),
+    { response: off },
+  );
+  await other.api('auth/register', {
+    createCompany: true,
+    companyName: 'Isolated evaluation company',
+    name: 'Other owner',
+    email: 'other-' + run + '@example.test',
+    password,
+    provider: 'repair',
+  });
+  const otherTicket = (
+    await other.api('request', {
+      title: 'Model X display',
+      issueDesc: question,
+      confirmed: true,
+      memory: false,
+    })
+  ).ticketId;
+  const isolated = await other.api('chat', { ticketId: otherTicket, message: question });
+  check(
+    'Other company cannot retrieve resolution',
+    isolated.trace.learnedResolutions === 0 && !isolated.reply.includes(solution),
+  );
+  await owner.api('operator/retire', { id: resolution.id, confirmed: true });
+  const retired = await ask(questions[0]);
+  check(
+    'Retirement excludes fix in existing conversation',
+    retired.trace.learnedResolutions === 0 && !retired.reply.includes(solution),
+    { response: retired },
+  );
+  report.passed = report.checks.every((c) => c.passed);
+  report.completedAt = new Date().toISOString();
+  if (!report.passed) process.exitCode = 1;
+} catch (e) {
+  report.error = e.message;
+  report.passed = false;
+  process.exitCode = 1;
+  console.error(e.message);
+} finally {
+  await mkdir('data', { recursive: true });
+  await writeFile('data/live-verification-' + run + '.json', JSON.stringify(report, null, 2), {
+    mode: 0o600,
+  });
+  handler.close();
+  await rm(directory, { recursive: true, force: true });
+  console.log('Report: data/live-verification-' + run + '.json');
 }

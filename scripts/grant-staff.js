@@ -7,6 +7,7 @@ const store=new Store(process.env.DATABASE_FILE || process.env.DATA_FILE || 'dat
 try {
  const user=store.db.prepare('SELECT id FROM accounts WHERE email=?').get(email.toLowerCase());
  if(!user) throw new Error('Create the staff account first.');
+ store.db.prepare("UPDATE accounts SET role='staff' WHERE id=? AND role<>'owner'").run(user.id);
  store.db.prepare('INSERT INTO staff_access VALUES(?,?) ON CONFLICT(account_id) DO UPDATE SET provider=excluded.provider').run(user.id,provider);
  console.log('Staff access provisioned for the selected service workspace.');
 } finally {store.close();}

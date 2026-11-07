@@ -32,3 +32,19 @@ export function calendarLink(booking, title = 'Continuum session') {
   return URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/calendar' }));
 }
 export const formatDate = (date, full = false) => date ? new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', ...(full && { hour: 'numeric', minute: '2-digit', year: 'numeric' }), timeZone: 'Asia/Kolkata' }).format(new Date(date)) : 'Not set';
+
+// Keep keyboard focus within native modal dialogs, including reverse Tab.
+if (typeof document !== 'undefined') document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab') return;
+  const dialog = document.querySelector('dialog[open]');
+  if (!dialog) return;
+  const controls = [...dialog.querySelectorAll('button, input, textarea, select, a[href], [tabindex]')]
+    .filter((el) => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
+  if (!controls.length) return;
+  const first = controls[0], last = controls[controls.length - 1];
+  if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+    event.preventDefault(); last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+    event.preventDefault(); first.focus();
+  }
+});
