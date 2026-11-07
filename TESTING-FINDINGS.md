@@ -1,5 +1,9 @@
 # Manual testing findings
 
+## Remaining manual entries — November 7, 2026
+
+No additional application defect was reproduced in the remaining-feature pass. [FEATURE-MANUAL-RESULTS.md](FEATURE-MANUAL-RESULTS.md) inventories all 62 entries, including 55 passed controlled scenarios and seven entries with user/setup-dependent steps. New regression tests cover signup-link rotation, IT-specific publication/reuse and revocation during customer confirmation. **70/70 tests**, HTTP checks, and the frozen live challenge (**30 ON / 30 OFF / 30 negative / 10 recovery**) passed. Nine default desktop accessibility scans and sampled mobile views reported zero violations; broader assistive-technology/cross-browser certification is not claimed. No original-account password or real external provider was changed.
+
 ## Latest verification — November 7, 2026
 
 The B10–B13 and C1–C7 / D1–D12 pass found and corrected new defects after the earlier checklist: questions could replace a real contact preference; a replacement reply could use the old preference; retired facts could return through chat history; an already displayed summary could remain stale; generic customer resolution left an active specialist case open; hypothetical booking wording could promise unconfigured delivery behavior. Contact-method answers now use active facts directly. Existing historical chats are preserved.
