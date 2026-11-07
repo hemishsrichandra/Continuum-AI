@@ -1,5 +1,7 @@
 # Continuum — final manual test report
 
+November 7 follow-up: fixed a user-reproduced wrong-request reply when asking about the battery request from a screen-flicker conversation. Added owned-request selection prompts/buttons, ambiguous/unknown-ID protection and regression coverage. 59/59 automated tests and HTTP checks passed; browser verification confirmed the offered button opens the correct battery record. See TESTING-FINDINGS.md for details. This supersedes earlier test counts for the current code; the previous live semantic challenge was not redundantly rerun for this deterministic request-navigation change.
+
 > Current finding-by-finding status is at the top of TESTING-FINDINGS.md. Original failures and intermediate counts below are historical; the final delivery section records the completed remediation and its verification. External setup and explicitly untested coverage remain separate.
 
 > Subsequent judging preparation added a frozen 30-question challenge and strengthened memory-OFF pass criteria. See output/CHALLENGE-RESULTS.md and JUDGING-PACK.md. The local challenge exposed paraphrase misses despite the earlier fixed regression passing; this limitation is now recorded in TESTING-FINDINGS.md. These new API evaluations are not additional manual browser tests or real customer trials.

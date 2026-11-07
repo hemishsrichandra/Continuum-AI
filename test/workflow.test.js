@@ -787,3 +787,28 @@ test('pending specialist confirmation cannot be bypassed by generic outcomes; la
   assert.ok(queue.cases.find(h=>h.id===f.handoff).context.ticket.requirements.some(r=>r.note.includes('after handoff')));
   assert.equal((await f.a.api('resolutions/confirm',{id:proposed.id,accepted:false,confirmed:true})).status,200);
 });
+
+test('a named different request prompts a safe switch instead of answering the selected case', async(t)=>{
+  const f=await fixture(t);
+  const battery=(await f.a.api('request',{title:'QA battery drain',issueDesc:'Model B firmware 3 loses charge.',confirmed:true,memory:false})).data.ticketId;
+  const before=f.h.store.data.handoffs.length;
+  const r=await f.a.api('chat',{ticketId:f.ticketA,message:'what about battery drain request'});
+  assert.equal(r.status,200);
+  assert.deepEqual(r.data.requestChoices,[{id:battery,title:'QA battery drain'}]);
+  assert.doesNotMatch(r.data.reply,/is marked|current ETA|specialist case is already/i);
+  assert.equal(r.data.action,null);
+  assert.equal(r.data.trace.recalled,0);
+  assert.equal(f.h.store.data.handoffs.length,before);
+  const memories=f.h.store.data.memories.length;
+  const failure=await f.a.api('chat',{ticketId:f.ticketA,message:'What about battery drain request? Restarting did not help.'});
+  assert.deepEqual(failure.data.requestChoices,[{id:battery,title:'QA battery drain'}]);
+  assert.equal(f.h.store.data.memories.length,memories);
+  const foreign=await f.a.api('chat',{ticketId:f.ticketA,message:'What about '+f.ticketB+'?'});
+  assert.deepEqual(foreign.data.requestChoices,[]);
+  assert.doesNotMatch(foreign.data.reply,/is marked|current ETA|exists/i);
+  // Selecting the offered request yields its own record and history.
+  const selected=await f.a.api('chat',{ticketId:battery,message:'What is the status of my request?',retain:false});
+  assert.equal(selected.data.ticket.id,battery);
+  assert.match(selected.data.reply,/QA battery drain/);
+  assert.doesNotMatch(selected.data.reply,/Model X display/);
+});

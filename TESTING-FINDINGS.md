@@ -2,6 +2,14 @@
 
 ## Current checklist — rechecked November 6, 2026
 
+### November 7 follow-up: asking about another request — fixed
+
+The user asked "what about battery drain request" while the screen-flicker conversation was selected. The app incorrectly answered with the screen case's status and specialist progress. This was a reproduced request-selection defect, not a battery-status result.
+
+Chat now checks explicit request titles/IDs against the signed-in customer's own request list before recall, fact extraction or action preparation. A different matching request produces an Open request button; ambiguous matches offer choices; unknown or inaccessible IDs return a generic selection prompt. Notes/new-request instructions are not treated as navigation. No automatic cross-request mutation occurs.
+
+Verification: regression failed before implementation, then 59/59 automated tests and HTTP checks passed. A browser Memory lab comparison of the exact question offered Open QA battery drain; clicking it selected that request, showing Received and no ETA rather than the screen request's In progress / ETA. The comparison saved no chat/actions. Screenshot: output/manual-tests/request-reference-selection.png. Existing erroneous messages remain historical records; new messages use the fix after refresh.
+
 This is the current status. The dated reproductions below preserve what failed originally; their old phrases such as "no fix applied" do not describe the delivered code.
 
 | Finding | Current status | Evidence |
