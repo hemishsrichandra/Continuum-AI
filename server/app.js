@@ -190,6 +190,15 @@ export function createHandler({ file, config = process.env, service } = {}) {
       if (!session) throw fault(401, 'Sign in to your Continuum account to continue.');
       limit(session.token_hash, 120);
       const { profile } = session;
+      const customerRoutes = new Set([
+        '/api/workspace', '/api/status', '/api/analytics', '/api/conversation',
+        '/api/conversation/archive', '/api/feedback', '/api/slots', '/api/memory',
+        '/api/reflect', '/api/chat', '/api/request', '/api/requirement', '/api/book',
+        '/api/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
+        '/api/resolutions/outcome', '/api/connector/sync',
+      ]);
+      if (['owner', 'staff'].includes(profile.role) && customerRoutes.has(url.pathname))
+        throw fault(403, 'Customer accounts handle personal requests and confirmations. Use the company dashboard or specialist console.');
       if (endpoint.includes('/connector')) {
         limit(session.token_hash + ':connector', 10);
         if (await connector.handle(req, endpoint, session, write)) return;

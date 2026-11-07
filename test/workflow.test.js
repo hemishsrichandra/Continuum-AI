@@ -498,12 +498,15 @@ test('company boundaries cover knowledge, staff, tickets, assignment, and bookin
     provider: 'repair',
   });
   assert.equal(signup.status, 201);
+  const code = (await other.api('company/customer-code',{confirmed:true})).data.code;
+  const customer = f.client();
+  assert.equal((await customer.api('auth/register',{companyCode:code,name:'Other customer',email:'other-customer@example.test',password,provider:'repair'})).status,201);
   const ticketId = (
-    await other.api('request', { title: 'Model X display', issueDesc: f.question, confirmed: true })
+    await customer.api('request', { title: 'Model X display', issueDesc: f.question, confirmed: true })
   ).data.ticketId;
-  assert.equal((await other.api('chat', { ticketId, message: f.question })).data.trace.learnedResolutions, 0);
+  assert.equal((await customer.api('chat', { ticketId, message: f.question })).data.trace.learnedResolutions, 0);
   assert.equal((await other.api('operator')).data.cases.length, 0);
-  assert.equal((await other.api('status?ticketId=' + f.ticketA)).status, 404);
+  assert.equal((await customer.api('status?ticketId=' + f.ticketA)).status, 404);
   assert.equal((await other.api('operator/retire', { id: r.id, confirmed: true })).status, 404);
   assert.equal(
     (
@@ -518,7 +521,7 @@ test('company boundaries cover knowledge, staff, tickets, assignment, and bookin
   );
   const slot = (await f.b.api('slots?ticketId=' + f.ticketB)).data.slots[0].id;
   assert.equal((await f.b.api('book', { ticketId: f.ticketB, datetime: slot, confirmed: true })).status, 201);
-  assert.equal((await other.api('book', { ticketId, datetime: slot, confirmed: true })).status, 201);
+  assert.equal((await customer.api('book', { ticketId, datetime: slot, confirmed: true })).status, 201);
   assert.equal((await f.b.api('company')).status, 403);
 });
 

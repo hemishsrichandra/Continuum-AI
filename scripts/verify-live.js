@@ -158,15 +158,18 @@ try {
     password,
     provider: 'repair',
   });
+  const otherCode = (await other.api('company/customer-code',{confirmed:true})).code;
+  const otherCustomer = client();
+  await otherCustomer.api('auth/register',{companyCode:otherCode,name:'Other customer',email:'other-customer-'+run+'@example.test',password,provider:'repair'});
   const otherTicket = (
-    await other.api('request', {
+    await otherCustomer.api('request', {
       title: 'Model X display',
       issueDesc: question,
       confirmed: true,
       memory: false,
     })
   ).ticketId;
-  const isolated = await other.api('chat', { ticketId: otherTicket, message: question });
+  const isolated = await otherCustomer.api('chat', { ticketId: otherTicket, message: question });
   check(
     'Other company cannot retrieve resolution',
     isolated.trace.learnedResolutions === 0 && !isolated.reply.includes(solution),

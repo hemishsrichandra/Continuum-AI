@@ -25,21 +25,28 @@ function browser(api) {
 }
 const register = (client, email = 'alex@example.test') => client.call('auth/register', { body: { createCompany:true, companyName:'Test company', name: 'Alex Morgan', email, password, provider: 'repair' } });
 
+async function registerCustomer(client, api, email = 'alex@example.test') {
+  const owner = browser(api);
+  await register(owner, 'owner-' + email);
+  const code = (await owner.call('company/customer-code', {body:{confirmed:true}})).data.code;
+  return client.call('auth/register', {body:{companyCode:code,name:'Alex Morgan',email,password,provider:'repair'}});
+}
+
 test('personal accounts use hashed passwords, HttpOnly cookies, CSRF, and isolated empty workspaces', async (t) => {
   const { api, handler } = setup(t); const client = browser(api);
   assert.equal((await client.call('auth/register', { body: { name: 'A', email: 'a@example.test', password: 'short', provider: 'repair' } })).status, 400);
-  const signup = await register(client); assert.equal(signup.status, 201);
+  const signup = await registerCustomer(client, api); assert.equal(signup.status, 201);
   assert.match(signup.headers['Set-Cookie'], /HttpOnly; SameSite=Lax/); assert.ok(!signup.data.token);
-  const account = handler.store.db.prepare('SELECT * FROM accounts').get();
+  const account = handler.store.db.prepare('SELECT * FROM accounts WHERE email=?').get('alex@example.test');
   assert.match(account.password_hash, /^scrypt:131072:8:1:/); assert.ok(!account.password_hash.includes(password));
-  const session = handler.store.db.prepare('SELECT * FROM sessions').get();
+  const session = handler.store.db.prepare('SELECT * FROM sessions WHERE account_id=?').get(account.id);
   assert.equal(session.token_hash, createHash('sha256').update(client.cookie.split('=')[1]).digest('hex'));
   const workspace = await client.call('workspace'); assert.deepEqual(workspace.data.tickets, []); assert.equal(workspace.data.profile.demo, false);
   const body = { title: 'Personal request', issueDesc: 'My own service record', confirmed: true };
   assert.equal((await client.call('request', { body, noCsrf: true })).status, 403);
   assert.equal((await client.call('request', { body })).status, 201);
   assert.equal((await client.call('request', { body, headers: { 'x-csrf-token': '💡'.repeat(client.csrf.length / 2) } })).status, 403);
-  const second = browser(api); await register(second, 'other@example.test');
+  const second = browser(api); await registerCustomer(second, api, 'other@example.test');
   assert.deepEqual((await second.call('workspace')).data.tickets, []);
   const own = (await client.call('workspace')).data.tickets[0].id;
   assert.equal((await second.call('status?ticketId=' + own)).status, 404);
@@ -146,7 +153,7 @@ test('Google consent uses PKCE and session-bound state; calendar availability, r
     return Response.json(event);
   });
   const { api, handler } = setup(t, { config: { GOOGLE_CLIENT_ID: 'client', GOOGLE_CLIENT_SECRET: 'secret' } });
-  const client = browser(api); await register(client);
+  const client = browser(api); await registerCustomer(client, api);
   const connect = await client.call('integrations/google/connect', { body: {} }); const url = new URL(connect.data.url);
   assert.equal(url.searchParams.get('scope'), 'https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.freebusy'); assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
   const state = url.searchParams.get('state'); const callback = 'integrations/google/callback?state=' + state + '&code=test-code';

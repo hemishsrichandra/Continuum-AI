@@ -16,6 +16,29 @@ async function join(h,code,name,provider='repair'){
  const api=client(h); const r=await api('auth/register',{companyCode:code,name,email:name+'@example.test',password,provider});assert.equal(r.status,201);return api;
 }
 
+test('owner and specialist customer workflows are denied while account and company case management remain available',async t=>{
+ const f=await setup(t), customer=await join(f.h,f.code,'role-customer');
+ const url=(await f.owner('company/invitations',{email:'role-staff@example.test',role:'staff',provider:'repair'})).data.url;
+ const invitation=new URLSearchParams(new URL(url).hash.slice(1)).get('invite');
+ const staff=client(f.h);
+ assert.equal((await staff('auth/register',{invitation,name:'Staff',email:'role-staff@example.test',password})).status,201);
+ const before=JSON.stringify(f.h.store.data);
+ for(const actor of [f.owner,staff]) {
+  for(const route of ['workspace','status','analytics','conversation','slots','memory']) assert.equal((await actor(route)).status,403,route);
+  for(const route of ['request','requirement','book','cancel','handoff','outcome','chat','reflect','feedback','conversation/archive','resolutions/confirm','resolutions/outcome','connector/sync'])
+   assert.equal((await actor(route,{confirmed:true})).status,403,route);
+  assert.equal((await actor('memory',{id:'fake'},'PATCH')).status,403);
+  assert.equal((await actor('auth/session')).status,200);
+  assert.equal((await actor('auth/sessions')).status,200);
+  assert.equal((await actor('operator')).status,200);
+ }
+ assert.equal(JSON.stringify(f.h.store.data),before,'denied actions have no business effects');
+ assert.equal((await f.owner('company')).status,200);
+ assert.equal((await customer('request',{title:'Customer request',issueDesc:'Synthetic issue',confirmed:true})).status,201);
+ assert.equal((await customer('workspace')).data.tickets.length,1);
+ assert.equal((await customer('operator')).status,403);
+});
+
 test('rotating a customer link rejects the old link while existing customer sessions remain valid',async t=>{
  const f=await setup(t);const a=await join(f.h,f.code,'customer-a');
  const next=(await f.owner('company/customer-code',{confirmed:true})).data.code;

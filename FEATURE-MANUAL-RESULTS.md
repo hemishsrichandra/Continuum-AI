@@ -1,5 +1,7 @@
 # Feature manual verification results
 
+Role-policy update: [COMPANY-INTERFACE.md](COMPANY-INTERFACE.md) supersedes owner/staff personal-workspace steps below. Company users now have case management and direct Account & security / Sign out controls, with no customer workspace. The new separation passed 71/71 tests, HTTP checks and isolated browser checks. Earlier owner-personal test fixtures below are historical; customer workflows now require separate customer accounts.
+
 November 7, 2026. Covers all 62 entries in `output/FEATURE-MANUAL.md`, combining the completed memory/learning pass with the remaining-feature pass. **Passed** means the documented controlled scenarios were verified with the methods listed; it is not an exhaustive certification. **User/setup needed** is not represented as a live pass.
 
 Final inventory: **55 entries passed for the tested scenarios; 7 retain user/setup-dependent browser or live-integration steps.** The latter are A8, A9 and G1–G5. Automated tests: **70/70**, HTTP checks passed. Frozen live challenge: **30/30 ON, 30/30 OFF, 30/30 negative controls, 10/10 recovery**, run `7905e0f8`.

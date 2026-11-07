@@ -100,7 +100,7 @@ async function signedOut(notice = '') {
   await login(notice);
 }
 function roleHome(profile) {
-  if (parameters.get('view') === 'personal' || parameters.has('calendar') || profile.demo) return false;
+  if (profile.demo) return false;
   const destination = profile.role === 'owner' ? '/team' : profile.role === 'staff' ? '/operator' : null;
   if (destination) { location.replace(destination); return true; }
   return false;

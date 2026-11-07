@@ -1,3 +1,4 @@
+import {staffAccountControls, bindStaffAccount} from './staff-account.js';
 import { request, escapeHtml as q } from './client.js';
 export async function mountOperator() {
   const app = document.querySelector('#app');
@@ -6,7 +7,7 @@ export async function mountOperator() {
     const formStart = (h, kind) =>
       `<form data-case="${q(h.id)}" data-revision="${h.revision || 0}" data-kind="${kind}" data-key="${crypto.randomUUID()}">`;
     const error = '<p class="notice error" role="alert" hidden></p>';
-    app.innerHTML = `<section class="wrap section"><span class="eyebrow">${data.role === 'owner' ? 'OWNER' : 'SPECIALIST'} · ${data.provider === 'it' ? 'IT INCIDENTS' : 'STANDARD REQUESTS'}</span><h1>Resolve with context.</h1><p class="lead">Claim a case, track troubleshooting, and ask the customer to confirm the solution before it becomes reusable knowledge.</p><div class="actions"><a class="button" href="/desk?view=personal">My requests</a>${data.role === 'owner' ? '<a class="button" href="/team">Company & team</a><a class="button" href="/operator?provider=repair">Standard requests</a><a class="button" href="/operator?provider=it">IT incidents</a>' : ''}<button class="button" id="refresh-queue">Refresh queue</button></div><p id="operator-result" role="status"></p><h2>Service queue</h2>${
+    app.innerHTML = `<section class="wrap section"><span class="eyebrow">${data.role === 'owner' ? 'OWNER' : 'SPECIALIST'} · ${data.provider === 'it' ? 'IT INCIDENTS' : 'STANDARD REQUESTS'}</span><h1>${data.role === 'owner' ? 'Customer cases.' : 'Resolve with context.'}</h1><p class="lead">Claim a case, track troubleshooting, and ask the customer to confirm the solution before it becomes reusable knowledge.</p><div class="actions">${staffAccountControls}${data.role === 'owner' ? '<a class="button" href="/team">Company & team</a><a class="button" href="/operator?provider=repair">Standard cases</a><a class="button" href="/operator?provider=it">IT cases</a>' : ''}<button class="button" id="refresh-queue">Refresh queue</button></div><p id="operator-result" role="status"></p><h2>Service queue</h2>${
       data.cases
         .map((h) => {
           const current = data.resolutions.find((r) => r.id === h.resolutionId);
@@ -28,6 +29,7 @@ export async function mountOperator() {
         })
         .join('') || '<p>No specialist cases yet.</p>'
     }<h2>Resolution library</h2>${data.resolutions.map((r) => `<article class="card"><span class="pill">${q(r.retiredAt ? 'Retired' : r.status || 'published')} · ${q(r.sync)}</span><h3>${q(r.title)}</h3><p>${q(r.symptoms)}</p><p><b>Applies to:</b> ${q(r.environment)}</p><p>${q(r.solution)}</p><p>Follow-up results: ${r.reuse?.succeeded || 0} worked · ${r.reuse?.failed || 0} need help · ${r.reuse?.pending || 0} awaiting feedback</p>${r.reviewRequired && !r.retiredAt ? `<p class="notice">Reuse paused after a failure report. Review the case before approving this fix again.</p><form data-review="${q(r.id)}" data-review-revision="${r.reviewRevision}"><label>Review decision<select name="decision"><option value="keep">Keep after reviewing applicability and failed attempt</option><option value="retire">Retire this fix</option></select></label><label>Why is this decision appropriate?<textarea name="note" required maxlength="1000"></textarea></label><button class="button small">Save review</button><p role="alert" hidden></p></form>` : ''}${!r.retiredAt && !r.reviewRequired && (r.status === 'published' || !r.status) ? `<button class="button small" data-retire="${q(r.id)}">Retire resolution</button>` : ''}</article>`).join('') || '<p>No proposed or published resolutions.</p>'}</section>`;
+    bindStaffAccount(app);
     app.querySelectorAll('form[data-review]').forEach((form) =>
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -102,6 +104,6 @@ export async function mountOperator() {
       }),
     );
   } catch (e) {
-    app.innerHTML = `<section class="wrap section"><h1>Specialist access</h1><p>${q(e.message)}</p><a class="button" href="/desk?view=personal">Sign in</a></section>`;
+    app.innerHTML = `<section class="wrap section"><h1>Specialist access</h1><p>${q(e.message)}</p><a class="button" href="/desk">Sign in</a></section>`;
   }
 }

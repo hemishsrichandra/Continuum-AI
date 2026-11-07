@@ -18,6 +18,7 @@ const routes = {
   '/pages.js': ['pages.js', 'text/javascript; charset=utf-8'],
   '/team': ['index.html', 'text/html; charset=utf-8'],
   '/team.js': ['team.js', 'text/javascript; charset=utf-8'],
+  '/staff-account.js': ['staff-account.js', 'text/javascript; charset=utf-8'],
   '/connector-ui.js': ['connector-ui.js', 'text/javascript; charset=utf-8'],
   '/operator': ['index.html', 'text/html; charset=utf-8'],
   '/operator.js': ['operator.js', 'text/javascript; charset=utf-8'],
