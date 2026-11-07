@@ -10,6 +10,7 @@
     "start": "node server/start.js",
     "test": "node --test",
     "demo": "node scripts/demo.js",
+    "demo:multi": "node scripts/demo-multi-company.js",
     "test:http": "node scripts/check-http.js",
     "verify:live": "node scripts/verify-live.js",
     "evaluate": "node scripts/evaluate.js",

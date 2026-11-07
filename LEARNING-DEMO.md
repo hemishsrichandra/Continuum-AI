@@ -1,22 +1,21 @@
 # Continuum learning demonstration
 
-The current workflow is documented in [IMPLEMENTATION.md](IMPLEMENTATION.md). It requires customer confirmation before knowledge publication.
+Run `npm run demo:multi` in WSL with the repository's Node 22 runtime. It uses a new temporary SQLite database, fictional accounts and local providers, asserts the complete sequence and removes its database when finished. Run `npm run demo:multi -- --serve` to inspect the resulting state at `http://localhost:3211/desk`; the script prints fictional credentials and disables all live integrations. Add `--keep` to preserve only this generated demo database.
 
-1. Start the app in WSL using `bash scripts/start-wsl.sh`.
-2. At `/desk`, create a company owner account. Open **Company & team**.
-3. Generate a customer signup link and use it to create customers A and B with distinct emails. Use separate browser profiles or sign out between accounts.
-4. Invite a specialist, or use the owner's specialist console. Invitations are restricted to their intended email and expire after 48 hours.
-5. A creates a request and asks for a specialist. B creates a similar request with product/version details.
-6. Ask B a troubleshooting question before specialist work: no company resolution exists yet.
-7. The specialist claims A's case, records troubleshooting and a progress update, and proposes reviewed steps with matching symptoms and applicability.
-8. Ask B again before A confirms: the pending fix must not be reused.
-9. A reviews the specialist message and selects **Yes, the issue is fixed**. Only now is knowledge published. Check the specialist library for `synced`.
-10. Ask B varied, previously unseen paraphrases. Inspect **Sources & response details** for Hindsight, the model, and a verified resolution. Wrong product/version questions must exclude the fix; missing prerequisites must ask for clarification.
-11. Switch memory OFF in B's existing conversation: the model must not receive previous learned answers as context.
-12. Retire the resolution and ask B again. The old conversation remains visible, but the retired steps must not enter the new answer through recall or assistant history.
+The script demonstrates:
 
-Run `npm run verify:live` for an isolated synthetic evaluation with separate Hindsight namespaces. It reports publication gating, five held-out paraphrases, incompatible/unrelated questions, OFF, company isolation, and retirement. Reports are saved under ignored `data/`.
+1. Company A has two customers and separate repair and IT chatbots.
+2. Customer One reports a Model X network issue and fails the configured standard connection check.
+3. With no learned fix yet, the issue enters A's human queue. A specialist claims it, proposes structured reviewed steps, and Customer One confirms success.
+4. Customer Two reports a compatible issue, fails the standard stage, receives the confirmed learned fix and records success.
+5. A separate issue demonstrates learned reuse failure, one human case, and knowledge review.
+6. A's IT chatbot and Company B cannot retrieve A's repair solution, even after its review is cleared.
+7. Customer One joins and switches between two companies using one account.
 
-Local mode is useful for deterministic regressions, but a `local` or `pending` status does not establish working cloud integration. Email and Google Calendar are optional for this demonstration.
+For manual testing from an empty isolated database, create the company, two customers and individual staff accounts through signup links and invitations. Configure the standard playbook in **Company & team → Support services**. Finish Customer One's publication lifecycle before Customer Two fails the standard stage; otherwise Customer Two correctly enters human support because no suitable published fix exists yet. A direct Human help request prepares a handoff for explicit confirmation. An exhausted troubleshooting flow submits its local case automatically and reports success only after the commit.
 
-This demonstrates retrieval and reuse of reviewed outcomes; it does not retrain model weights. Broader domains, languages, products, and failure cases need their own held-out evaluations before launch.
+The specialist console shows standard and learned attempt snapshots, outcomes, conversations, assignment and revision checks. Customers confirm or reject proposals in their own service workspace. Memory off preserves operational cases/attempts but disables optional AI memory; a specialist solution confirmed with memory off remains private.
+
+See [MULTI-COMPANY.md](MULTI-COMPANY.md) for the data model, migration, service configuration, gateway contract, memory scopes and limits, and [MULTI-COMPANY-VERIFICATION.md](MULTI-COMPANY-VERIFICATION.md) for actual verification results. The retained `verify:live` script uses live credentials and remote services; it was not run during this implementation.
+
+This is retrieval and reuse of reviewed resolutions, not model-weight training.

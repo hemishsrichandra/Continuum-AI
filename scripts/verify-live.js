@@ -84,7 +84,7 @@ try {
     })
   ).ticketId;
   const ask = (message = question, extra = {}) => b.api('chat', { ticketId: ticketB, message, ...extra });
-  const baseline = await ask();
+  const baseline = await ask(undefined,{retain:false});
   check('No learned fix before specialist work', baseline.trace.learnedResolutions === 0, {
     response: baseline,
   });
@@ -110,7 +110,7 @@ try {
     confirmed: true,
     reviewedForPrivacy: true,
   });
-  check('Unconfirmed solution is not reused', (await ask()).trace.learnedResolutions === 0);
+  check('Unconfirmed solution is not reused', (await ask(undefined,{retain:false})).trace.learnedResolutions === 0);
   const confirmation = await a.api('resolutions/confirm', {
     id: resolution.id,
     accepted: true,

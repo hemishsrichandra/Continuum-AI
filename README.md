@@ -2,6 +2,8 @@
 
 A company-scoped support agent that combines service records, customer preferences, and customer-confirmed specialist resolutions. Businesses can import records from an allowlisted database gateway. See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the implemented workflow, verification, and connector contract.
 
+The multi-company prototype now separates account identity from company memberships, adds independent configurable chatbot services, and persists standard → learned → human troubleshooting. See [MULTI-COMPANY.md](MULTI-COMPANY.md) for migration 4, workspace selection, secure customer imports and the fictional demo (`npm run demo:multi -- --serve`). Current verification is in [MULTI-COMPANY-VERIFICATION.md](MULTI-COMPANY-VERIFICATION.md).
+
 ## Run locally
 
 Use Node.js **22 in WSL** (`.nvmrc`). Install dependencies in WSL so the native SQLite module matches Linux. `bash scripts/start-wsl.sh` starts the app using Node in PATH or the local runtime configured on this computer.
@@ -59,7 +61,7 @@ Memory-off pauses recall and long-term fact retention and excludes previous conv
 
 The standard and IT schema adapters operate on Continuum records. The optional gateway imports a company's existing service records with configurable field mapping and server-side customer binding. Compatible gateways can opt into confirmed-action delivery with durable retries and provider acknowledgements; see [PROVIDER-GATEWAY.md](PROVIDER-GATEWAY.md). No real business gateway is connected on this installation. Live Hindsight and model connections require credentials; `REQUIRE_LIVE_INTEGRATIONS=true` prevents silent fallback.
 
-Recommendations now have **It worked / Still need help** feedback. An unsuccessful fix reopens the request, sends its attempted steps and conversation to a specialist, and pauses further reuse until reviewed. A customer who failed a fix is not given the same resolution again after review. The existing specialist library shows follow-up outcomes and the review control; no new dashboard is required.
+Recommendations have **It worked / Still need help** feedback. A failed standard playbook permits one compatible learned fix; failed learned reuse submits a specialist case and pauses that knowledge until reviewed. A customer who failed a learned fix is not given equivalent steps again after review. The existing specialist library shows outcomes and review controls. Finalized feedback cannot be reversed; use a new request if an issue returns.
 
 ## Checks
 

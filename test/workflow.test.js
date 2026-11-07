@@ -132,7 +132,7 @@ async function fixture(t, config = {}, file) {
 test('customer acceptance gates publication; paraphrases work; incompatible or unknown environments never receive steps', async (t) => {
   const f = await fixture(t);
   const r = await f.propose();
-  assert.equal((await f.ask()).data.trace.learnedResolutions, 0);
+  assert.equal((await f.ask(undefined,{retain:false})).data.trace.learnedResolutions, 0);
   assert.equal(
     (await f.b.api('resolutions/confirm', { id: r.id, accepted: true, confirmed: true })).status,
     404,
@@ -157,7 +157,7 @@ test('customer acceptance gates publication; paraphrases work; incompatible or u
   ).data.ticketId;
   const unknown = await f.b.api('chat', { ticketId: ticket, message: 'The monitor flashes when booting.' });
   assert.equal(unknown.data.trace.learnedResolutions, 0);
-  assert.match(unknown.data.reply, /confirm.*environment/i);
+  assert.match(unknown.data.reply, /device model and operating-system version/i);
   assert.ok(!unknown.data.reply.includes(f.solution));
   assert.equal((await f.ask('How do I update my invoice address?')).data.trace.learnedResolutions, 0);
 });
@@ -183,14 +183,17 @@ test('reused fixes collect one result per ticket; failure creates one contextual
   assert.equal((await f.b.api('status?ticketId=' + f.ticketB)).data.status, 'Resolved');
   let library = (await f.owner.api('operator')).data.resolutions.find((x) => x.id === r.id);
   assert.deepEqual(library.reuse, { pending: 0, succeeded: 1, failed: 0 });
+  assert.equal((await f.b.api('resolutions/outcome',{useId:first.resolutionUse.id,worked:false,confirmed:true})).status,409);
+  const nextTicket=(await f.b.api('request',{title:'Model X display',issueDesc:f.question,confirmed:true})).data.ticketId;
+  const nextUse=(await f.b.api('chat',{ticketId:nextTicket,message:f.question})).data.resolutionUse;
   const failure = await f.b.api('resolutions/outcome', {
-    useId: first.resolutionUse.id,
+    useId: nextUse.id,
     worked: false,
     confirmed: true,
   });
   assert.equal(failure.status, 200);
   assert.equal(
-    (await f.b.api('resolutions/outcome', { useId: first.resolutionUse.id, worked: false, confirmed: true }))
+    (await f.b.api('resolutions/outcome', { useId: nextUse.id, worked: false, confirmed: true }))
       .data.handoffId,
     failure.data.handoffId,
   );
@@ -199,14 +202,14 @@ test('reused fixes collect one result per ticket; failure creates one contextual
   assert.equal(caseB.troubleshooting.length, 1);
   assert.equal(caseB.troubleshooting[0].step, f.solution);
   assert.ok(caseB.conversation.some((c) => c.response.reply.includes(f.solution)));
-  assert.equal((await f.b.api('status?ticketId=' + f.ticketB)).data.status, 'Reopened');
+  assert.equal((await f.b.api('status?ticketId=' + nextTicket)).data.status, 'Reopened');
   library = queue.resolutions.find((x) => x.id === r.id);
   assert.ok(library.reviewRequired);
   assert.equal(library.reuse.failed, 1);
-  assert.equal(library.reuse.succeeded, 0);
+  assert.equal(library.reuse.succeeded, 1);
   const answer = (await f.ask()).data;
   assert.equal(answer.trace.learnedResolutions, 0);
-  assert.equal(answer.decision.mode, 'waiting');
+  assert.equal(answer.workflow.stage, 'resolved');
   assert.equal(answer.action, null);
   assert.ok(!answer.reply.includes(f.solution));
   assert.equal(
@@ -442,7 +445,7 @@ test('memory OFF and retired knowledge never enter later model conversation cont
   const r = await f.propose();
   await f.a.api('resolutions/confirm', { id: r.id, accepted: true, confirmed: true });
   await f.ask();
-  assert.ok(JSON.stringify(prompts.at(-1)).includes(f.solution));
+  assert.ok((await f.ask()).data.reply.includes(f.solution)); // Reviewed steps are rendered by the deterministic workflow.
   await f.ask('What is the current status?', { memory: false });
   assert.ok(!JSON.stringify(prompts.at(-1)).includes(f.solution));
   assert.deepEqual(prompts.at(-1).recentConversation, []);
@@ -505,7 +508,7 @@ test('company boundaries cover knowledge, staff, tickets, assignment, and bookin
     await customer.api('request', { title: 'Model X display', issueDesc: f.question, confirmed: true })
   ).data.ticketId;
   assert.equal((await customer.api('chat', { ticketId, message: f.question })).data.trace.learnedResolutions, 0);
-  assert.equal((await other.api('operator')).data.cases.length, 0);
+  assert.equal((await other.api('operator')).data.cases.length, 1); // No compatible learned fix submits this company's own case.
   assert.equal((await customer.api('status?ticketId=' + f.ticketA)).status, 404);
   assert.equal((await other.api('operator/retire', { id: r.id, confirmed: true })).status, 404);
   assert.equal(
@@ -562,7 +565,7 @@ test('invitations bind email, role, company, expiry, and single use; public cust
   assert.equal((await c.api('operator')).status, 200);
   assert.equal((await c.api('operator?provider=it')).status, 403);
   await f.owner.api('company/revoke-staff', { id: r.data.profile.id, confirmed: true });
-  assert.equal((await c.api('operator')).status, 401);
+  assert.equal((await c.api('operator')).status, 403);
 });
 
 test('expired invitations cannot register; company signup cannot choose owner or staff roles', async (t) => {
@@ -703,6 +706,8 @@ test('read-only gateways enforce allowed origins, customer binding, mapped schem
     .get().encrypted_token;
   assert.ok(!stored.includes('gateway-secret'));
   const account = (await f.a.api('auth/session')).data.profile.id;
+  f.h.store.db.prepare('UPDATE accounts SET email_verified=1 WHERE id=?').run(account);
+  f.h.store.db.prepare('INSERT INTO customer_directory VALUES(?,?,?,?,?)').run((await f.a.api('auth/session')).data.profile.companyId,'customer-a','a@example.test','Customer A',new Date().toISOString());
   assert.equal(
     (await f.owner.api('company/connector/customer', { accountId: account, externalId: 'customer-a' }))
       .status,
@@ -774,7 +779,7 @@ test('revoking a specialist releases active cases and rejects a stale update', a
   assert.equal(h.status,'Queued');
   assert.equal(h.revision,3);
   assert.equal((await f.a.api('status?ticketId=' + f.ticketA)).data.assignedTo, 'Device repair team');
-  assert.equal((await specialist.api('operator')).status,401);
+  assert.equal((await specialist.api('operator')).status,403);
 });
 
 test('pending specialist confirmation cannot be bypassed by generic outcomes; later notes remain in staff context', async(t)=>{

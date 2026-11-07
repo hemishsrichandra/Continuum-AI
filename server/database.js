@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { ensureBots, defaultBotId, knowledgeScope } from './chatbots.js';
 
 const collections = [
   'repair',
@@ -143,6 +144,67 @@ export class SqliteStore {
       worker TEXT, provider_ref TEXT, last_error TEXT, created_at TEXT NOT NULL,
       UNIQUE(company_id,account_id,kind,action_id)
     ); CREATE INDEX IF NOT EXISTS provider_job_ready ON provider_jobs(status,next_attempt);`);
+    this.db.transaction(() => {
+      if (this.db.prepare('SELECT 1 FROM schema_migrations WHERE version=4').get()) return;
+      this.db.exec(`
+        CREATE TABLE company_memberships (
+          company_id TEXT NOT NULL REFERENCES companies(id), account_id TEXT NOT NULL REFERENCES accounts(id),
+          role TEXT NOT NULL CHECK(role IN ('customer','staff','owner')), status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','revoked')),
+          provider TEXT NOT NULL CHECK(provider IN ('repair','it')), created_at INTEGER NOT NULL,
+          PRIMARY KEY(company_id,account_id));
+        CREATE UNIQUE INDEX account_normalized_email ON accounts(lower(trim(email)));
+        INSERT INTO company_memberships SELECT company_id,id,role,'active',COALESCE((SELECT provider FROM staff_access WHERE account_id=accounts.id),provider),created_at FROM accounts;
+        CREATE TABLE chatbots (id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id), adapter TEXT NOT NULL CHECK(adapter IN ('repair','it')), config TEXT NOT NULL CHECK(json_valid(config)), UNIQUE(company_id,id));
+        ALTER TABLE sessions ADD COLUMN active_company_id TEXT REFERENCES companies(id);
+        ALTER TABLE sessions ADD COLUMN active_chatbot_id TEXT REFERENCES chatbots(id);
+        UPDATE sessions SET active_company_id=(SELECT company_id FROM accounts WHERE id=account_id);
+        ALTER TABLE external_customers RENAME TO external_customers_v3;
+        CREATE TABLE external_customers (account_id TEXT NOT NULL REFERENCES accounts(id),company_id TEXT NOT NULL REFERENCES companies(id),external_id TEXT NOT NULL, PRIMARY KEY(company_id,account_id),UNIQUE(company_id,external_id));
+        INSERT INTO external_customers SELECT * FROM external_customers_v3;
+        DROP TABLE external_customers_v3;
+        CREATE TABLE customer_directory (company_id TEXT NOT NULL REFERENCES companies(id),external_id TEXT NOT NULL,email TEXT NOT NULL,display_name TEXT NOT NULL,imported_at TEXT NOT NULL,PRIMARY KEY(company_id,external_id));
+        ALTER TABLE resolution_uses ADD COLUMN chatbot_id TEXT REFERENCES chatbots(id);
+        CREATE TABLE troubleshooting_attempts (
+          id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id), chatbot_id TEXT NOT NULL,
+          customer_id TEXT NOT NULL, ticket_id TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('standard','learned')),
+          fix_id TEXT NOT NULL, snapshot TEXT NOT NULL CHECK(json_valid(snapshot)), context TEXT NOT NULL CHECK(json_valid(context)),
+          outcome TEXT NOT NULL DEFAULT 'pending' CHECK(outcome IN ('pending','succeeded','failed','skipped')),
+          exchange_id TEXT, use_id TEXT REFERENCES resolution_uses(id), handoff_id TEXT, created_at TEXT NOT NULL,outcome_at TEXT,
+          FOREIGN KEY(company_id,chatbot_id) REFERENCES chatbots(company_id,id),
+          UNIQUE(company_id,chatbot_id,customer_id,ticket_id,source));
+        CREATE TABLE troubleshooting_context (company_id TEXT NOT NULL,chatbot_id TEXT NOT NULL,customer_id TEXT NOT NULL,ticket_id TEXT NOT NULL,context TEXT NOT NULL CHECK(json_valid(context)),PRIMARY KEY(company_id,chatbot_id,customer_id,ticket_id));
+      `);
+      for (const c of this.db.prepare('SELECT id FROM companies').all()) ensureBots(this.db, c.id);
+      this.db.exec("UPDATE sessions SET active_chatbot_id=active_company_id || ':' || (SELECT provider FROM company_memberships WHERE company_id=active_company_id AND account_id=sessions.account_id); UPDATE resolution_uses SET chatbot_id=company_id || ':' || provider;");
+      const data = this.data;
+      for (const [collection, rows] of Object.entries(data)) {
+        if (!Array.isArray(rows)) continue;
+        for (const row of rows) {
+          const parts = row.scope?.split(':') || [];
+          const adapter = ['repair','it'].includes(collection) ? collection : row.provider || parts[1];
+          const company = row.companyId || (parts[0] === 'knowledge' ? parts[1] : parts[0]);
+          if (company && ['repair','it'].includes(adapter)) row.chatbotId ||= defaultBotId(company, adapter);
+          if (row.scope?.startsWith('knowledge:')) {
+            const [, c, p] = parts;
+            if (['repair','it'].includes(p)) {
+              row.scope = knowledgeScope(c, defaultBotId(c,p));
+              // Invalidate old remote bank documents locally; worker republishes to the new bank.
+              if (row.syncedTo) row.previousSyncedTo = row.syncedTo;
+              delete row.syncedTo;
+              row.syncPending = true;
+            }
+          }
+        }
+      }
+      this.save(data);
+      for (const u of this.db.prepare('SELECT * FROM resolution_uses ORDER BY created_at DESC').all()) {
+        const r=data.resolutions.find(r=>r.id===u.resolution_id);
+        const insert=this.db.prepare('INSERT OR IGNORE INTO troubleshooting_attempts(id,company_id,chatbot_id,customer_id,ticket_id,source,fix_id,snapshot,context,outcome,exchange_id,use_id,handoff_id,created_at,outcome_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+        insert.run('legacy-standard:'+u.id,u.company_id,u.chatbot_id,u.customer_id,u.ticket_id,'standard','legacy-stage',JSON.stringify({reason:'Legacy learned recommendation predates configured standard playbooks.'}),u.environment,'skipped',u.exchange_id,null,u.handoff_id,u.created_at,u.created_at);
+        insert.run('legacy-learned:'+u.id,u.company_id,u.chatbot_id,u.customer_id,u.ticket_id,'learned',u.resolution_id,JSON.stringify({id:u.resolution_id,environment:r?.environment,solution:r?.solution}),u.environment,u.status,u.exchange_id,u.id,u.handoff_id,u.created_at,u.feedback_at);
+      }
+      this.db.prepare('INSERT INTO schema_migrations VALUES(4,?)').run(new Date().toISOString());
+    }).immediate();
   }
   get data() {
     const data = Object.fromEntries(collections.map((key) => [key, []]));
@@ -150,7 +212,7 @@ export class SqliteStore {
       .prepare('SELECT collection, payload FROM records ORDER BY collection, position')
       .all())
       data[row.collection].push(JSON.parse(row.payload));
-    data.schemaVersion = 3;
+    data.schemaVersion = 4;
     return data;
   }
   save(data) {

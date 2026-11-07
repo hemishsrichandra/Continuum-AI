@@ -1,12 +1,14 @@
 # Continuum: implementation and verification
 
+The current multi-company data model, migration 4, durable standard → learned → human workflow, chatbot configuration and secure directory linking are documented in [MULTI-COMPANY.md](MULTI-COMPANY.md). See [MULTI-COMPANY-VERIFICATION.md](MULTI-COMPANY-VERIFICATION.md) for the latest isolated checks.
+
 ## Product and company model
 
 Continuum is a reusable support agent for service businesses. Each company has isolated customers, cases, preferences, appointments, and reusable knowledge. The standard service and IT adapters are schema presets; the agent is not limited to the marketing examples of device repair.
 
 Owners create companies at `/desk`, manage their team at `/team`, and supervise both schema workspaces at `/operator?provider=repair` or `/operator?provider=it`. A customer joins using a company-specific signup link. Specialists join through expiring, single-use, email-bound invitations. Public registration cannot choose a privileged role. Owners can revoke specialist access and sessions.
 
-An account currently belongs to one company and has one unique email address. Multi-company account switching is not implemented. Existing records migrate atomically into the isolated `legacy` workspace, not into a new company's workspace. A local application administrator can promote an existing legacy account with `node scripts/grant-owner.js email@example.com`. Back up an existing deployment before upgrading.
+An account has one unique normalized email and can have multiple company memberships, with different roles in each company. Sessions explicitly select a company and chatbot; membership is rechecked on each protected request. Existing records retain their original company and repair/IT service scope. Administrative promotion requires an active membership and explicit company: `node scripts/grant-owner.js email@example.com company-id`. Back up an existing deployment before upgrading.
 
 ## Confirmed learning workflow
 
@@ -15,8 +17,8 @@ An account currently belongs to one company and has one unique email address. Mu
 3. A specialist claims it, or the owner assigns someone in that company and schema workspace.
 4. The assignee records progress, ETA, priority, and troubleshooting steps with attempted/failed/succeeded outcomes. Updates appear in A's conversation.
 5. The specialist proposes symptoms, applicability, and reviewed solution steps. This creates a pending solution; it is not shared with B.
-6. A confirms whether it worked. Acceptance resolves the case, records a private resolved outcome, and retains reusable knowledge in a company/provider-specific Hindsight bank. Rejection reopens work and keeps the candidate out of shared recall.
-7. B's question is matched by Hindsight semantic retrieval, followed by a model relevance check. Product and version restrictions are independently checked. Unknown applicability produces a clarification request; conflicts exclude the fix.
+6. A confirms whether it worked. Acceptance resolves the case and publishes knowledge in its company/chatbot scope when memory is on. With memory off, it resolves privately without AI-memory publication. Rejection reopens work and keeps the candidate out of shared recall.
+7. After completing or explicitly skipping the configured standard stage, B's question can retrieve a learned fix through Hindsight semantic retrieval and the existing relevance check. Product and version restrictions are independently checked. Unknown applicability produces a clarification request; conflicts exclude the fix.
 8. Verified steps are delivered verbatim from the reviewed source. They are not expanded with generated procedures. Multiple competing matches ask for specialist guidance rather than merging fixes.
 9. Retiring a resolution excludes it from recall and later model context. The historical UI record remains auditable. A background worker retries remote memory synchronization when configured.
 
@@ -24,7 +26,7 @@ Local mode uses a conservative concept/synonym matcher for demos. It is not a su
 
 ## Reuse outcomes and recovery
 
-Each recommended resolution has one outcome receipt per customer/ticket/resolution. **It worked** resolves the request and records success. **Still need help** reopens it, creates or updates a specialist case with the attempted steps and conversation, and records failure. Duplicate submissions do not inflate counts or duplicate cases. A later recurrence can change a successful attempt to failed; a failed attempt needs a revised specialist solution rather than being toggled back into a success.
+Each recommended resolution has one outcome receipt per customer/ticket/resolution. **It worked** resolves the request and records success. **Still need help** on a learned fix reopens it, creates or updates a specialist case with the attempted steps and conversation, and records failure. Duplicate submissions do not inflate counts or duplicate cases. Finalized feedback is immutable; a later recurrence uses a new request. A failed standard fix permits at most one compatible learned fix before human support.
 
 A failure report pauses new reuse pending staff review. It does not permanently retire knowledge automatically. The specialist must explain whether to keep or retire it, and review must include the latest failure reports. Even after the fix is kept, the customer who already failed it is excluded from repeat recommendations. These controls are part of the existing chat and specialist library.
 

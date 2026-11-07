@@ -5,6 +5,14 @@ export async function mountConnector(app, members) {
   section.className = 'panel content-panel';
   section.innerHTML = `<h2>Connect your service system</h2><p>Import service records and optionally send confirmed request actions to a gateway that supports safe retries. Calendar bookings stay in Continuum.</p><p data-connector-summary>${c.configured ? 'Gateway configured: ' + q(c.baseUrl) : 'No gateway configured.'}</p><p>Allowed gateway origins: ${q(c.allowedOrigins.join(', ') || 'Ask the server owner to configure PROVIDER_ALLOWED_ORIGINS.')}</p><form id="connector-form" autocomplete="off"><label>Gateway base URL<input name="baseUrl" type="url" autocomplete="off" required value="${q(c.baseUrl || '')}"></label><label>Gateway API token<input name="apiToken" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" required></label><label>JSON field mapping<textarea name="mapping" required>${q(JSON.stringify(c.mapping, null, 2))}</textarea></label><label class="privacy-check"><input type="checkbox" name="writesEnabled" ${c.writesEnabled ? 'checked' : ''}> Allow confirmed request actions to sync to this gateway</label><button class="button">Save connection</button></form><h3>Link a customer</h3><form id="external-customer-form"><label>Continuum account<select name="accountId">${members.map((m) => `<option value="${q(m.id)}">${q(m.name)} · ${q(m.email)}</option>`).join('')}</select></label><label>Customer ID in your service system<input name="externalId" required maxlength="200"></label><button class="button">Link customer</button></form><p role="status" id="connector-result"></p>`;
   app.querySelector('section.wrap').append(section);
+  const lookup=document.createElement('form');
+  lookup.innerHTML='<h3>Import a customer record</h3><p>Imports a directory entry only. To link it, the customer must join this company and verify the matching email address.</p><label>External customer ID<input name="externalId" required maxlength="200"></label><button class="button">Look up and import customer</button>';
+  section.querySelector('#external-customer-form').before(lookup);
+  lookup.addEventListener('submit',async e=>{
+    e.preventDefault();const button=lookup.querySelector('button');button.disabled=true;
+    try {const r=await request('company/connector/lookup-customer',{body:Object.fromEntries(new FormData(lookup))});section.querySelector('#connector-result').textContent=`Imported ${r.customer.displayName} (${r.customer.email}). No account was created.`;}
+    catch(error){section.querySelector('#connector-result').textContent=error.message;}finally{button.disabled=false;}
+  });
   for (const [id, route] of [
     ['connector-form', 'company/connector'],
     ['external-customer-form', 'company/connector/customer'],

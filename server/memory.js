@@ -56,7 +56,7 @@ export function createMemory(store, config = process.env) {
             await retain(scope, unsynced);
             store.update((data) => {
               for (const m of data.memories)
-                if (unsynced.some((item) => item.id === m.id)) m.syncedTo = base + '/' + bank(scope);
+                if (unsynced.some((item) => item.id === m.id)) {m.syncedTo = base + '/' + bank(scope);m.syncPending=false;}
             });
           }
         })().catch((e) => {
@@ -186,6 +186,7 @@ export function createMemory(store, config = process.env) {
           store.update((data) => {
             const entry = data.memories.find((m) => m.id === item.id);
             entry.syncedTo = base + '/' + bank(item.scope);
+            entry.syncPending = false;
           });
         }
         return 'synced';

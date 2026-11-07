@@ -1,3 +1,4 @@
+import { ensureBots, defaultBotId, getBot } from './chatbots.js';
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { fault, profiles } from './providers.js';
@@ -62,12 +63,27 @@ export function createAuth(store, config, delivery, companies) {
         retryAfter: Math.max(1, Math.ceil((bucket.reset_at - now) / 1000)),
       });
   }
-  function profileFor(account) {
+  function profileFor(account, companyId, chatbotId, recover = false) {
+    const memberships = sql.prepare("SELECT m.*,c.name AS company_name FROM company_memberships m JOIN companies c ON c.id=m.company_id WHERE account_id=? AND status='active' ORDER BY m.created_at,c.id").all(account.id);
+    const membership = (companyId ? memberships.find(m => m.company_id === companyId) : memberships[0]) || (recover ? memberships[0] : null);
+    if (!membership) {
+      if(recover) return {id:account.id,name:account.name,email:account.email,verified:Boolean(account.email_verified),demo:false,companyId:null,chatbotId:null,role:null,memberships:[],initials:account.name.slice(0,2).toUpperCase()};
+      throw fault(403, 'Your company membership is no longer active. Select an authorized workspace.');
+    }
+    ensureBots(sql, membership.company_id);
+    let bot;
+    try { bot = getBot(sql, membership.company_id, chatbotId || defaultBotId(membership.company_id, membership.provider)); } catch(e) { if(!recover) throw e; }
+    if(recover && (!bot?.active || (membership.role === 'staff' && bot.adapter !== membership.provider))) bot=sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(membership.company_id).map(r=>JSON.parse(r.config)).find(b=>b.active && (membership.role !== 'staff' || b.adapter===membership.provider));
+    if(!bot && (membership.role==='owner' || recover)) bot=getBot(sql,membership.company_id,defaultBotId(membership.company_id,membership.provider));
+    if(!bot) throw fault(403,'No active service is available in this company.');
+    if ((!bot.active && membership.role !== 'owner' && !recover) || (membership.role === 'staff' && bot.adapter !== membership.provider)) throw fault(403, 'This service is not available to your membership.');
     return {
       id: account.id,
-      companyId: account.company_id,
-      companyName: sql.prepare('SELECT name FROM companies WHERE id=?').get(account.company_id)?.name,
-      role: account.role,
+      companyId: membership.company_id,
+      companyName: membership.company_name,
+      memberships: memberships.map(m => ({companyId:m.company_id, name:m.company_name,role:m.role})),
+      chatbotId: bot.id, chatbotName: bot.name,
+      role: membership.role,
       name: account.name,
       email: account.email,
       initials: account.name
@@ -76,8 +92,8 @@ export function createAuth(store, config, delivery, companies) {
         .join('')
         .slice(0, 2)
         .toUpperCase(),
-      provider: account.provider,
-      label: account.provider === 'repair' ? 'Service requests' : 'IT Support',
+      provider: bot.adapter,
+      label: bot.name,
       ticketId: null,
       verified: Boolean(account.email_verified),
       demo: false,
@@ -90,7 +106,7 @@ export function createAuth(store, config, delivery, companies) {
       csrfToken = secret();
     sql.prepare('DELETE FROM sessions WHERE expires_at<=?').run(now);
     sql
-      .prepare('INSERT INTO sessions VALUES(?,?,?,?,?,?,?)')
+      .prepare('INSERT INTO sessions(token_hash,account_id,demo_profile,csrf_token,expires_at,last_seen,created_at) VALUES(?,?,?,?,?,?,?)')
       .run(
         hashToken(token),
         account?.id || null,
@@ -100,10 +116,14 @@ export function createAuth(store, config, delivery, companies) {
         now,
         now,
       );
+    if (account) {
+      const p = profileFor(account,undefined,undefined,true);
+      sql.prepare('UPDATE sessions SET active_company_id=?,active_chatbot_id=? WHERE token_hash=?').run(p.companyId,p.chatbotId,hashToken(token));
+    }
     return {
       token,
       csrfToken,
-      profile: account ? profileFor(account) : { ...demoProfile, demo: true },
+      profile: account ? profileFor(account,undefined,undefined,true) : { ...demoProfile, demo: true },
       expiresAt: new Date(now + lifetime).toISOString(),
     };
   }
@@ -130,7 +150,7 @@ export function createAuth(store, config, delivery, companies) {
     return {
       ...session,
       account,
-      profile: account ? profileFor(account) : { ...demo, demo: true },
+      profile: account ? profileFor(account, session.active_company_id, session.active_chatbot_id, req.url.startsWith('/api/auth/')) : { ...demo, demo: true },
       cookie: Boolean(browserToken),
       csrfToken: session.csrf_token,
     };
@@ -176,6 +196,41 @@ export function createAuth(store, config, delivery, companies) {
     const ip = req.socket.remoteAddress;
     if (endpoint === 'GET /api/auth/config') {
       send(200, { demoEnabled, emailConfigured: delivery.emailConfigured, verificationRequired });
+      return true;
+    }
+    if (endpoint === 'GET /api/auth/workspaces') {
+      if (!session?.account_id) throw fault(401, 'Sign in to select a workspace.');
+      const memberships = sql.prepare("SELECT m.company_id AS companyId,c.name,m.role FROM company_memberships m JOIN companies c ON c.id=m.company_id WHERE account_id=? AND status='active'").all(session.account_id);
+      send(200, { memberships, companyId: session.profile.companyId, chatbotId: session.profile.chatbotId,
+        chatbots: sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(session.profile.companyId).map(r=>JSON.parse(r.config)).filter(b=>b.active && (session.profile.role !== 'staff' || b.adapter === session.profile.provider)) });
+      return true;
+    }
+    if (endpoint === 'POST /api/auth/workspace') {
+      if (!session?.account_id) throw fault(401, 'Sign in to select a workspace.');
+      const body = await json(req);
+      const profile = profileFor(session.account, field(body.companyId, 'company', 100), body.chatbotId);
+      sql.prepare('UPDATE sessions SET active_company_id=?,active_chatbot_id=? WHERE token_hash=?').run(profile.companyId,profile.chatbotId,session.token_hash);
+      send(200, {profile,csrfToken:session.csrfToken});
+      return true;
+    }
+    if (endpoint === 'POST /api/auth/join') {
+      if (!session?.account_id) throw fault(401, 'Sign in before joining another company.');
+      const body = await json(req);
+      const joined = sql.transaction(() => {
+        if (!body.invitation && !body.companyCode) throw fault(400, 'Use a company signup code or invitation.');
+        const m = companies.registration({...body,createCompany:false,provider:['repair','it'].includes(body.provider)?body.provider:'repair'},session.account.email);
+        ensureBots(sql,m.companyId);
+        const existing = sql.prepare('SELECT * FROM company_memberships WHERE company_id=? AND account_id=?').get(m.companyId,session.account_id);
+        if (existing?.status === 'revoked' && !body.invitation) throw fault(403, 'This membership was revoked. Ask the company owner for a new invitation.');
+        if(existing?.status === 'revoked' && body.invitation)
+          sql.prepare("UPDATE company_memberships SET status='active',role=?,provider=? WHERE company_id=? AND account_id=?").run(m.role,m.provider,m.companyId,session.account_id);
+        sql.prepare("INSERT INTO company_memberships VALUES(?,?,?,'active',?,?) ON CONFLICT(company_id,account_id) DO NOTHING").run(m.companyId,session.account_id,m.role,m.provider,Date.now());
+        if(existing?.role==='customer' && body.invitation && m.role==='staff')
+          sql.prepare("UPDATE company_memberships SET role='staff',provider=? WHERE company_id=? AND account_id=? AND status='active'").run(m.provider,m.companyId,session.account_id);
+        store.update(data=>data.audit.push({id:randomUUID(),scope:`company:${m.companyId}`,kind:'membership_join',authorId:session.account_id,createdAt:new Date().toISOString()}));
+        return m;
+      }).immediate();
+      send(200, {success:true,companyId:joined.companyId});
       return true;
     }
     if (endpoint === 'GET /api/auth/session') {
@@ -233,6 +288,8 @@ export function createAuth(store, config, delivery, companies) {
               account.company_id,
               account.role,
             );
+          ensureBots(sql, account.company_id);
+          sql.prepare("INSERT INTO company_memberships VALUES(?,?,?,'active',?,?)").run(account.company_id,account.id,account.role,account.provider,Date.now());
           if (account.role === 'staff')
             sql.prepare('INSERT INTO staff_access VALUES(?,?)').run(account.id, account.provider);
           if (delivery.emailConfigured) queueLink(account, 'verify');
