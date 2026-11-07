@@ -1,0 +1,774 @@
+{
+  "run": "7905e0f8",
+  "startedAt": "2026-11-07T06:57:06.035Z",
+  "dataset": "synthetic challenge v1",
+  "datasetSha256": "fca84197c9a223a295f345436f572442d3b4fe6de9333192403a1834af82098d",
+  "plannedCases": 10,
+  "plannedPositiveQuestions": 30,
+  "namespace": "continuum-hemish-evaluation-7905e0f8",
+  "mode": "live Hindsight/model",
+  "synthetic": true,
+  "cases": [
+    {
+      "id": "display",
+      "positive": [
+        {
+          "question": "Every time the computer starts, the picture rapidly alternates between bright and dark.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Display flicker (SR-17F7AFA9-8738-4DD4-852B-FD80779D9456) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model X firmware 4:\nDisable Adaptive Refresh in Display Settings, then install the approved display driver 4.2.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 6289
+          },
+          "off": {
+            "reply": "Your ticket (SR‑17F7AFA9‑8738‑4DD4‑852B‑FD80779D9456) is currently marked **Received** and has not yet been assigned an ETA. It’s with the Device Repair team. Would you like me to add a note to the ticket or check available appointment slots for a repair? Let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 767
+          }
+        },
+        {
+          "question": "During boot the built-in panel keeps flashing, although the machine finishes starting.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Display flicker (SR-17F7AFA9-8738-4DD4-852B-FD80779D9456) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model X firmware 4:\nDisable Adaptive Refresh in Display Settings, then install the approved display driver 4.2.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 4368
+          },
+          "off": {
+            "reply": "Display flicker (SR-17F7AFA9-8738-4DD4-852B-FD80779D9456) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 28
+          }
+        },
+        {
+          "question": "Startup completes but the image on the notebook is blinking. Is there an approved remedy?",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Display flicker (SR-17F7AFA9-8738-4DD4-852B-FD80779D9456) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model X firmware 4:\nDisable Adaptive Refresh in Display Settings, then install the approved display driver 4.2.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 3197
+          },
+          "off": {
+            "reply": "Display flicker (SR-17F7AFA9-8738-4DD4-852B-FD80779D9456) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 15
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "Every time the computer starts, the picture rapidly alternates between bright and dark. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your ticket (SR-17F7AFA9‑8738‑4DD4‑852B‑FD80779D9456) is currently marked **Received**. The device repair team has not provided an ETA yet. Would you like me to add any additional notes to the ticket or check availability for a service appointment? Let me know how you’d like to proceed."
+        },
+        {
+          "question": "Every time the computer starts, the picture rapidly alternates between bright and dark.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-9BF36D53-29A3-432C-9B4B-C447ED257479) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Model X firmware 4"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "The ticket SR‑17F7AFA9‑8738‑4DD4‑852B‑FD80779D9456 is currently **Received** and has no ETA. Updating an invoice address isn’t related to this device issue, but we can add a note to the ticket or direct you to the billing team. Would you like us to (a) add a note requesting the address change, or (b) provide the contact details for the billing department? Please let us know which option you prefer."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "wireless",
+      "positive": [
+        {
+          "question": "I keep getting kicked off the wireless network and have to reconnect.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Wireless disconnect (SR-186BDEE1-E40E-4A6A-B9CD-F020C5564C6C) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model R firmware 2:\nRemove the stale saved network profile, then reconnect using the company-provided wireless profile.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 4016
+          },
+          "off": {
+            "reply": "Your ticket (SR‑186BDEE1‑E40E‑4A6A‑B9CD‑F020C5564C6C) is currently **Received** and has been assigned to the Device Repair team. No ETA has been posted yet. I can add a note to the ticket or check for upcoming appointment availability if that would help. Please let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 793
+          }
+        },
+        {
+          "question": "The Wi-Fi works briefly, loses its connection, then does it all over again.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Wireless disconnect (SR-186BDEE1-E40E-4A6A-B9CD-F020C5564C6C) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model R firmware 2:\nRemove the stale saved network profile, then reconnect using the company-provided wireless profile.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 4595
+          },
+          "off": {
+            "reply": "Your ticket (SR‑186BDEE1‑E40E‑4A6A‑B9CD‑F020C5564C6C) is currently **Received** and has not been assigned an ETA yet. I can add a note with any additional details you provide, or check the next available appointment slot for the Device repair team. Please let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 765
+          }
+        },
+        {
+          "question": "My internet connection repeatedly drops while I am working over Wi-Fi.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Wireless disconnect (SR-186BDEE1-E40E-4A6A-B9CD-F020C5564C6C) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model R firmware 2:\nRemove the stale saved network profile, then reconnect using the company-provided wireless profile.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 2943
+          },
+          "off": {
+            "reply": "Your ticket SR‑186BDEE1‑E40E‑4A6A‑B9CD‑F020C5564C6C is currently marked **Received** with no ETA posted. I can add a note to the ticket or check availability for a service appointment. Please let me know which action you’d prefer.",
+            "decision": "status",
+            "elapsedMs": 954
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "I keep getting kicked off the wireless network and have to reconnect. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your ticket SR‑186BDEE1‑E40E‑4A6A‑B9CD‑F020C5564C6C is currently **Received** and has not been assigned an ETA yet. The Device Repair team will review the repeated Wi‑Fi disconnects on the R model (firmware 2). Would you like me to add any additional notes to the ticket or check the next available appointment slot for further diagnostics?"
+        },
+        {
+          "question": "I keep getting kicked off the wireless network and have to reconnect.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-F216015D-2F8A-4336-8EDE-5AAC43D81869) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Model R firmware 2"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "I’m sorry—I don’t see any invoice‑address details in the current ticket (SR‑186BDEE1‑E40E‑4A6A‑B9CD‑F020C5564C6C), which is focused on a Wi‑Fi disconnect issue. Could you confirm whether you’d like me to open a separate billing request, or direct you to the appropriate billing team for updating the invoice address? Once I have that clarification, I can add a note or route the request accordingly."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "battery",
+      "positive": [
+        {
+          "question": "A full charge disappears far too soon, even when the computer is doing very little.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Battery drain (SR-E6369110-D875-4900-9D13-7404700207E0) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model B firmware 3:\nDisable background device discovery in the approved power profile and apply the verified battery controller update.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 6202
+          },
+          "off": {
+            "reply": "Your ticket SR‑E6369110‑D875‑4900‑9D13‑7404700207E0 is currently **Received** and has been assigned to our Device Repair team. No ETA has been posted yet. I can add a note to the ticket or check available appointment times for a repair if you’d like. Please let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 3888
+          }
+        },
+        {
+          "question": "The battery percentage falls unusually fast while the notebook sits idle.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Battery drain (SR-E6369110-D875-4900-9D13-7404700207E0) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model B firmware 3:\nDisable background device discovery in the approved power profile and apply the verified battery controller update.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 8940
+          },
+          "off": {
+            "reply": "Battery drain (SR-E6369110-D875-4900-9D13-7404700207E0) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 39
+          }
+        },
+        {
+          "question": "I unplug the laptop and it runs out of battery much sooner than it should.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Battery drain (SR-E6369110-D875-4900-9D13-7404700207E0) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model B firmware 3:\nDisable background device discovery in the approved power profile and apply the verified battery controller update.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 7817
+          },
+          "off": {
+            "reply": "Battery drain (SR-E6369110-D875-4900-9D13-7404700207E0) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 45
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "A full charge disappears far too soon, even when the computer is doing very little. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your ticket SR‑E6369110‑D875‑4900‑9D13‑7404700207E0 is currently **Received**; no ETA has been posted yet. I can add a note to the ticket or check the next available appointment for a device repair. Please let me know how you’d like to proceed."
+        },
+        {
+          "question": "A full charge disappears far too soon, even when the computer is doing very little.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-B66F81BA-EC76-4389-A6A3-161385565140) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Model B firmware 3"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "I’m happy to help, but the current ticket (SR‑E6369110‑D875‑4900‑9D13‑7404700207E0) concerns a battery‑drain issue and doesn’t include any details on your invoicing information. Could you please confirm the account or order number associated with the invoice you’d like to update? I’ll forward the request to the billing team once we have that reference. Thank you."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "printer",
+      "positive": [
+        {
+          "question": "A sheet is trapped in the printer and the job cannot continue.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Paper jam (SR-2CBBC34E-D7EE-41F2-99B2-BBE1659089CC) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model P firmware 6:\nRemove the folded sheet from the rear paper guide, then reload flat paper within the marked tray limit.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 3830
+          },
+          "off": {
+            "reply": "Your ticket SR‑2CBBC34E‑D7EE‑41F2‑99B2‑BBE1659089CC is currently marked **Received** and no ETA has been posted yet. I can add a note to the ticket or check the device‑repair team’s appointment availability for you. Please let me know which you’d prefer.",
+            "decision": "status",
+            "elapsedMs": 3789
+          }
+        },
+        {
+          "question": "The printer stopped feeding paper and says a page is jammed inside.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Paper jam (SR-2CBBC34E-D7EE-41F2-99B2-BBE1659089CC) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model P firmware 6:\nRemove the folded sheet from the rear paper guide, then reload flat paper within the marked tray limit.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 9365
+          },
+          "off": {
+            "reply": "Your ticket (SR‑2CBBC34E‑D7EE‑41F2‑99B2‑BBE1659089CC) is currently marked **Received** with no ETA posted yet. I can add a note to the ticket with any details you’d like to include, or I can check the Device Repair team’s next available appointment window for a service visit. Please let me know which action you’d prefer.",
+            "decision": "status",
+            "elapsedMs": 3070
+          }
+        },
+        {
+          "question": "Printing has stopped because paper is wedged in the feed path.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Paper jam (SR-2CBBC34E-D7EE-41F2-99B2-BBE1659089CC) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model P firmware 6:\nRemove the folded sheet from the rear paper guide, then reload flat paper within the marked tray limit.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 9018
+          },
+          "off": {
+            "reply": "We see the paper jam ticket (SR‑2CBBC34E‑D7EE‑41F2‑99B2‑BBE1659089CC) is currently marked **Received** and no ETA has been posted. Would you like us to add a note to the ticket, or check the device‑repair team’s appointment availability for a service visit? Please let us know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 3927
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "A sheet is trapped in the printer and the job cannot continue. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your ticket SR‑2CBBC34E‑D7EE‑41F2‑99B2‑BBE1659089CC is currently marked **Received** and no ETA has been posted. We can add a note to the ticket or check availability for a service appointment. Please let us know which action you’d like to take."
+        },
+        {
+          "question": "A sheet is trapped in the printer and the job cannot continue.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-9A4A2D68-0E5F-434D-AEF5-BAD1CA27E6EB) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Model P firmware 6"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your current ticket SR‑2CBBC34E‑D7EE‑41F2‑99B2‑BBE1659089CC is for a printer paper jam and is marked **Received** with no ETA yet. Updating the invoice address isn’t related to this ticket. Would you like me to add a note to this ticket requesting the address change, or should we open a separate request for the billing update? Please let me know how you’d like to proceed."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "vpn",
+      "positive": [
+        {
+          "question": "I reach the VPN sign-in screen but it will not accept my authentication.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "VPN authentication (SR-57ED1B45-AB4F-402F-BD9D-2C16C996F8B6) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 11:\nRemove the expired VPN certificate and import the replacement certificate issued by the company support team.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 4008
+          },
+          "off": {
+            "reply": "VPN authentication (SR-57ED1B45-AB4F-402F-BD9D-2C16C996F8B6) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 85
+          }
+        },
+        {
+          "question": "The corporate VPN turns down my login attempt instead of connecting.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "VPN authentication (SR-57ED1B45-AB4F-402F-BD9D-2C16C996F8B6) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 11:\nRemove the expired VPN certificate and import the replacement certificate issued by the company support team.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 10688
+          },
+          "off": {
+            "reply": "VPN authentication (SR-57ED1B45-AB4F-402F-BD9D-2C16C996F8B6) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 75
+          }
+        },
+        {
+          "question": "VPN authentication fails every time I try to sign in.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "VPN authentication (SR-57ED1B45-AB4F-402F-BD9D-2C16C996F8B6) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 11:\nRemove the expired VPN certificate and import the replacement certificate issued by the company support team.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 11758
+          },
+          "off": {
+            "reply": "VPN authentication (SR-57ED1B45-AB4F-402F-BD9D-2C16C996F8B6) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 39
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "I reach the VPN sign-in screen but it will not accept my authentication. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "handoff",
+          "reply": "VPN authentication (SR-57ED1B45-AB4F-402F-BD9D-2C16C996F8B6) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it."
+        },
+        {
+          "question": "I reach the VPN sign-in screen but it will not accept my authentication.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-353A5BC0-3009-47ED-AB30-7F353DE75460) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Windows 11"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "I see your current ticket (SR‑57ED1B45‑AB4F‑402F‑BD9D‑2C16C996F8B6) is for a VPN login issue and is marked **Received** with no ETA posted. Updating an invoice address falls under billing, which isn’t linked to this ticket. Would you like me to open a separate billing request or add a note to this ticket directing it to the billing team? Please let me know the preferred next step."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "audio",
+      "positive": [
+        {
+          "question": "A video is playing but nothing can be heard from the built-in speakers.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Silent audio (SR-FDCE6DFC-7E4A-4457-8293-2B021CB4503F) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model A firmware 2:\nSelect the internal audio output in the approved audio utility and disable the disconnected docking-station output.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 4082
+          },
+          "off": {
+            "reply": "Your ticket (SR‑FDCE6DFC‑7E4A‑4457‑8293‑2B021CB4503F) is currently **Received** and assigned to the Device Repair team. No ETA has been posted yet. Would you like me to add a note to the ticket, or check the next available appointment for a repair? Please let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 685
+          }
+        },
+        {
+          "question": "There is no sound coming out of the laptop audio output.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Silent audio (SR-FDCE6DFC-7E4A-4457-8293-2B021CB4503F) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model A firmware 2:\nSelect the internal audio output in the approved audio utility and disable the disconnected docking-station output.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 11622
+          },
+          "off": {
+            "reply": "We’ve logged your “Silent audio” issue (SR‑FDCE6DFC‑7E4A‑4457‑8293‑2B021CB4503F). The ticket is currently marked **Received**, and no ETA has been posted yet. Would you like us to add a note to the ticket, or check availability for a repair appointment? Please let us know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 5183
+          }
+        },
+        {
+          "question": "The speakers stay completely quiet when I play audio.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Silent audio (SR-FDCE6DFC-7E4A-4457-8293-2B021CB4503F) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model A firmware 2:\nSelect the internal audio output in the approved audio utility and disable the disconnected docking-station output.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 6361
+          },
+          "off": {
+            "reply": "Your ticket **SR‑FDCE6DFC‑7E4A‑4457‑8293‑2B021CB4503F** is currently marked **Received** and no ETA has been provided yet. Would you like me to add a note to the ticket, or check the next available appointment for a device‑repair visit? Please let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 3834
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "A video is playing but nothing can be heard from the built-in speakers. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your ticket (SR‑FDCE6DFC‑7E4A‑4457‑8293‑2B021CB4503F) is currently **Received** and has been assigned to the Device repair team. No ETA has been posted yet. Would you like us to add a note to the ticket or check the availability for a service appointment?"
+        },
+        {
+          "question": "A video is playing but nothing can be heard from the built-in speakers.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-8245E26C-C197-405D-B31E-A501B0DE0CE3) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Model A firmware 2"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your current ticket (SR‑FDCE6DFC‑7E4A‑4457‑8293‑2B021CB4503F) is still **Received** and concerns silent audio on Model A (firmware 2). Updating the invoice address falls under billing, not this device issue. I’ll add a note to your ticket and forward the request to the billing team. Could you please confirm the new invoice address you’d like us to use? Once we have that, they can apply the change."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "camera",
+      "positive": [
+        {
+          "question": "My meeting camera preview is just an empty black rectangle.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Camera preview (SR-976DA04F-5A77-4F74-9AFC-FA9791D8BBFA) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model C firmware 3:\nOpen the physical camera privacy shutter and reselect the internal camera in the meeting application.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 4109
+          },
+          "off": {
+            "reply": "Your ticket **SR‑976DA04F‑5A77‑4F74‑9AFC‑FA9791D8BBFA** is currently marked **Received**. No ETA has been posted yet. I can add a note to the ticket or check appointment availability for a repair. Please let me know which option you’d prefer.",
+            "decision": "status",
+            "elapsedMs": 4042
+          }
+        },
+        {
+          "question": "The webcam is selected but its preview contains no picture, only black.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Camera preview (SR-976DA04F-5A77-4F74-9AFC-FA9791D8BBFA) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model C firmware 3:\nOpen the physical camera privacy shutter and reselect the internal camera in the meeting application.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 7400
+          },
+          "off": {
+            "reply": "We have your ticket SR‑976DA04F‑5A77‑4F74‑9AFC‑FA9791D8BBFA recorded as **Received** with no ETA yet. I can add a note about the black preview issue or check the next available appointment for the Device repair team. Please let me know which action you’d prefer.",
+            "decision": "status",
+            "elapsedMs": 5120
+          }
+        },
+        {
+          "question": "Instead of showing me, the camera preview stays blank.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Camera preview (SR-976DA04F-5A77-4F74-9AFC-FA9791D8BBFA) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model C firmware 3:\nOpen the physical camera privacy shutter and reselect the internal camera in the meeting application.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 8898
+          },
+          "off": {
+            "reply": "Your ticket (SR‑976DA04F‑5A77‑4F74‑9AFC‑FA9791D8BBFA) is currently **Received** and has been assigned to the Device repair team. No ETA has been posted yet. We can add a note to the ticket or check appointment availability for a repair visit. Please let us know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 3036
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "My meeting camera preview is just an empty black rectangle. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your ticket (SR‑976DA04F‑5A77‑4F74‑9AFC‑FA9791D8BBFA) is currently **Received** and assigned to the Device repair team. No ETA has been posted yet. Would you like me to add a note to the ticket, or check availability for an on‑site appointment? Please let me know how you’d like to proceed."
+        },
+        {
+          "question": "My meeting camera preview is just an empty black rectangle.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-2F9CCCB6-9ECA-478E-B997-4EAB7FA72B27) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Model C firmware 3"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your current ticket (SR‑976DA04F‑5A77‑4F74‑9AFC‑FA9791D8BBFA) concerns a webcam preview issue and is still marked **Received**. Updating an invoice address isn’t covered in this ticket’s scope. Would you like me to open a separate request for the billing change, or add a note to this ticket directing it to the billing team? Please let me know how you’d like to proceed."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "storage",
+      "positive": [
+        {
+          "question": "I cannot save anything because the drive has no room left.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Storage capacity (SR-C11BE13C-7C02-4592-A956-6E933BD4FCF9) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 10:\nUse the built-in Storage settings to remove temporary update files, preserving personal files and installed applications.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 6826
+          },
+          "off": {
+            "reply": "Your ticket (SR‑C11BE13C‑7C02‑4592‑A956‑6E933BD4FCF9) is currently marked **Received** and no ETA has been posted yet. I can add a note to the ticket or check the next available appointment for the device repair team. Please let me know which action you’d prefer, or if there’s any additional information you’d like us to include.",
+            "decision": "status",
+            "elapsedMs": 5992
+          }
+        },
+        {
+          "question": "The computer reports that its storage capacity is completely used up.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Storage capacity (SR-C11BE13C-7C02-4592-A956-6E933BD4FCF9) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 10:\nUse the built-in Storage settings to remove temporary update files, preserving personal files and installed applications.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 10434
+          },
+          "off": {
+            "reply": "Your ticket SR‑C11BE13C‑7C02‑4592‑A956‑6E933BD4FCF9 is currently **Received** and has not been assigned an ETA yet. Would you like me to add any additional notes to the ticket, or check availability for a repair appointment? Let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 4024
+          }
+        },
+        {
+          "question": "The disk is full and there is no free space for another file.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Storage capacity (SR-C11BE13C-7C02-4592-A956-6E933BD4FCF9) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Windows 10:\nUse the built-in Storage settings to remove temporary update files, preserving personal files and installed applications.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 9466
+          },
+          "off": {
+            "reply": "Your ticket SR‑C11BE13C‑7C02‑4592‑A956‑6E933BD4FCF9 is currently marked **Received** with no ETA posted. It’s assigned to the Device repair team. Would you like me to add a note to the ticket, or check the next available appointment for a technician visit? Please let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 5105
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "I cannot save anything because the drive has no room left. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "We’ve logged your “Disk storage full” issue (Ticket SR‑C11BE13C‑7C02‑4592‑A956‑6E933BD4FCF9). The ticket is currently **Received** and assigned to the Device Repair team; no ETA has been posted yet. Would you like us to add a note with additional details (e.g., firmware version) or check the next available appointment for a repair? Please let us know how you’d like to proceed."
+        },
+        {
+          "question": "I cannot save anything because the drive has no room left.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-4B039D6A-DF3A-47A5-8ED9-D0EEC5E15F75) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Windows 10"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your current ticket (SR‑C11BE13C‑7C02‑4592‑A956‑6E933BD4FCF9) is logged under “Storage capacity” and is currently **Received** with no ETA assigned. Updating an invoice address isn’t related to this ticket. Would you like me to open a separate request for the invoice change, or add a note to this ticket indicating the new address? Please let me know how you’d like to proceed."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "email",
+      "positive": [
+        {
+          "question": "My mailbox has stopped updating with new messages.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Email synchronization (SR-4A560C17-CB0C-4B01-B5B1-EF6FB8E11F8C) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model M firmware 5:\nResume synchronization for the affected mailbox and replace its expired sign-in session using the approved account flow.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 5277
+          },
+          "off": {
+            "reply": "We’ve logged your mailbox‑sync issue under ticket SR‑4A560C17‑CB0C‑4B01‑B5B1‑EF6FB8E11F8C. The ticket is currently **Received** and is assigned to the Device Repair team. At this time there is no ETA posted. Would you like us to add a note to the ticket or check appointment availability for a technician visit?",
+            "decision": "status",
+            "elapsedMs": 4084
+          }
+        },
+        {
+          "question": "Email synchronization has stalled and the message list never refreshes.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Email synchronization (SR-4A560C17-CB0C-4B01-B5B1-EF6FB8E11F8C) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model M firmware 5:\nResume synchronization for the affected mailbox and replace its expired sign-in session using the approved account flow.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 8941
+          },
+          "off": {
+            "reply": "Email synchronization (SR-4A560C17-CB0C-4B01-B5B1-EF6FB8E11F8C) is marked “Received.” The provider has not posted an ETA.\n\nYour current preference is: Email synchronization has stalled and the message list never refreshes.",
+            "decision": "status",
+            "elapsedMs": 172
+          }
+        },
+        {
+          "question": "New mail is not being synchronized into my inbox.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Email synchronization (SR-4A560C17-CB0C-4B01-B5B1-EF6FB8E11F8C) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model M firmware 5:\nResume synchronization for the affected mailbox and replace its expired sign-in session using the approved account flow.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 10213
+          },
+          "off": {
+            "reply": "Your ticket SR‑4A560C17‑CB0C‑4B01‑B5B1‑EF6FB8E11F8C has been received and is assigned to the Device repair team. No ETA has been posted yet. Would you like me to add a note to the ticket or check available appointment times for a service visit?",
+            "decision": "status",
+            "elapsedMs": 4032
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "My mailbox has stopped updating with new messages. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your ticket (SR‑4A560C17‑CB0C‑4B01‑B5B1‑EF6FB8E11F8C) is recorded as **Received** and is pending review by the Device Repair team. No ETA has been posted yet. I can add a note to the ticket or check appointment availability for a technician if you’d like. Please let me know how you’d prefer to proceed."
+        },
+        {
+          "question": "My mailbox has stopped updating with new messages.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-0258157C-4534-4B8F-B784-9689A0D37557) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Model M firmware 5"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "I see your current ticket (SR‑4A560C17‑CB0C‑4B01‑B5B1‑EF6FB8E11F8C) is for email synchronization and has no information about invoice‑address updates. To assist you with changing the invoice address, could you confirm if this request should be opened as a new support case or if there’s an existing ticket covering billing details? Please let me know, and I’ll route it appropriately."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    },
+    {
+      "id": "application",
+      "positive": [
+        {
+          "question": "The program quits unexpectedly as soon as I launch it.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Application crash (SR-305A84C4-D7EC-4DFF-BACC-612D36EDF436) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model K firmware 7:\nDisable the incompatible reporting extension and reopen the application with the verified extension profile.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 5407
+          },
+          "off": {
+            "reply": "Your ticket SR‑305A84C4‑D7EC‑4DFF‑BACC‑612D36EDF436 is currently **Received** and has not been assigned an ETA yet. The Device Repair team is reviewing the crash issue on the Model K with firmware 7. Would you like me to add a note to the ticket, or check the next available appointment for a repair? Please let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 2032
+          }
+        },
+        {
+          "question": "Opening the application immediately makes it crash.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Application crash (SR-305A84C4-D7EC-4DFF-BACC-612D36EDF436) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model K firmware 7:\nDisable the incompatible reporting extension and reopen the application with the verified extension profile.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 9163
+          },
+          "off": {
+            "reply": "Application crash (SR-305A84C4-D7EC-4DFF-BACC-612D36EDF436) is marked “Received.” The provider has not posted an ETA.\n\nI do not have a verified fix I can recommend for this issue. I have prepared a specialist handoff with your service history and attempted fixes. Review it to send it.",
+            "decision": "handoff",
+            "elapsedMs": 199
+          }
+        },
+        {
+          "question": "I launch the app, then its window unexpectedly closes before I can use it.",
+          "correct": true,
+          "offWithheld": true,
+          "on": {
+            "reply": "Application crash (SR-305A84C4-D7EC-4DFF-BACC-612D36EDF436) is marked “Received.” The provider has not posted an ETA.\n\nA customer-confirmed fix applies to Model K firmware 7:\nDisable the incompatible reporting extension and reopen the application with the verified extension profile.",
+            "decision": "recommend",
+            "memory": "Hindsight",
+            "elapsedMs": 9837
+          },
+          "off": {
+            "reply": "Your ticket (SR‑305A84C4‑D7EC‑4DFF‑BACC‑612D36EDF436) is currently marked **Received** and is assigned to the Device Repair team. No ETA has been posted yet. Would you like me to add a note to the ticket, or check the next available appointment for a repair? Please let me know how you’d like to proceed.",
+            "decision": "status",
+            "elapsedMs": 3020
+          }
+        }
+      ],
+      "negative": [
+        {
+          "question": "The program quits unexpectedly as soon as I launch it. Model WRONG firmware 99 Windows 99.",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your ticket (SR-305A84C4‑D7EC‑4DFF‑BACC‑612D36EDF436) is currently marked **Received** and no ETA has been posted yet. I can add a note to the ticket or check availability for a service appointment if you’d like to move forward. Please let me know how you’d like to proceed."
+        },
+        {
+          "question": "The program quits unexpectedly as soon as I launch it.",
+          "safe": true,
+          "decision": "clarify",
+          "reply": "Service issue (SR-B7752D92-5A3F-4F56-AE4F-53D1B9C2C23E) is marked “Received.” The provider has not posted an ETA.\n\nBefore suggesting a reviewed fix, please confirm the applicable environment: Model K firmware 7"
+        },
+        {
+          "question": "How do I update my invoice address?",
+          "safe": true,
+          "decision": "status",
+          "reply": "Your current ticket (SR‑305A84C4‑D7EC‑4DFF‑BACC‑612D36EDF436) is logged as an “Application crash” and is currently in **Received** status with no ETA assigned. Updating an invoice address falls under billing, which is a separate request. Would you like me to open a new billing ticket for the address change, or should we focus on the application‑crash issue now? Please let me know how you’d like to proceed."
+        }
+      ],
+      "failedRecovery": true,
+      "passed": true
+    }
+  ],
+  "counts": {
+    "positiveQuestions": 30,
+    "correctMemoryOn": 30,
+    "correctMemoryOff": 0,
+    "memoryOffWithheld": 30,
+    "negativeQuestions": 30,
+    "incorrectRecommendations": 0,
+    "failedFixRepeated": 0
+  },
+  "passed": true,
+  "completedAt": "2026-11-07T07:05:26.378Z"
+}

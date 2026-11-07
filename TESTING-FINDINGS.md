@@ -1,6 +1,26 @@
 # Manual testing findings
 
+Latest role-policy implementation: [COMPANY-INTERFACE.md](COMPANY-INTERFACE.md) supersedes the prior combined owner/customer design. Company/staff personal navigation and customer APIs are removed/denied; account security and logout remain available directly. Customer behavior and authorized case management pass regression and browser checks. 71/71 tests and HTTP checks passed; no records were deleted.
+
+## Remaining manual entries — November 7, 2026
+
+No additional application defect was reproduced in the remaining-feature pass. [FEATURE-MANUAL-RESULTS.md](FEATURE-MANUAL-RESULTS.md) inventories all 62 entries, including 55 passed controlled scenarios and seven entries with user/setup-dependent steps. New regression tests cover signup-link rotation, IT-specific publication/reuse and revocation during customer confirmation. **70/70 tests**, HTTP checks, and the frozen live challenge (**30 ON / 30 OFF / 30 negative / 10 recovery**) passed. Nine default desktop accessibility scans and sampled mobile views reported zero violations; broader assistive-technology/cross-browser certification is not claimed. No original-account password or real external provider was changed.
+
+## Latest verification — November 7, 2026
+
+The B10–B13 and C1–C7 / D1–D12 pass found and corrected new defects after the earlier checklist: questions could replace a real contact preference; a replacement reply could use the old preference; retired facts could return through chat history; an already displayed summary could remain stale; generic customer resolution left an active specialist case open; hypothetical booking wording could promise unconfigured delivery behavior. Contact-method answers now use active facts directly. Existing historical chats are preserved.
+
+Current evidence: **67/67 automated tests**, HTTP checks, **14/14 live learning checks**, **5/5 live preference checks**, plus browser interaction and controlled lost-response/failed-refresh checks. [VERIFICATION-2026-11-07.md](VERIFICATION-2026-11-07.md) lists each requested check and whether it was verified manually, automatically, or live. No failure remains open in those tested scenarios. The external email/calendar/business-gateway requirements and conservative language/fallback limitations below remain distinct.
+
 ## Current checklist — rechecked November 6, 2026
+
+### November 7 follow-up: asking about another request — fixed
+
+The user asked "what about battery drain request" while the screen-flicker conversation was selected. The app incorrectly answered with the screen case's status and specialist progress. This was a reproduced request-selection defect, not a battery-status result.
+
+Chat now checks explicit request titles/IDs against the signed-in customer's own request list before recall, fact extraction or action preparation. A different matching request produces an Open request button; ambiguous matches offer choices; unknown or inaccessible IDs return a generic selection prompt. Notes/new-request instructions are not treated as navigation. No automatic cross-request mutation occurs.
+
+Verification: regression failed before implementation, then 59/59 automated tests and HTTP checks passed. A browser Memory lab comparison of the exact question offered Open QA battery drain; clicking it selected that request, showing Received and no ETA rather than the screen request's In progress / ETA. The comparison saved no chat/actions. Screenshot: output/manual-tests/request-reference-selection.png. Existing erroneous messages remain historical records; new messages use the fix after refresh.
 
 This is the current status. The dated reproductions below preserve what failed originally; their old phrases such as "no fix applied" do not describe the delivered code.
 

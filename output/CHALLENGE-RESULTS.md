@@ -6,15 +6,15 @@ Dataset: synthetic challenge v1. SHA-256: `fca84197c9a223a295f345436f572442d3b4f
 
 | Measure | local deterministic regression | live Hindsight/model |
 |---|---|---|
-| Run / completed at | ea7648c4 / 2026-11-06T16:22:54.315Z | bd80dcd8 / 2026-11-06T16:31:42.897Z |
+| Run / completed at | ea7648c4 / 2026-11-06T16:22:54.315Z | 7905e0f8 / 2026-11-07T07:05:26.378Z |
 | Completed domains | 10/10 (100.0%) | 10/10 (100.0%) |
 | Positive questions evaluated | 30/30 (100.0%) | 30/30 (100.0%) |
 | Correct source-backed fix with memory ON | 16/30 (53.3%) | 30/30 (100.0%) |
 | Fix withheld with memory OFF | 30/30 (100.0%) | 30/30 (100.0%) |
 | Negative questions with no inappropriate recommendation | 30/30 (100.0%) | 30/30 (100.0%) |
 | Recovery scenarios fully verified | 2/10 (20.0%) | 10/10 (100.0%) |
-| Median ON request latency, milliseconds | 32 | 5375 |
-| Median OFF request latency, milliseconds | 27 | 912 |
+| Median ON request latency, milliseconds | 32 | 7113 |
+| Median OFF request latency, milliseconds | 27 | 2526 |
 | Overall harness result | NOT PASS | PASS |
 
 Each domain adds three negative controls: conflicting environment, missing environment and unrelated billing. These repeated control types do not represent 30 independently sampled real-world hazards. A recommendation is correct only if its source ID and exact reviewed steps match; live runs also require Hindsight attribution. Latencies include service time and bounded retries; they do not measure customer time savings.
@@ -59,7 +59,7 @@ Full synthetic evidence: [evaluation-ea7648c4.json](evaluation-results/evaluatio
 
 ## live Hindsight/model
 
-Full synthetic evidence: [evaluation-bd80dcd8.json](evaluation-results/evaluation-bd80dcd8.json).
+Full synthetic evidence: [evaluation-7905e0f8.json](evaluation-results/evaluation-7905e0f8.json).
 
 | Domain | Correct ON | Safe OFF | Negative controls | Recovery verified |
 |---|---:|---:|---:|---|

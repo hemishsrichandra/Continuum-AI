@@ -100,7 +100,7 @@ async function signedOut(notice = '') {
   await login(notice);
 }
 function roleHome(profile) {
-  if (parameters.get('view') === 'personal' || parameters.has('calendar') || profile.demo) return false;
+  if (profile.demo) return false;
   const destination = profile.role === 'owner' ? '/team' : profile.role === 'staff' ? '/operator' : null;
   if (destination) { location.replace(destination); return true; }
   return false;
@@ -117,6 +117,7 @@ async function refresh() {
   state.workspace = workspace;
   state.ticketId = selected;
   state.ledger = memories.ledger;
+  state.reflection = null;
   state.messages = conversation.messages;
   saveSession('supportly-ticket', selected);
   state.account = workspace.profile;
@@ -210,7 +211,8 @@ function render() {
     app.querySelector('[data-action="' + CSS.escape(restoreAction) + '"]')?.focus({ preventScroll: true });
 }
 function evidence(entry) {
-  return `<details class="response-details"><summary>Sources & response details</summary><div class="evidence">${(entry.evidence || []).map((fact) => `<div><span class="pill ${fact.type === 'provider' ? 'blue' : ''}">${fact.type === 'provider' ? 'Service record' : q(kinds[fact.kind] || 'Memory')}</span><p>${q(fact.text)}</p></div>`).join('')}</div><small>${entry.trace?.learnedResolutions ? entry.trace.learnedResolutions + ' verified resolutions · ' + q(entry.trace.knowledge) + ' · ' : ''}${q(entry.trace?.memory)} · ${entry.trace?.recalled || 0} recalled · ${q(entry.model)} · ${entry.trace?.elapsedMs || 0} ms</small></details>`;
+  const choices = (entry.requestChoices || []).map((t) => `<button class="button small" data-ticket="${q(t.id)}" ${disabled()}>Open ${q(t.title)}</button>`).join("");
+  return `${choices ? `<div class="actions">${choices}</div>` : ""}<details class="response-details"><summary>Sources & response details</summary><div class="evidence">${(entry.evidence || []).map((fact) => `<div><span class="pill ${fact.type === 'provider' ? 'blue' : ''}">${fact.type === 'provider' ? 'Service record' : q(kinds[fact.kind] || 'Memory')}</span><p>${q(fact.text)}</p></div>`).join('')}</div><small>${entry.trace?.learnedResolutions ? entry.trace.learnedResolutions + ' verified resolutions · ' + q(entry.trace.knowledge) + ' · ' : ''}${q(entry.trace?.memory)} · ${entry.trace?.recalled || 0} recalled · ${q(entry.model)} · ${entry.trace?.elapsedMs || 0} ms</small></details>`;
 }
 function resolutionOutcome(response) {
   const use = response.resolutionUse;
@@ -474,6 +476,7 @@ app.addEventListener('click', async (event) => {
     }
     if (action === 'toggle') {
       state.memory = !state.memory;
+      state.reflection = null;
       state.pendingChat = null;
       render();
     }

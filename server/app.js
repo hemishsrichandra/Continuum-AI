@@ -14,6 +14,7 @@ import { createConnector } from './connector.js';
 import { createReuse, needsReview } from './reuse.js';
 import { decide } from './decisions.js';
 import { createProviderActions } from './provider-actions.js';
+import { requestReference } from './request-reference.js';
 
 export function createHandler({ file, config = process.env, service } = {}) {
   config = { APP_URL: 'http://localhost:3000', ...config };
@@ -189,6 +190,15 @@ export function createHandler({ file, config = process.env, service } = {}) {
       if (!session) throw fault(401, 'Sign in to your Continuum account to continue.');
       limit(session.token_hash, 120);
       const { profile } = session;
+      const customerRoutes = new Set([
+        '/api/workspace', '/api/status', '/api/analytics', '/api/conversation',
+        '/api/conversation/archive', '/api/feedback', '/api/slots', '/api/memory',
+        '/api/reflect', '/api/chat', '/api/request', '/api/requirement', '/api/book',
+        '/api/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
+        '/api/resolutions/outcome', '/api/connector/sync',
+      ]);
+      if (['owner', 'staff'].includes(profile.role) && customerRoutes.has(url.pathname))
+        throw fault(403, 'Customer accounts handle personal requests and confirmations. Use the company dashboard or specialist console.');
       if (endpoint.includes('/connector')) {
         limit(session.token_hash + ':connector', 10);
         if (await connector.handle(req, endpoint, session, write)) return;
@@ -388,6 +398,29 @@ export function createHandler({ file, config = process.env, service } = {}) {
             limit(session.token_hash + ':ai', 20);
             const started = Date.now();
             const enabled = body.memory !== false;
+            const statedFacts = extractFacts(message);
+            const saveResponse = (result) => {
+              if (body.retain === false) return result;
+              return store.update((data) => {
+                const existing = operation.key && data.operations.find((o) => o.scope === db.scope && o.key === operation.key);
+                if (existing) {
+                  if (existing.fingerprint !== operation.fingerprint) throw fault(409, 'Submission details changed.');
+                  return existing.response;
+                }
+                result.resolutionUse = reuse.record(profile, ticket, result, result.id, new Date().toISOString());
+                data.conversations.push({id:result.id,scope:db.scope,ticketId:ticket.id,message,response:result,memory:enabled,createdAt:new Date().toISOString()});
+                data.audit.push({id:result.id,scope:db.scope,ticketId:ticket.id,kind:'chat',createdAt:new Date().toISOString(),source:result.trace.memory,model:result.model,elapsedMs:result.trace.elapsedMs});
+                if (operation.key) data.operations.push({scope:db.scope,...operation,response:result});
+                return result;
+              });
+            };
+            const reference = requestReference(message, db.list(), ticket.id);
+            if (reference) return saveResponse({
+              id:randomUUID(), reply:reference.question, model:'Request navigation', ticket,
+              action:null, decision:{mode:'clarify',reason:'request_selection',action:null},
+              requestChoices:reference.choices, evidence:[], retained:null,
+              trace:{knowledge:'Disabled',memory:'Not recalled for request selection',recalled:0,learnedResolutions:0,elapsedMs:Date.now()-started},
+            });
             const requestedDecision = await decide(
               { message, ticket, facts: [], learned: { facts: [] } },
               config,
@@ -423,7 +456,18 @@ export function createHandler({ file, config = process.env, service } = {}) {
                 .filter((m) => ['failed', 'missed'].includes(m.kind))
                 .map((m) => m.id),
             );
-            const facts = recall.facts.filter((f) => !superseded.has(f.id));
+            const statedPreferences = statedFacts.filter(f => f.kind === 'preference');
+            const facts = recall.facts.filter((f) => {
+              if (superseded.has(f.id)) return false;
+              const saved = store.data.memories.find(m => m.id === f.id);
+              return !statedPreferences.some(p => f.kind === 'preference' &&
+                (saved?.category || 'contact') === p.category);
+            });
+            // The latest instruction is part of this message even before it is
+            // retained. Never answer with the preference it replaces.
+            facts.unshift(...statedPreferences.map((f, i) => ({
+              ...f, id:'current-message-' + i, source:'Current message',
+            })));
             const learned =
               enabled && !direct
                 ? await learning.recall(profile.companyId, profile.provider, message, ticket, profile.id)
@@ -432,7 +476,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
             const decision = direct ? requestedDecision : await decide({ message, ticket, facts, learned });
             const action = decision.action;
             if (reportedUse && action?.kind === 'handoff') action.failedUseId = reportedUse.id;
-            const history = body.retain === false ? [] : safeHistory(store, db.scope, ticket.id, enabled);
+            const history = body.retain === false ? [] : safeHistory(store, db.scope, ticket.id, enabled, statedPreferences);
             const response = await compose(
               {
                 message,
@@ -455,7 +499,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
               throw fault(409, 'A referenced resolution was retired while answering. Please ask again.');
             let retained = null;
             if (enabled && body.retain !== false) {
-              for (const fact of extractFacts(message))
+              for (const fact of statedFacts)
                 retained = await retain({
                   id: randomUUID(),
                   scope: db.scope,
@@ -478,7 +522,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
                 ...facts.map((fact) => ({
                   id: fact.id,
                   resolutionId: fact.resolutionId,
-                  type: fact.kind === 'verified_resolution' ? learned.source : recall.source,
+                  type: fact.source || (fact.kind === 'verified_resolution' ? learned.source : recall.source),
                   text: fact.text,
                   kind: fact.kind,
                 })),
@@ -492,40 +536,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
               },
             };
             // Comparison requests never change history, analytics, or memory.
-            if (body.retain !== false)
-              return store.update((data) => {
-                const existing =
-                  operation.key &&
-                  data.operations.find((o) => o.scope === db.scope && o.key === operation.key);
-                if (existing) {
-                  if (existing.fingerprint !== operation.fingerprint)
-                    throw fault(409, 'Submission details changed.');
-                  return existing.response;
-                }
-                result.resolutionUse = reuse.record(profile, ticket, result, id, new Date().toISOString());
-                data.conversations.push({
-                  id,
-                  scope: db.scope,
-                  ticketId: ticket.id,
-                  message,
-                  response: result,
-                  memory: enabled,
-                  createdAt: new Date().toISOString(),
-                });
-                data.audit.push({
-                  id,
-                  scope: db.scope,
-                  ticketId: ticket.id,
-                  kind: 'chat',
-                  createdAt: new Date().toISOString(),
-                  source: recall.source,
-                  model: response.model,
-                  elapsedMs: result.trace.elapsedMs,
-                });
-                if (operation.key) data.operations.push({ scope: db.scope, ...operation, response: result });
-                return result;
-              });
-            return result;
+            return saveResponse(result);
           }),
         );
       }

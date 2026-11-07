@@ -97,7 +97,7 @@ SQLite remains a single-host deployment. A real provider pilot, production opera
 
 ## Report remediation
 
-Owners now land on Company & team; specialists land on the service queue. My requests explicitly opens /desk?view=personal. Dialogs wrap forward/reverse Tab. Invitation signup uses the invitation's scope without a misleading selectable category.
+Owners land on Company & team; specialists land on their service queue. Owner/staff personal-request navigation is removed, and /desk?view=personal redirects to their role dashboard. Customer-workflow APIs reject these roles; separate customer accounts perform requests and confirmations. Account & security and Sign out are directly available on company/console pages. Dialogs wrap forward/reverse Tab. Invitation signup uses the invitation's scope without a misleading selectable category. See COMPANY-INTERFACE.md for current verification.
 
 Context summaries are assembled from the current ticket and active memory ledger in one coherent view, excluding retired preferences and unrelated technical history. They no longer concatenate separate generated reflections. Hindsight remains the semantic recall/learning backend.
 

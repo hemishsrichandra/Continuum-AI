@@ -8,7 +8,9 @@ export function extractFacts(message) {
   const sentences = text.match(/[^.!?]+(?:[.!?]+|$)/g) || [text];
   for (const raw of sentences) {
     const sentence = raw.trim();
+    const preferenceQuestion = /^(?:how|what|which|when|where|who|why|do i|did i|have i|is (?:there|my)|are (?:there|my)|(?:can|could|would) you (?:tell|remind|check|show))\b/i.test(sentence);
     const contact =
+      !preferenceQuestion &&
       /\b(?:prefer|please|always|remember|rather|instead|do not|don.t|never|contact me|reach me|notify me|send me|email me|call me|text me)\b/i.test(
         sentence,
       ) &&

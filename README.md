@@ -13,6 +13,8 @@ npm start
 
 Open `http://localhost:3100`. Select **Create a company** for an owner account. Owners use **Company & team** to generate customer signup links and email-bound specialist invitations. New accounts start with an empty workspace. Passwords must contain 15–128 characters.
 
+Company accounts manage customer cases; they cannot create personal service requests, book personal visits or submit customer confirmations. Owners and specialists have direct **Account & security** and **Sign out** controls. Use a separate customer account for customer workflows. See [COMPANY-INTERFACE.md](COMPANY-INTERFACE.md).
+
 If `.env` is missing, copy `.env.example` to `.env`. Never commit credentials. See [SETUP.md](SETUP.md) for email, Google Calendar, and deployment configuration.
 
 ## Authentication

@@ -321,7 +321,9 @@ export async function compose(
               ? 'Before suggesting a reviewed fix, please confirm the applicable product and environment: ' +
                 clarification.map((c) => c.environment).join('; ')
               : ticket.status === 'Resolved'
-                ? 'This request is resolved. If the issue returns, record a failed outcome to reopen it or create a new request.'
+                ? preference?.source === 'Current message'
+                  ? 'Your current preference is: ' + preference.text
+                  : 'This request is resolved. If the issue returns, record a failed outcome to reopen it or create a new request.'
                 : blocked
                   ? reason +
                     'I’ve prepared a human handoff with the relevant history. Review it to send it to the provider.'
@@ -332,14 +334,15 @@ export async function compose(
                       : troubleshooting && /phone|network/i.test(ticket.issue)
                         ? 'If you haven’t already, try restarting the device once to re-establish its connection.'
                         : preference
-                          ? 'I found this preference from a previous visit: ' + preference.text
+                          ? (preference.source === 'Current message' ? 'Your current preference is: ' : 'Your recorded preference is: ') + preference.text
                           : missed
                             ? 'The previous commitments were missed. I can prepare a handoff so the provider can follow up.'
                             : 'I can also add a note or check appointment availability.';
   const guidance = [status, outcome];
   // Preparing a confirmed workflow or asking a missing detail does not require
   // a generative service. Human help stays available during an AI outage.
-  if (['handoff', 'clarify', 'waiting', 'action', 'inform'].includes(decision?.mode))
+  if (['handoff', 'clarify', 'waiting', 'action', 'inform'].includes(decision?.mode) ||
+      (decision?.mode === 'status' && preference?.source === 'Current message'))
     return { reply: guidance.join('\n\n'), model: 'Support workflow' };
   if (!config.OPENAI_API_KEY) {
     if (config.REQUIRE_LIVE_INTEGRATIONS === 'true')

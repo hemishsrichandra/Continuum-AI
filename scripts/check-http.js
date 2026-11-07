@@ -14,7 +14,7 @@ try {
     server.stderr.on('data', (chunk) => { clearTimeout(timer); reject(new Error(chunk.toString())); });
     server.stdout.on('data', (chunk) => { const match = chunk.toString().match(/Continuum: (http:\/\/localhost:\d+)/); if (match) { clearTimeout(timer); resolve(match[1]); } });
   });
-  for (const route of ['/', '/about', '/services', '/pricing', '/book-a-session', '/style-guide', '/desk', '/desk/', '/operator/', '/team', '/team.js', '/connector-ui.js', '/operator.js', '/pages.js', '/client.js', '/auth-ui.js', '/ui.js', '/styles.css']) {
+  for (const route of ['/', '/about', '/services', '/pricing', '/book-a-session', '/style-guide', '/desk', '/desk/', '/operator/', '/team', '/team.js', '/staff-account.js', '/connector-ui.js', '/operator.js', '/pages.js', '/client.js', '/auth-ui.js', '/ui.js', '/styles.css']) {
     const response = await fetch(base + route); assert.equal(response.status, 200, route);
     assert.ok(response.headers.get('content-security-policy'));
   }
@@ -34,10 +34,10 @@ try {
   assert.equal(registration.status, 201); assert.match(registration.headers.get('set-cookie'), /HttpOnly/);
   const cookie = registration.headers.get('set-cookie').split(';')[0], account = await registration.json(); assert.ok(!account.token);
   const accountHeaders = { 'Content-Type': 'application/json', Cookie: cookie, 'X-CSRF-Token': account.csrfToken };
-  assert.equal((await (await fetch(base + '/api/workspace', { headers: accountHeaders })).json()).tickets.length, 0);
+  assert.equal((await fetch(base + '/api/workspace', { headers: accountHeaders })).status, 403);
   assert.equal((await fetch(base + '/api/request', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: opts.body })).status, 403);
-  assert.equal((await fetch(base + '/api/request', { method: 'POST', headers: accountHeaders, body: opts.body })).status, 201);
-  assert.equal((await fetch(base + '/api/status?ticketId=' + first.ticketId, { headers: accountHeaders })).status, 404);
+  assert.equal((await fetch(base + '/api/request', { method: 'POST', headers: accountHeaders, body: opts.body })).status, 403);
+  assert.equal((await fetch(base + '/api/status?ticketId=' + first.ticketId, { headers: accountHeaders })).status, 403);
   assert.equal((await fetch(base + '/api/session', { method: 'DELETE', headers: accountHeaders })).status, 200);
   assert.equal((await fetch(base + '/api/workspace', { headers: { Cookie: cookie } })).status, 401);
   console.log('HTTP checks passed: pages/assets, SQLite, real cookie authentication, CSRF, account isolation, sign-out, validation, proxy, and safe replay.');
