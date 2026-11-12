@@ -69,6 +69,13 @@ Continuum does not train or update model weights. It retrieves and reuses approv
 
 The customer memory switch was removed from the workflow. Privacy is handled by design: personal details are scrubbed server-side, a specialist previews reusable text, and only the original customer's explicit confirmation publishes it immediately. If the customer stays silent past the deadline (default 24 h), a high-confidence fix (C_init ≥ 0.75, no policy blockers) may be published clearly labelled **UNCONFIRMED BY CUSTOMER**; it never counts as a verified success and never closes the customer's case. The server still honours an explicit `memory:false` API opt-out.
 
+## Operating notes
+
+* **Staff access:** owners can limit a specialist to specific services under *Company & team → Specialist service access*.
+* **Data sources:** an owner can set an automatic sync interval (1–720 h) per source; the worker runs due syncs.
+* **Customer data:** customers can download their data and remove their conversation content from the workspace sidebar. Optional retention (`RETENTION_*` in `.env.example`) is off by default.
+* **Measure on your own data:** `node scripts/evaluate.js --file my-cases.json` (and `--embeddings` for a live embedding model). See [evaluation/README.md](evaluation/README.md). The synthetic results in `STATUS.md` are not evidence of real-world accuracy.
+
 ## Quick start
 
 ### Requirements

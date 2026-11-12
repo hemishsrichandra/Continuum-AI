@@ -285,6 +285,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     diagnosticSchema: JSON.parse(row.diagnostic_schema_json), declaredVerified: Boolean(row.declared_verified),
     status: row.status, lastSyncedAt: row.last_synced_at, lastSyncResult: row.last_sync_result_json ? JSON.parse(row.last_sync_result_json) : null,
     lastError: row.last_error, createdAt: row.created_at, availability: availability[row.source_type]?.(),
+    syncIntervalHours: row.sync_interval_hours ?? null, nextSyncAt: row.sync_interval_hours ? row.next_sync_at : null,
   });
 
   /** Read + map + validate without writing anything. */
@@ -397,6 +398,14 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
       const mapping = validateMapping(body.fieldMapping, schema);
       if (body.declaredVerified !== undefined && typeof body.declaredVerified !== 'boolean') throw fault(400, 'declaredVerified must be true or false.');
       const id = existing?.id || randomUUID();
+      // Optional scheduled sync: every N hours (1–720), or null for manual only.
+      let interval = existing?.sync_interval_hours ?? null;
+      if (body.syncIntervalHours !== undefined) {
+        if (body.syncIntervalHours === null) interval = null;
+        else if (Number.isInteger(body.syncIntervalHours) && body.syncIntervalHours >= 1 && body.syncIntervalHours <= 720) interval = body.syncIntervalHours;
+        else throw fault(400, 'The sync interval must be a whole number of hours from 1 to 720, or null for manual sync only.');
+      }
+      const nextSync = interval === null ? null : interval === existing?.sync_interval_hours && existing?.next_sync_at ? existing.next_sync_at : new Date(Date.now() + interval * 3600000).toISOString();
       let encrypted = existing?.encrypted_connection_uri || null;
       if (body.connection !== undefined) {
         if (!body.connection || typeof body.connection !== 'object' || Array.isArray(body.connection)) throw fault(400, 'Send the connection details as an object.');
@@ -407,9 +416,9 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
       }
       if (!encrypted) throw fault(400, 'Provide the connection details.');
       const t = now();
-      sql.prepare(`INSERT INTO company_data_sources(id,company_id,chatbot_id,name,source_type,encrypted_connection_uri,field_mapping_json,diagnostic_schema_json,declared_verified,status,created_at,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,?,'configured',?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,encrypted_connection_uri=excluded.encrypted_connection_uri,field_mapping_json=excluded.field_mapping_json,declared_verified=excluded.declared_verified,updated_at=excluded.updated_at WHERE company_data_sources.company_id=excluded.company_id`)
-        .run(id, companyId, bot.id, field(body.name, 'name', 100), body.sourceType, encrypted, JSON.stringify(mapping), JSON.stringify(schema), body.declaredVerified ? 1 : 0, t, t);
+      sql.prepare(`INSERT INTO company_data_sources(id,company_id,chatbot_id,name,source_type,encrypted_connection_uri,field_mapping_json,diagnostic_schema_json,declared_verified,status,created_at,updated_at,sync_interval_hours,next_sync_at)
+        VALUES(?,?,?,?,?,?,?,?,?,'configured',?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,encrypted_connection_uri=excluded.encrypted_connection_uri,field_mapping_json=excluded.field_mapping_json,declared_verified=excluded.declared_verified,updated_at=excluded.updated_at,sync_interval_hours=excluded.sync_interval_hours,next_sync_at=excluded.next_sync_at WHERE company_data_sources.company_id=excluded.company_id`)
+        .run(id, companyId, bot.id, field(body.name, 'name', 100), body.sourceType, encrypted, JSON.stringify(mapping), JSON.stringify(schema), body.declaredVerified ? 1 : 0, t, t, interval, nextSync);
       send(existing ? 200 : 201, { source: publicView(stored(companyId, id)) });
       return true;
     }
@@ -439,5 +448,26 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     }
     throw fault(404, 'Data source route not found.');
   }
-  return { handle, dryRun, sync, status, availability: status };
+  /**
+   * Run every source whose schedule is due. Each source is claimed with a conditional update that moves its next
+   * run forward first, so overlapping workers (or a slow sync) can never run the same source twice. A failure is
+   * recorded on the source (status/last_error) and the next attempt waits for the next interval.
+   */
+  async function runDue(at = Date.now()) {
+    const due = sql.prepare('SELECT id,company_id,sync_interval_hours FROM company_data_sources WHERE sync_interval_hours IS NOT NULL AND next_sync_at<=? ORDER BY next_sync_at LIMIT 20').all(new Date(at).toISOString());
+    const results = [];
+    for (const row of due) {
+      const next = new Date(at + row.sync_interval_hours * 3600000).toISOString();
+      const claimed = sql.prepare('UPDATE company_data_sources SET next_sync_at=? WHERE id=? AND company_id=? AND sync_interval_hours IS NOT NULL AND next_sync_at<=?').run(next, row.id, row.company_id, new Date(at).toISOString());
+      if (!claimed.changes) continue;
+      try {
+        const result = await sync(row.company_id, row.id, 'scheduled');
+        results.push({ id: row.id, status: 'ok', inserted: result.inserted, updated: result.updated });
+      } catch (e) {
+        results.push({ id: row.id, status: 'error', error: e.status ? e.message : 'sync failed' });
+      }
+    }
+    return results;
+  }
+  return { handle, dryRun, sync, runDue, status, availability: status };
 }

@@ -167,26 +167,26 @@ export function provider(store, profile) {
   if (!companyId) throw fault(403, 'A company workspace is required.');
   const adapter = adapters[profile.provider];
   const scope = privateScope(profile);
-  const list = () =>
-    store.data[profile.provider]
+  // One tenant-scoped, index-backed read per call (previously the whole store was re-parsed per ticket).
+  const list = () => {
+    const data = store.dataFor(companyId);
+    return data[profile.provider]
       .filter((row) => row.companyId === companyId && (row.chatbotId || defaultBotId(companyId,profile.provider)) === botId(profile) && adapter.owns(row, profile.id))
-      .map((row) => ({
-        ...adapter.normalize(row),
-        chatbotId: botId(profile),
-        external: Boolean(row.externalId),
-        syncedAt: row.syncedAt || null,
-        createdAt: row.createdAt || null,
-        updatedAt: row.updatedAt || null,
-        requirements: store.data.requirements.filter(
-          (item) => item.scope === scope && item.ticketId === adapter.normalize(row).id,
-        ),
-        appointments: store.data.bookings.filter(
-          (item) => item.scope === scope && item.ticketId === adapter.normalize(row).id,
-        ),
-        handoffs: store.data.handoffs
-          .filter((item) => item.scope === scope && item.ticketId === adapter.normalize(row).id)
-          .map(({ context, ...item }) => item),
-      }));
+      .map((row) => {
+        const id = adapter.normalize(row).id;
+        return {
+          ...adapter.normalize(row),
+          chatbotId: botId(profile),
+          external: Boolean(row.externalId),
+          syncedAt: row.syncedAt || null,
+          createdAt: row.createdAt || null,
+          updatedAt: row.updatedAt || null,
+          requirements: data.requirements.filter((item) => item.scope === scope && item.ticketId === id),
+          appointments: data.bookings.filter((item) => item.scope === scope && item.ticketId === id),
+          handoffs: data.handoffs.filter((item) => item.scope === scope && item.ticketId === id).map(({ context, ...item }) => item),
+        };
+      });
+  };
   const ticket = (id = profile.ticketId) => {
     const result = list().find((item) => item.id === id);
     if (!result) throw fault(404, 'Service request was not found in this account.');
@@ -206,7 +206,7 @@ export function provider(store, profile) {
       .flat()
       .filter(
         (slot) =>
-          !store.data.bookings.some(
+          !store.dataFor(companyId).bookings.some(
             (item) =>
               item.companyId === companyId &&
               item.provider === profile.provider &&
@@ -218,7 +218,7 @@ export function provider(store, profile) {
   const commit = (kind, body, ticketId, operation) => {
     if (kind !== 'request') ticket(ticketId);
     const id = randomUUID().toUpperCase();
-    return store.update((data) => {
+    return store.updateFor(companyId, (data) => {
       const existing =
         operation?.key && data.operations.find((o) => o.scope === scope && o.key === operation.key);
       if (existing) {
@@ -335,7 +335,7 @@ export function provider(store, profile) {
     });
   };
   const history = () =>
-    store.data.audit
+    store.dataFor(companyId).audit
       .filter((item) => item.scope === scope)
       .slice(-100)
       .reverse();

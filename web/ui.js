@@ -191,7 +191,7 @@ function render() {
     )
     .join(
       '',
-    )}</div>${state.tab === 'conversation' ? chat(p) : state.tab === 'appointments' ? appointments(t) : state.tab === 'activity' ? activity(t) : lab(p)}</section><aside class="context-sidebar"><section class="panel context-panel"><div class="sidebar-heading"><h2>Next steps</h2><span class="subtle">For this request</span></div><div class="action-list">${['requirement', 'book', 'handoff', 'outcome'].map((kind) => `<button data-action="${kind}" ${disabled()}><span>${q(names[kind])}</span><span aria-hidden="true">↗</span></button>`).join('')}</div></section><section class="panel context-panel"><div class="sidebar-heading"><h2>Remembered context <span>${active.length}</span></h2></div><p class="context-intro">Useful details for the next conversation.</p>${active.length ? active.map((m) => `<article class="memory-entry"><span class="pill">${q(kinds[m.kind] || m.kind)}</span><p>${q(m.text)}</p><div><small>${formatDate(m.createdAt)}</small><button class="text-button" data-retire="${q(m.id)}" ${disabled()} aria-label="Retire memory: ${q(m.text)}">Retire</button></div></article>`).join('') : '<div class="empty-state compact"><p>No remembered context yet.</p><small>Preferences and outcomes will appear here.</small></div>'}<button class="text-button summarize-button" data-action="reflect" ${state.busy || !state.memory || !active.length ? 'disabled' : ''}>Summarize context ↗</button>${state.reflection ? `<div class="reflection"><p>${q(state.reflection.text)}</p></div>` : ''}${
+    )}</div>${state.tab === 'conversation' ? chat(p) : state.tab === 'appointments' ? appointments(t) : state.tab === 'activity' ? activity(t) : lab(p)}</section><aside class="context-sidebar"><section class="panel context-panel"><div class="sidebar-heading"><h2>Next steps</h2><span class="subtle">For this request</span></div><div class="action-list">${['requirement', 'book', 'handoff', 'outcome'].map((kind) => `<button data-action="${kind}" ${disabled()}><span>${q(names[kind])}</span><span aria-hidden="true">↗</span></button>`).join('')}</div></section><section class="panel context-panel"><div class="sidebar-heading"><h2>Your data</h2></div><p class="context-intro">Download what Continuum holds for you here, or remove the content of your conversations. Your requests, appointments and specialist updates stay so your case isn’t disrupted.</p><div class="action-list"><button data-action="export-data" ${disabled()}><span>Download my data</span><span aria-hidden="true">↓</span></button><button data-action="erase-data" ${disabled()}><span>Remove my conversation content</span><span aria-hidden="true">✕</span></button></div></section><section class="panel context-panel"><div class="sidebar-heading"><h2>Remembered context <span>${active.length}</span></h2></div><p class="context-intro">Useful details for the next conversation.</p>${active.length ? active.map((m) => `<article class="memory-entry"><span class="pill">${q(kinds[m.kind] || m.kind)}</span><p>${q(m.text)}</p><div><small>${formatDate(m.createdAt)}</small><button class="text-button" data-retire="${q(m.id)}" ${disabled()} aria-label="Retire memory: ${q(m.text)}">Retire</button></div></article>`).join('') : '<div class="empty-state compact"><p>No remembered context yet.</p><small>Preferences and outcomes will appear here.</small></div>'}<button class="text-button summarize-button" data-action="reflect" ${state.busy || !state.memory || !active.length ? 'disabled' : ''}>Summarize context ↗</button>${state.reflection ? `<div class="reflection"><p>${q(state.reflection.text)}</p></div>` : ''}${
     state.ledger.some((m) => m.invalidatedAt)
       ? `<details class="retired"><summary>Retired context</summary>${state.ledger
           .filter((m) => m.invalidatedAt)
@@ -574,6 +574,26 @@ app.addEventListener('click', async (event) => {
         state.busy = false;
         if (state.authenticated) render();
       }
+    }
+    if (action === 'export-data') {
+      try {
+        const data = await api('privacy/export');
+        const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+        const link = Object.assign(document.createElement('a'), { href: url, download: 'my-continuum-data.json' });
+        document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        message('Your data was downloaded.');
+      } catch (e) { message(e.message, true); }
+      return;
+    }
+    if (action === 'erase-data') {
+      if (!window.confirm('Remove the content of your conversations and remembered context for this service? This cannot be undone. Your requests and specialist updates are kept.')) return;
+      try {
+        const r = await api('privacy/erase', { body: { confirmed: true } });
+        message(`Removed ${r.erased.conversations} conversation entries and ${r.erased.rememberedContext} remembered items.`);
+        await refresh();
+        render();
+      } catch (e) { message(e.message, true); }
+      return;
     }
     if (action === 'reflect') {
       state.busy = true;

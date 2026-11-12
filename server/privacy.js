@@ -15,6 +15,9 @@ const patterns = [
 ];
 const secret = /\b(?:password|passcode|api[_ -]?key|access[_ -]?token|secret|private key)\s*[:=]|\bsk-[\w-]{8,}|\bgsk_[\w-]+|-----BEGIN [A-Z ]*PRIVATE KEY-----/i;
 
+const CUE_NAME = /\b((?:[Aa]sk|[Cc]ontact|[Cc]all|[Ee]mail|[Ss]peak to|[Tt]alk to|[Tt]hanks|[Tt]hank you|[Rr]egards|[Dd]ear|[Hh]i|[Hh]ello|[Aa]ttn|[Cc]c|[Ff]rom|[Ss]igned)[:,]?)\s+([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b/g;
+// Capitalised words that follow those cues but are not people.
+const NOT_NAMES = new Set(['support', 'settings', 'windows', 'microsoft', 'apple', 'google', 'android', 'admin', 'administrator', 'team', 'desk', 'helpdesk', 'service', 'services', 'manager', 'display', 'network', 'help', 'model', 'customer', 'specialist', 'technician', 'vendor', 'sales', 'billing', 'dell', 'lenovo', 'cisco', 'samsung', 'sony', 'huawei', 'asus', 'acer', 'linux', 'ubuntu', 'chrome', 'firefox', 'edge', 'outlook', 'office', 'teams', 'zoom', 'slack', 'wifi', 'bluetooth', 'usb', 'the', 'our', 'your', 'this', 'that', 'these', 'those', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'again', 'later', 'now', 'today', 'tomorrow', 'please', 'everyone', 'all', 'anyone', 'someone', 'security', 'engineering', 'operations', 'finance', 'legal', 'hr', 'reception', 'warranty', 'repair', 'repairs', 'store', 'shop', 'center', 'centre']);
 export const containsSecret = (text) => secret.test(String(text || ''));
 
 /**
@@ -37,6 +40,16 @@ export function scrubPII(text, { names = [] } = {}) {
       return `[redacted ${kind}]`;
     });
   }
+  // Names that follow a cue word ("ask Priya Sharma", "thanks, Raj", "contact Dr. Rao") are redacted even when
+  // the name is not known in advance. Common product, role and company words are never treated as names.
+  out = out.replace(CUE_NAME, (match, cue, name) => {
+    const words = name.split(/\s+/);
+    const kept = [];
+    while (words.length && NOT_NAMES.has(words[words.length - 1].toLowerCase())) kept.unshift(words.pop());
+    if (!words.length || NOT_NAMES.has(words[0].toLowerCase())) return match;
+    hit('name');
+    return `${cue} [redacted name]${kept.length ? ' ' + kept.join(' ') : ''}`;
+  });
   for (const name of names.filter((n) => typeof n === 'string' && n.trim().length >= 3)) {
     const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     out = out.replace(new RegExp('\\b' + escaped + '\\b', 'gi'), () => {

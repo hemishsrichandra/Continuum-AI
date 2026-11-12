@@ -23,6 +23,7 @@ import { createFollowThrough } from './follow-through.js';
 import { intelligenceFor } from './intelligence.js';
 import { handleDemo, isDemoPath } from './demo-learning.js';
 import { createDataSources } from './data-sources.js';
+import { createPrivacyControls } from './privacy-controls.js';
 
 export function createHandler({ file, config = process.env, service } = {}) {
   config = { APP_URL: 'http://localhost:3000', ...config };
@@ -54,6 +55,9 @@ export function createHandler({ file, config = process.env, service } = {}) {
   const troubleshooting = createTroubleshooting(store, learning, reuse, providerActions, { memoryPool, followThrough });
   // Follow-through deadlines run on the integrations worker tick, not per web request.
   delivery.register(() => followThrough.tick());
+  delivery.register(() => dataSources.runDue());
+  const privacy = createPrivacyControls(store, memory, config);
+  delivery.register(() => privacy.sweep());
   if (config.ENABLE_OUTBOX_WORKER === 'true') providerActions.start();
   if (config.ENABLE_OUTBOX_WORKER === 'true') memory.start?.();
   const pending = new Map();
@@ -220,7 +224,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
         '/api/conversation/archive', '/api/feedback', '/api/slots', '/api/memory',
         '/api/reflect', '/api/chat', '/api/request', '/api/requirement', '/api/book',
         '/api/cancel', '/api/book/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
-        '/api/resolutions/outcome', '/api/connector/sync', '/api/troubleshooting/outcome',
+        '/api/resolutions/outcome', '/api/connector/sync', '/api/troubleshooting/outcome', '/api/privacy/export', '/api/privacy/erase',
       ]);
       if (['owner', 'staff'].includes(profile.role) && customerRoutes.has(url.pathname))
         throw fault(403, 'Customer accounts handle personal requests and confirmations. Use the company dashboard or specialist console.');
@@ -243,7 +247,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
         let scopeBot = url.searchParams.get('chatbotId') || (staff.role === 'owner' ? null : botId(profile));
         if (scopeBot) {
           const bot = getBot(store.db, profile.companyId, scopeBot);
-          if (staff.role !== 'owner' && bot.adapter !== staff.provider) throw fault(403, 'This service is not available to your membership.');
+          if (!companies.mayUseBot(staff, bot)) throw fault(403, 'This service is not available to your membership.');
         }
         return write(200, intelligenceFor(store, profile.companyId, { slaHours: followThrough.slaHours, chatbotId: scopeBot }));
       }
@@ -257,9 +261,10 @@ export function createHandler({ file, config = process.env, service } = {}) {
         const operatorBot = url.searchParams.get('chatbotId')
           ? getBot(store.db,profile.companyId,url.searchParams.get('chatbotId'))
           : selectedProvider ? getBot(store.db,profile.companyId,profile.companyId+':'+selectedProvider) : selectedBot;
-        if (!operatorBot.active || (staff.role !== 'owner' && operatorBot.adapter !== staff.provider))
+        if (!operatorBot.active || !companies.mayUseBot(staff, operatorBot))
           throw fault(403,'This service queue is not available to your membership.');
         const operator = { ...staff, provider: operatorBot.adapter, chatbotId: operatorBot.id };
+        const scopedData = store.dataFor(operator.companyId);
         if (endpoint === 'GET /api/operator')
           return write(200, {
             chatbot: operatorBot,
@@ -268,7 +273,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
             self: operator.id,
             role: operator.role,
             staff: companies.roster(operator),
-            cases: store.data.handoffs
+            cases: scopedData.handoffs
               .filter(
                 (h) =>
                   h.companyId === operator.companyId &&
@@ -288,15 +293,15 @@ export function createHandler({ file, config = process.env, service } = {}) {
                 },
                 attempts: troubleshooting.attempts({...operator,id:h.customerId},{id:h.ticketId}),
                 timeline: followThrough.timeline(operator.companyId, operator.chatbotId, h.ticketId),
-                conversation: store.data.conversations
+                conversation: scopedData.conversations
                   .filter((c) => c.scope === h.scope && c.ticketId === h.ticketId && !c.archivedAt)
                   .slice(-50),
               })),
             resolutions: learning.list(operator.companyId, operator.provider, operator.chatbotId),
             // Every customer request stays visible to the company team even before escalation.
             requests: (() => {
-              const open = new Set(store.data.handoffs.filter((h) => h.companyId === operator.companyId && h.chatbotId === operator.chatbotId && !['Resolved', 'Closed'].includes(h.status)).map((h) => h.ticketId));
-              return store.data[operator.provider]
+              const open = new Set(scopedData.handoffs.filter((h) => h.companyId === operator.companyId && h.chatbotId === operator.chatbotId && !['Resolved', 'Closed'].includes(h.status)).map((h) => h.ticketId));
+              return scopedData[operator.provider]
                 .filter((r) => r.companyId === operator.companyId && r.chatbotId === operator.chatbotId)
                 .map((r) => ({ r, ticketId: r.ticket_id || r.id, customerId: r.customer_id || r.user_id }))
                 .filter(({ r, ticketId }) => !open.has(ticketId) && !['Resolved'].includes(r.status || r.state))
@@ -341,7 +346,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
               store.db
                 .transaction(() => {
                   const result = learning.progress(operator, body, op);
-                  const h = store.data.handoffs.find(
+                  const h = store.dataFor(operator.companyId).handoffs.find(
                     (h) => h.id === body.handoffId && h.companyId === operator.companyId,
                   );
                   result.providerDelivery = providerActions.enqueue(
@@ -405,12 +410,17 @@ export function createHandler({ file, config = process.env, service } = {}) {
           metrics: summary(store, db),
           providerDeliveries: providerActions.list(profile),
         });
+      if (endpoint === 'GET /api/privacy/export') return write(200, privacy.exportData(profile, db));
+      if (endpoint === 'POST /api/privacy/erase') {
+        const body = await json(req);
+        return write(200, await privacy.erase(profile, db, { ticketId: body.ticketId === undefined ? undefined : field(body.ticketId, 'request ID', 100), confirmed: body.confirmed }));
+      }
       if (endpoint === 'GET /api/status') return write(200, { ...db.ticket(requested), ticketId: requested });
       if (endpoint === 'GET /api/analytics') return write(200, summary(store, db));
       if (endpoint === 'GET /api/conversation') {
         db.ticket(requested);
         return write(200, {
-          messages: store.data.conversations
+          messages: store.dataFor(profile.companyId).conversations
             .filter((c) => c.scope === db.scope && c.ticketId === requested && !c.archivedAt)
             .slice(-100)
             .map(({ scope, ...c }) => ({
@@ -496,7 +506,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
             const statedFacts = extractFacts(message);
             const saveResponse = (result) => {
               if (body.retain === false) return result;
-              return store.update((data) => {
+              return store.updateFor(profile.companyId, (data) => {
                 const existing = operation.key && data.operations.find((o) => o.scope === db.scope && o.key === operation.key);
                 if (existing) {
                   if (existing.fingerprint !== operation.fingerprint) throw fault(409, 'Submission details changed.');
@@ -551,7 +561,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
                 : await memory.recall(db.scope, ticket.id, message)
               : { source: 'Disabled', facts: [] };
             // A later resolution supersedes historical recovery signals.
-            const ledger = store.data.memories.filter(
+            const ledger = store.dataFor(profile.companyId).memories.filter(
               (m) => m.scope === db.scope && m.ticketId === ticket.id && !m.invalidatedAt,
             );
             const resolvedIndex = ledger.findLastIndex((m) => m.kind === 'resolved');
@@ -564,7 +574,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
             const statedPreferences = statedFacts.filter(f => f.kind === 'preference');
             const facts = recall.facts.filter((f) => {
               if (superseded.has(f.id)) return false;
-              const saved = store.data.memories.find(m => m.id === f.id);
+              const saved = store.dataFor(profile.companyId).memories.find(m => m.id === f.id);
               return !statedPreferences.some(p => f.kind === 'preference' &&
                 (saved?.category || 'contact') === p.category);
             });
@@ -596,7 +606,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
             );
             if (
               learned.facts.some((f) => {
-                const r = store.data.resolutions.find((r) => r.id === f.resolutionId);
+                const r = store.dataFor(profile.companyId).resolutions.find((r) => r.id === f.resolutionId);
                 return !r || r.retiredAt || needsReview(r);
               })
             )
@@ -690,7 +700,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
                           .list(db.scope, ticketId)
                           .filter((item) => !item.invalidatedAt)
                           .slice(0, 8),
-                  conversation: store.data.conversations
+                  conversation: store.dataFor(profile.companyId).conversations
                     .filter((c) => c.scope === db.scope && c.ticketId === ticketId && !c.archivedAt)
                     .slice(-50)
                     .map((c) => ({ question: c.message, answer: c.response.reply, createdAt: c.createdAt })),
@@ -708,7 +718,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
             }
             if (body.proposalId) {
               const proposalId = field(body.proposalId, 'proposal ID', 100);
-              const exchange = store.data.conversations.find(
+              const exchange = store.dataFor(profile.companyId).conversations.find(
                 (c) => c.scope === db.scope && c.id === proposalId,
               );
               if (
@@ -764,7 +774,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
               .transaction(() => {
                 const saved = db.commit(kind, data, ticketId, operation);
                 if (kind === 'book' || kind === 'cancel') {
-                  const booking = store.data.bookings.find(
+                  const booking = store.dataFor(profile.companyId).bookings.find(
                     (b) => b.id === (kind === 'cancel' ? saved.bookingId : saved.id),
                   );
                   delivery.queueBooking(session.account, booking, kind === 'cancel');
@@ -860,6 +870,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
   handler.store = store;
   handler.memoryPool = memoryPool;
   handler.dataSources = dataSources;
+  handler.privacy = privacy;
   handler.followThrough = followThrough;
   handler.troubleshooting = troubleshooting;
   handler.delivery = delivery;

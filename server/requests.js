@@ -32,15 +32,16 @@ export function submission(req, body, endpoint) {
 }
 export function summary(store, db) {
   const tickets = db.list();
-  const activity = store.data.audit.filter((a) => a.scope === db.scope);
-  const exchanges = store.data.conversations.filter((c) => c.scope === db.scope);
+  const scoped = store.dataFor(db.scope.split(':')[0]);
+  const activity = scoped.audit.filter((a) => a.scope === db.scope);
+  const exchanges = scoped.conversations.filter((c) => c.scope === db.scope);
   const feedback = exchanges.filter((c) => c.rating);
   const times = exchanges.map((c) => c.response.trace?.elapsedMs).filter(Number.isFinite);
   return {
     open: tickets.filter((t) => t.status !== 'Resolved').length,
     resolved: tickets.filter((t) => t.status === 'Resolved').length,
     overdue: tickets.filter((t) => t.status !== 'Resolved' && t.eta && new Date(t.eta + 'T23:59:59+05:30') < new Date()).length,
-    appointments: store.data.bookings.filter((b) => b.scope === db.scope && !b.cancelledAt && new Date(b.datetime) > new Date()).length,
+    appointments: scoped.bookings.filter((b) => b.scope === db.scope && !b.cancelledAt && new Date(b.datetime) > new Date()).length,
     actions: activity.filter((a) => !['chat', 'invalidate', 'feedback', 'archive'].includes(a.kind)).length,
     conversations: exchanges.length,
     averageResponseMs: times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : null,

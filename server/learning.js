@@ -59,7 +59,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
   }
   function change(staff, operation, work) {
     const key = `operator:${staff.companyId}:${staff.id}`;
-    return store.update((data) => {
+    return store.updateFor(staff.companyId, (data) => {
       const previous =
         operation?.key && data.operations.find((o) => o.scope === key && o.key === operation.key);
       if (previous) {
@@ -101,7 +101,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
     if (body.riskLevel !== undefined && !['standard', 'high'].includes(body.riskLevel)) throw fault(400, 'Choose a valid risk level.');
     const all = [title, symptoms, environment, solution, safetyText].join('\n');
     if (containsSecret(all)) throw fault(400, 'Remove identifying information and credentials from shared knowledge.');
-    const h = store.data.handoffs.find((x) => x.id === body.handoffId && x.companyId === staff.companyId && x.chatbotId === botId(staff));
+    const h = store.dataFor(staff.companyId).handoffs.find((x) => x.id === body.handoffId && x.companyId === staff.companyId && x.chatbotId === botId(staff));
     const customer = h && store.db.prepare('SELECT name,email FROM accounts WHERE id=?').get(h.customerId);
     const names = customer ? [customer.name, customer.email] : [];
     const clean = (t) => scrubPII(t, { names }).text;
@@ -151,7 +151,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
   }
   return {
     list(companyId, provider, chatbotId = defaultBotId(companyId,provider)) {
-      const data = store.data;
+      const data = store.dataFor(companyId);
       return data.resolutions
         .filter((r) => r.companyId === companyId && r.chatbotId === chatbotId)
         .map(({ authorId, ...r }) => {
@@ -319,7 +319,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
     async confirm(profile, body) {
       if (body.confirmed !== true || typeof body.accepted !== 'boolean')
         throw fault(400, 'Confirm whether the solution worked.');
-      const result = store.update((data) => {
+      const result = store.updateFor(profile.companyId, (data) => {
         const r = data.resolutions.find((r) => r.id === body.id && r.companyId === profile.companyId);
         const h =
           r &&
@@ -379,7 +379,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
     async retire(staff, body) {
       if (body.confirmed !== true) throw fault(400, 'Confirm retiring this resolution.');
       const row = memoryPool?.get(staff.companyId, botId(staff), body.id);
-      const item = store.data.resolutions.find(
+      const item = store.dataFor(staff.companyId).resolutions.find(
         (r) => r.id === body.id && r.companyId === staff.companyId && r.chatbotId === botId(staff),
       );
       if (!item && !row) throw fault(404, 'Resolution not found.');
@@ -388,7 +388,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
         store.update((data) => {
           data.resolutions.find((r) => r.id === item.id).retiredAt ||= new Date().toISOString();
         });
-        if (store.data.memories.some((m) => m.id === item.memoryId))
+        if (store.dataFor(staff.companyId).memories.some((m) => m.id === item.memoryId))
           await memory.invalidate(scope(staff.companyId, staff.provider, botId(staff)), 'knowledge', item.memoryId);
       }
       return { success: true };

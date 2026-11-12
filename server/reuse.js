@@ -26,7 +26,7 @@ export function failedResolutions(store, companyId, provider, customerId, chatbo
   if (ids.size) {
     for (const r of store.db.prepare(`SELECT steps_json FROM memory_pool WHERE company_id=? AND chatbot_id=? AND id IN (${[...ids].map(() => '?').join(',')})`).all(companyId, chatbotId, ...ids))
       signatures.add(signatureOf(JSON.parse(r.steps_json)));
-    for (const r of store.data.resolutions.filter((r) => r.companyId === companyId && (r.chatbotId || defaultBotId(companyId, provider)) === chatbotId && ids.has(r.id))) {
+    for (const r of store.dataFor(companyId).resolutions.filter((r) => r.companyId === companyId && (r.chatbotId || defaultBotId(companyId, provider)) === chatbotId && ids.has(r.id))) {
       signatures.add(resolutionSignature(r));
       signatures.add(signatureOf([r.solution]));
     }
@@ -83,7 +83,7 @@ export function createReuse(store, memory, providerActions, memoryPool) {
       const id = field(body.useId, 'recommendation ID', 100);
       const scope = privateScope(profile);
       let retained;
-      const result = store.update((data) => {
+      const result = store.updateFor(profile.companyId, (data) => {
         const use = sql.prepare('SELECT * FROM resolution_uses WHERE id=? AND scope=?').get(id, scope);
         const r = use && memoryPool.get(profile.companyId, botId(profile), use.resolution_id);
         if (!use || !r) throw fault(404, 'Recommendation not found in your account.');

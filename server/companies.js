@@ -54,6 +54,21 @@ export function createCompanies(store, config) {
       role: account.role,
     };
   }
+  /**
+   * May this membership use this service? Owners always; staff only for services of their adapter and,
+   * when the owner has restricted them to specific services, only those. No restriction rows = every
+   * service of their adapter (the behaviour before per-service access existed).
+   */
+  function mayUseBot(member, bot) {
+    const role = member.role;
+    if (role === 'owner') return true;
+    if (role !== 'staff') return true;
+    const provider = member.provider;
+    if (bot.adapter !== provider) return false;
+    const companyId = member.company_id || member.companyId, accountId = member.account_id || member.id;
+    const rows = sql.prepare('SELECT chatbot_id FROM staff_chatbot_access WHERE company_id=? AND account_id=?').all(companyId, accountId);
+    return !rows.length || rows.some((r) => r.chatbot_id === bot.id);
+  }
   function roster(operator) {
     return sql
       .prepare(
@@ -63,7 +78,9 @@ export function createCompanies(store, config) {
       .filter(
         (a) =>
           a.role === 'owner' ||
-          a.provider === operator.provider,
+          (a.provider === operator.provider &&
+            // Staff restricted to other services cannot be assigned to this one.
+            mayUseBot({ role: 'staff', provider: a.provider, company_id: operator.companyId, account_id: a.id }, { id: operator.chatbotId, adapter: operator.provider })),
       );
   }
   async function handle(req, endpoint, session, send) {
@@ -85,6 +102,52 @@ export function createCompanies(store, config) {
         store.update(data=>data.audit.push({id:randomUUID(),scope:`company:${companyId}`,kind:'chatbot_config',chatbotId:b.id,authorId:session.account_id,revision:b.revision,createdAt:new Date().toISOString()}));
       }).immediate();
       send(200,{chatbot:b}); return true;
+    }
+    if (endpoint === 'GET /api/company/staff-access') {
+      const bots = sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(companyId).map((r) => normalizeBot(JSON.parse(r.config)));
+      send(200, {
+        chatbots: bots.map((b) => ({ id: b.id, name: b.name, adapter: b.adapter, active: b.active })),
+        staff: sql.prepare("SELECT a.id,a.name,a.email,m.provider FROM accounts a JOIN company_memberships m ON m.account_id=a.id WHERE m.company_id=? AND m.role='staff' AND m.status='active' ORDER BY a.name").all(companyId).map((a) => {
+          const rows = sql.prepare('SELECT chatbot_id FROM staff_chatbot_access WHERE company_id=? AND account_id=?').all(companyId, a.id);
+          return { ...a, chatbotIds: rows.length ? rows.map((r) => r.chatbot_id) : null };
+        }),
+      });
+      return true;
+    }
+    if (endpoint === 'POST /api/company/staff-access') {
+      const body = await json(req);
+      if (body.confirmed !== true) throw fault(400, 'Confirm changing this specialist’s service access.');
+      const member = sql.prepare("SELECT m.*,a.name FROM company_memberships m JOIN accounts a ON a.id=m.account_id WHERE m.company_id=? AND m.account_id=? AND m.role='staff' AND m.status='active'").get(companyId, field(body.accountId, 'account', 100));
+      if (!member) throw fault(404, 'Specialist not found in this company.');
+      let ids = null;
+      if (body.chatbotIds !== null) {
+        if (!Array.isArray(body.chatbotIds) || !body.chatbotIds.length || body.chatbotIds.length > 50 || body.chatbotIds.some((x) => typeof x !== 'string'))
+          throw fault(400, 'Choose at least one service, or send null to allow every service of their adapter.');
+        ids = [...new Set(body.chatbotIds)];
+        for (const id of ids) {
+          const bot = getBot(sql, companyId, id);
+          if (bot.adapter !== member.provider) throw fault(400, 'A specialist can only be given services of their own adapter.');
+        }
+      }
+      const released = [];
+      sql.transaction(() => {
+        sql.prepare('DELETE FROM staff_chatbot_access WHERE company_id=? AND account_id=?').run(companyId, member.account_id);
+        for (const id of ids || []) sql.prepare('INSERT INTO staff_chatbot_access(company_id,account_id,chatbot_id,granted_by,created_at) VALUES(?,?,?,?,?)').run(companyId, member.account_id, id, session.account_id, new Date().toISOString());
+        // Work they hold in a service they can no longer reach goes back to the queue for the owner.
+        store.update((data) => {
+          for (const h of data.handoffs) {
+            if (h.companyId !== companyId || h.assignedTo !== member.account_id || ['Resolved', 'Closed'].includes(h.status)) continue;
+            if (ids && ids.includes(h.chatbotId)) continue;
+            h.assignedTo = null;
+            if (h.status !== 'Awaiting confirmation') h.status = 'Queued';
+            h.revision = (h.revision || 0) + 1;
+            released.push(h.id);
+          }
+          data.audit.push({ id: randomUUID(), scope: `company:${companyId}`, kind: 'staff_service_access_changed', accountId: member.account_id, authorId: session.account_id, chatbotIds: ids, releasedCases: released.length, createdAt: new Date().toISOString() });
+        });
+      }).immediate();
+      send(200, { success: true, chatbotIds: ids, releasedCases: released.length });
+      return true;
     }
     if (endpoint === 'POST /api/company/revoke-membership') {
       const body = await json(req);
@@ -184,5 +247,5 @@ export function createCompanies(store, config) {
     }
     return false;
   }
-  return { registration, staff, roster, handle };
+  return { registration, staff, roster, handle, mayUseBot };
 }

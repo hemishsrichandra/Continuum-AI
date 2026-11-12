@@ -169,7 +169,7 @@ export function compatibility(environment, query, fields = {}) {
 }
 export function safeHistory(store, scope, ticketId, enabled, statedPreferences = []) {
   if (!enabled) return [];
-  const data = store.data;
+  const data = store.dataFor(scope.startsWith('knowledge:') ? scope.split(':')[1] : scope.split(':')[0]);
   const inactive = data.resolutions.filter(
     (r) =>
       r.retiredAt ||

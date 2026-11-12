@@ -319,3 +319,87 @@ test('diagnostic fields: mapped columns become applicability conditions and gate
   assert.equal(right.learnedSource.customerConfirmed, false);
   void ISSUE; void writeFile;
 });
+
+// --------------------------------------------------------------------------- scheduled sync
+const HOUR = 3600000;
+const csvOf = (steps) => `id,title,symptoms,steps,applies_to\nK-1,Display flicker,Display flickers after startup,${steps},Model X firmware 4\n`;
+
+test('scheduled sync: due sources run on the worker tick exactly once per interval; manual-only sources never run', async (t) => {
+  const { w, save } = await setup(t);
+  const scheduled = (await save({ syncIntervalHours: 2, connection: { csv: csvOf('Open Display settings and pick the Standard profile then restart.') } })).data.source;
+  const manual = (await save({ name: 'Manual', connection: { csv: CSV } })).data.source;
+  assert.equal(scheduled.syncIntervalHours, 2);
+  assert.ok(Date.parse(scheduled.nextSyncAt) > Date.now() + 1.9 * HOUR);
+  assert.equal(manual.syncIntervalHours, null);
+  assert.deepEqual(await w.h.dataSources.runDue(Date.now() + HOUR), [], 'not due yet');
+  const first = await w.h.dataSources.runDue(Date.now() + 3 * HOUR);
+  assert.deepEqual(first.map((r) => [r.id, r.status, r.inserted]), [[scheduled.id, 'ok', 1]]);
+  assert.equal(pool(w, "origin_type='company_db_sync'").length, 1, 'only the scheduled source imported');
+  assert.deepEqual(await w.h.dataSources.runDue(Date.now() + 3 * HOUR), [], 'the same tick again does nothing');
+  assert.deepEqual(await w.h.dataSources.runDue(Date.now() + 4 * HOUR), [], 'still inside the next interval');
+  const next = await w.h.dataSources.runDue(Date.now() + 6 * HOUR);
+  assert.equal(next.length, 1);
+  assert.deepEqual([next[0].inserted, next[0].updated], [0, 0], 'a re-run of unchanged data changes nothing');
+  const shown = (await w.owner.api('company/data-sources')).data.sources.find((s) => s.id === scheduled.id);
+  assert.ok(shown.lastSyncedAt && shown.nextSyncAt);
+});
+
+test('scheduled sync picks up source changes, keeps local review decisions, and records failures without stopping', async (t) => {
+  const { w, save } = await setup(t);
+  const src = (await save({ syncIntervalHours: 1, declaredVerified: true, connection: { csv: csvOf('Open Display settings and pick the Standard profile then restart.') } })).data.source;
+  await w.h.dataSources.runDue(Date.now() + 2 * HOUR);
+  const row = pool(w, "source_key LIKE '%:K-1'")[0];
+  // A reviewer revises the record, then the source changes.
+  const revised = await w.owner.api('operator/revise', { id: row.id, title: 'Reviewed', symptoms: 'Display flickers after startup', environment: 'Model X firmware 4', solution: 'Reviewed steps: select Fixed 60 Hz mode and restart the laptop.', reviewedForPrivacy: true, confirmed: true, version: 1 });
+  assert.equal(revised.status, 201);
+  await w.owner.api('company/data-sources', { confirmed: true, id: src.id, sourceType: 'csv_sync', chatbotId: w.botOf(w.company), name: 'Knowledge base', fieldMapping: MAPPING, connection: { csv: csvOf('Upstream changed these steps entirely and completely.') }, declaredVerified: true });
+  const run = await w.h.dataSources.runDue(Date.now() + 4 * HOUR);
+  assert.equal(run[0].status, 'ok');
+  assert.match(pool(w, "source_key LIKE '%:K-1' ORDER BY version_number DESC")[0].steps_json, /Fixed 60 Hz/, 'the reviewer’s version still wins');
+  const result = JSON.parse(w.db().prepare('SELECT last_sync_result_json r FROM company_data_sources WHERE id=?').get(src.id).r);
+  assert.equal(result.skippedLocallyReviewed, 1);
+  // A failing source: recorded as an error, other sources still run, and the schedule moves on.
+  const broken = (await w.owner.api('company/data-sources', { confirmed: true, sourceType: 'sqlite', chatbotId: w.botOf(w.company), name: 'Broken', fieldMapping: MAPPING, connection: { path: '/tmp/none.sqlite', table: 'kb' }, syncIntervalHours: 1 })).data.source;
+  const later = await w.h.dataSources.runDue(Date.now() + 8 * HOUR);
+  assert.deepEqual(later.map((r) => r.status).sort(), ['error', 'ok']);
+  const status = (await w.owner.api('company/data-sources')).data.sources.find((s) => s.id === broken.id);
+  assert.equal(status.status, 'error');
+  assert.ok(Date.parse(status.nextSyncAt) > Date.now() + 8 * HOUR, 'the next attempt waits for the next interval');
+});
+
+test('scheduled sync: concurrent workers cannot run the same source twice', async (t) => {
+  const { w, save } = await setup(t);
+  await save({ syncIntervalHours: 1, connection: { csv: csvOf('Open Display settings and pick the Standard profile then restart.') } });
+  const at = Date.now() + 3 * HOUR;
+  const results = await Promise.all([w.h.dataSources.runDue(at), w.h.dataSources.runDue(at), w.h.dataSources.runDue(at)]);
+  assert.equal(results.flat().length, 1, 'exactly one worker claimed it');
+  assert.equal(pool(w, "origin_type='company_db_sync'").length, 1);
+});
+
+test('sync interval validation, clearing, and company isolation of schedules', async (t) => {
+  const { w, save } = await setup(t);
+  for (const bad of [0, 721, 1.5, '2', -1]) assert.equal((await save({ syncIntervalHours: bad })).status, 400, String(bad));
+  const src = (await save({ syncIntervalHours: 3 })).data.source;
+  assert.equal((await save({ id: src.id, syncIntervalHours: null })).data.source.syncIntervalHours, null, 'null clears the schedule');
+  assert.equal(w.db().prepare('SELECT next_sync_at n FROM company_data_sources WHERE id=?').get(src.id).n, null);
+  assert.deepEqual(await w.h.dataSources.runDue(Date.now() + 100 * HOUR), []);
+  // Changing only the name keeps an existing schedule untouched.
+  const s2 = (await save({ name: 'Other', syncIntervalHours: 5 })).data.source;
+  const before = w.db().prepare('SELECT next_sync_at n FROM company_data_sources WHERE id=?').get(s2.id).n;
+  await save({ id: s2.id, name: 'Renamed', syncIntervalHours: 5 });
+  assert.equal(w.db().prepare('SELECT next_sync_at n FROM company_data_sources WHERE id=?').get(s2.id).n, before);
+  // Another company's owner cannot schedule or alter this source.
+  const hijack = await w.other.api('company/data-sources', { confirmed: true, id: s2.id, sourceType: 'csv_sync', chatbotId: w.botOf(w.companyB), name: 'x', fieldMapping: MAPPING, connection: { csv: CSV }, syncIntervalHours: 1 });
+  assert.ok([404, 409].includes(hijack.status), 'status ' + hijack.status);
+  assert.equal(w.db().prepare('SELECT sync_interval_hours n FROM company_data_sources WHERE id=?').get(s2.id).n, 5);
+});
+
+test('the worker flush runs scheduled syncs (not web requests)', async (t) => {
+  const { w, save } = await setup(t);
+  const src = (await save({ syncIntervalHours: 1, connection: { csv: csvOf('Open Display settings and pick the Standard profile then restart.') } })).data.source;
+  w.db().prepare('UPDATE company_data_sources SET next_sync_at=? WHERE id=?').run(new Date(Date.now() - HOUR).toISOString(), src.id);
+  await w.owner.api('company/data-sources');
+  assert.equal(pool(w, "origin_type='company_db_sync'").length, 0, 'ordinary traffic does not sync');
+  await w.h.delivery.flush();
+  assert.equal(pool(w, "origin_type='company_db_sync'").length, 1);
+});

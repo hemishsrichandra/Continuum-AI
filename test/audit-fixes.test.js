@@ -216,3 +216,16 @@ test('E06 (UI): the customer page renders the device form for both the missing-d
   const ui = readFileSync(new URL('../web/ui.js', import.meta.url), 'utf8');
   assert.match(ui, /\['context', 'context_conflict'\]\.includes\(response\.workflow\?\.stage\)/);
 });
+
+test('E17: names that follow a cue word are redacted; product, role and company words are not mistaken for names', () => {
+  const clean = (t) => scrubPII(t).text;
+  for (const [input, gone] of [
+    ['Ask Priya Sharma to call you back', 'Priya'], ['Thanks, Raj. Regards, Meena Iyer', 'Meena'], ['Contact Dr. Rao tomorrow', 'Rao'],
+    ['Email Jane about it', 'Jane'], ['hi Alex, the screen flickers', 'Alex'], ['Speak to Arjun Mehta about it', 'Mehta'],
+  ]) assert.ok(!clean(input).includes(gone), `${input} -> ${clean(input)}`);
+  for (const keep of [
+    'Please contact Support for a replacement', 'Call Billing on Monday', 'Open Display Settings then restart', 'Speak to Microsoft Support Team',
+    'Thanks Windows team', 'Contact Apple Support', 'Ask your administrator', 'Email Outlook support', 'Call Dell Service Centre',
+  ]) assert.equal(clean(keep), keep);
+  assert.equal(clean('Select the Standard display profile, then restart.'), 'Select the Standard display profile, then restart.');
+});

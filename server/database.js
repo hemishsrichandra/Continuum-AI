@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { ensureBots, defaultBotId, knowledgeScope } from './chatbots.js';
@@ -208,11 +209,36 @@ export class SqliteStore {
       this.db.prepare('INSERT INTO schema_migrations VALUES(4,?)').run(new Date().toISOString());
     }).immediate();
     this.migrateV5();
+    this.migrateV6();
     // Idempotent hardening: the case timeline is an audit trail and can only be appended to.
     this.db.exec(`
       CREATE TRIGGER IF NOT EXISTS case_events_append_only_update BEFORE UPDATE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
       CREATE TRIGGER IF NOT EXISTS case_events_append_only_delete BEFORE DELETE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
     `);
+  }
+  // Migration 6: per-service staff access, scheduled data-source sync columns and expression indexes for
+  // the hot read paths. Additive and idempotent.
+  migrateV6() {
+    // Every statement is idempotent, so this runs on each start (it also repairs a database whose v5 tables
+    // were restored from an older backup after v6 had been recorded).
+    this.db.transaction(() => {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS staff_chatbot_access (
+          company_id TEXT NOT NULL, account_id TEXT NOT NULL, chatbot_id TEXT NOT NULL, granted_by TEXT, created_at TEXT NOT NULL,
+          PRIMARY KEY(company_id,account_id,chatbot_id),
+          FOREIGN KEY(company_id,account_id) REFERENCES company_memberships(company_id,account_id),
+          FOREIGN KEY(company_id,chatbot_id) REFERENCES chatbots(company_id,id));
+        CREATE INDEX IF NOT EXISTS staff_access_account ON staff_chatbot_access(company_id,account_id);
+        CREATE INDEX IF NOT EXISTS records_company ON records(collection, json_extract(payload,'$.companyId'));
+        CREATE INDEX IF NOT EXISTS records_position ON records(collection, position);
+        CREATE INDEX IF NOT EXISTS records_chatbot ON records(collection, json_extract(payload,'$.companyId'), json_extract(payload,'$.chatbotId'));
+      `);
+      const columns = this.db.prepare('PRAGMA table_info(company_data_sources)').all().map((c) => c.name);
+      if (!columns.includes('sync_interval_hours')) this.db.exec('ALTER TABLE company_data_sources ADD COLUMN sync_interval_hours INTEGER CHECK(sync_interval_hours IS NULL OR sync_interval_hours BETWEEN 1 AND 720)');
+      if (!columns.includes('next_sync_at')) this.db.exec('ALTER TABLE company_data_sources ADD COLUMN next_sync_at TEXT');
+      this.db.exec('CREATE INDEX IF NOT EXISTS data_source_due ON company_data_sources(next_sync_at) WHERE sync_interval_hours IS NOT NULL');
+      this.db.prepare('INSERT OR IGNORE INTO schema_migrations VALUES(6,?)').run(new Date().toISOString());
+    }).immediate();
   }
   // Migration 5: unified company memory (Resolution Passports), FTS5 index,
   // follow-through tasks, case timeline, company data sources and sequential
@@ -254,45 +280,149 @@ export class SqliteStore {
       this.db.prepare('INSERT INTO schema_migrations VALUES(5,?)').run(new Date().toISOString());
     }).immediate();
   }
-  get data() {
+  // Collections whose rows carry a companyId, and collections whose rows are scoped by a string prefix.
+  static BY_COMPANY = ['repair', 'it', 'bookings', 'handoffs', 'resolutions'];
+  static BY_SCOPE = ['requirements', 'audit', 'memories', 'conversations', 'operations'];
+  #load(withKeys = false) {
     const data = Object.fromEntries(collections.map((key) => [key, []]));
-    for (const row of this.db
-      .prepare('SELECT collection, payload FROM records ORDER BY collection, position')
-      .all())
+    const snapshot = withKeys ? new Map() : null;
+    for (const row of this.db.prepare('SELECT collection, record_key, position, payload FROM records ORDER BY collection, position').all()) {
       data[row.collection].push(JSON.parse(row.payload));
-    data.schemaVersion = 5;
-    return data;
+      if (snapshot) snapshot.set(row.collection + '\u0000' + row.record_key, row.position + '\u0000' + row.payload);
+    }
+    data.schemaVersion = 6;
+    return { data, snapshot };
   }
-  save(data) {
+  get data() {
+    return this.#load().data;
+  }
+  /**
+   * Only the rows belonging to one company, read through the expression indexes (records_company and
+   * record_scope). Use this for read paths so one busy tenant does not slow every other tenant. Rows keep
+   * their global order. Collections that are not company-owned (outbox, demo bookings) are empty here.
+   */
+  dataFor(companyId) {
+    return this.#scoped(companyId, false).data;
+  }
+  #scoped(companyId, withKeys) {
+    if (typeof companyId !== 'string' || !companyId) throw new Error('dataFor requires a company id');
+    const data = Object.fromEntries(collections.map((key) => [key, []]));
+    const snapshot = withKeys ? new Map() : null;
+    const take = (collection, rows) => {
+      rows.sort((x, y) => x.position - y.position);
+      for (const row of rows) {
+        data[collection].push(JSON.parse(row.payload));
+        if (snapshot) snapshot.set(collection + '\u0000' + row.record_key, { position: row.position, payload: row.payload });
+      }
+    };
+    const prefixRange = (prefix) => [prefix, prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1)];
+    const ranges = [`${companyId}:`, `knowledge:${companyId}:`, `operator:${companyId}:`].map(prefixRange);
+    for (const collection of SqliteStore.BY_COMPANY)
+      take(collection, this.db.prepare("SELECT record_key, position, payload FROM records WHERE collection=? AND json_extract(payload,'$.companyId')=?").all(collection, companyId));
+    // One indexed range query per prefix (an OR of ranges defeats the scope index), merged back into global order.
+    const queries = [
+      ...ranges.map((range) => ["json_extract(payload,'$.scope')>=? AND json_extract(payload,'$.scope')<?", range]),
+      ["json_extract(payload,'$.scope')=?", [`company:${companyId}`]],
+    ];
+    for (const collection of SqliteStore.BY_SCOPE) {
+      const found = [];
+      for (const [where, args] of queries)
+        for (const row of this.db.prepare(`SELECT record_key, position, payload FROM records WHERE collection=? AND ${where}`).all(collection, ...args)) found.push(row);
+      take(collection, found);
+    }
+    data.schemaVersion = 6;
+    return { data, snapshot };
+  }
+  /** All rows of one collection whose JSON path equals a value (index-backed for companyId/scope). */
+  rows(collection, path, value) {
+    if (!collections.includes(collection) || !/^\$\.[A-Za-z_][A-Za-z0-9_]*$/.test(path)) throw new Error('Invalid collection or path');
+    return this.db.prepare(`SELECT payload FROM records WHERE collection=? AND json_extract(payload,'${path}')=? ORDER BY position`).all(collection, value).map((r) => JSON.parse(r.payload));
+  }
+  // Writes only the rows that changed. `snapshot` (from #load) lets this compare in memory instead of
+  // issuing one SQL statement per existing row.
+  save(data, snapshot = null) {
     const upsert = this.db.prepare(
       'INSERT INTO records VALUES(?,?,?,?) ON CONFLICT(collection,record_key) DO UPDATE SET position=excluded.position,payload=excluded.payload WHERE position<>excluded.position OR payload<>excluded.payload',
     );
     const remove = this.db.prepare('DELETE FROM records WHERE collection=? AND record_key=?');
+    const keyOf = (collection, row, index) =>
+      collection === 'operations' ? row.scope + ':' + row.key : (row.scope || '') + ':' + (row.id || row.ticket_id || String(index));
+    if (snapshot) {
+      const seen = new Set();
+      for (const collection of collections)
+        for (const [index, row] of data[collection].entries()) {
+          const key = keyOf(collection, row, index);
+          const id = collection + '\u0000' + key;
+          const payload = JSON.stringify(row);
+          seen.add(id);
+          if (snapshot.get(id) !== index + '\u0000' + payload) upsert.run(collection, key, index, payload);
+        }
+      for (const id of snapshot.keys())
+        if (!seen.has(id)) {
+          const [collection, key] = id.split('\u0000');
+          remove.run(collection, key);
+        }
+      return;
+    }
     for (const collection of collections) {
-      const previous = new Set(
-        this.db
-          .prepare('SELECT record_key FROM records WHERE collection=?')
-          .all(collection)
-          .map((r) => r.record_key),
-      );
+      const previous = new Set(this.db.prepare('SELECT record_key FROM records WHERE collection=?').all(collection).map((r) => r.record_key));
       for (const [index, row] of data[collection].entries()) {
-        const key =
-          collection === 'operations'
-            ? row.scope + ':' + row.key
-            : (row.scope || '') + ':' + (row.id || row.ticket_id || String(index));
+        const key = keyOf(collection, row, index);
         upsert.run(collection, key, index, JSON.stringify(row));
         previous.delete(key);
       }
       for (const key of previous) remove.run(collection, key);
     }
   }
-  update(change) {
+  updateFor(companyId, change) {
+    return this.update(change, { companyId });
+  }
+  // Persists only the changed rows of ONE company's slice. Rows keep their positions; new rows are appended.
+  #saveScoped(data, snapshot) {
+    const upsert = this.db.prepare('INSERT INTO records VALUES(?,?,?,?) ON CONFLICT(collection,record_key) DO UPDATE SET position=excluded.position,payload=excluded.payload');
+    const remove = this.db.prepare('DELETE FROM records WHERE collection=? AND record_key=?');
+    const seen = new Set();
+    for (const collection of [...SqliteStore.BY_COMPANY, ...SqliteStore.BY_SCOPE]) {
+      let next = null;
+      for (const row of data[collection]) {
+        if (collection !== 'operations' && !row.id && !row.ticket_id) row.id = randomUUID();
+        const key = collection === 'operations' ? row.scope + ':' + row.key : (row.scope || '') + ':' + (row.id || row.ticket_id);
+        const id = collection + '\u0000' + key;
+        const payload = JSON.stringify(row);
+        seen.add(id);
+        const before = snapshot.get(id);
+        if (before) {
+          if (before.payload !== payload) upsert.run(collection, key, before.position, payload);
+        } else {
+          next ??= this.db.prepare('SELECT COALESCE(MAX(position),-1) m FROM records WHERE collection=?').get(collection).m;
+          upsert.run(collection, key, ++next, payload);
+        }
+      }
+    }
+    for (const id of snapshot.keys())
+      if (!seen.has(id)) {
+        const [collection, key] = id.split('\u0000');
+        remove.run(collection, key);
+      }
+  }
+  /**
+   * Run `change` against the store and persist the result atomically. With `{ companyId }` only that
+   * company's rows are loaded and written, so the cost does not grow with other tenants' data. Use the scoped
+   * form only when `change` touches that company's rows (and the outbox/demo collections, which it never sees).
+   */
+  update(change, { companyId } = {}) {
     try {
       return this.db
         .transaction(() => {
-          const next = this.data;
+          if (companyId) {
+            const { data: scoped, snapshot: slice } = this.#scoped(companyId, true);
+            const result = change(scoped);
+            this.#saveScoped(scoped, slice);
+            return result;
+          }
+          const { data: next, snapshot } = this.#load(true);
           const result = change(next);
-          this.save(next);
+          this.save(next, snapshot);
           return result;
         })
         .immediate();
