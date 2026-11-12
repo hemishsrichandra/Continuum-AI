@@ -66,6 +66,7 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
     if (r.riskLevel === 'high') blockers.push('specialist marked high risk');
     if (r.safetyCritical) blockers.push('safety-critical');
     if (!r.reviewedForPrivacy) blockers.push('not reviewed for privacy');
+    if (r.redactions > 0) blockers.push('personal data was redacted; a specialist must confirm the scrubbed text still makes sense');
     if (containsSecret(text) || containsPII(text)) blockers.push('contains private data');
     if (r.customerAccepted === false) blockers.push('customer contradicted the fix');
     return blockers;

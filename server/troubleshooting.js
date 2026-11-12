@@ -106,7 +106,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
         const current=sql.prepare('SELECT outcome FROM troubleshooting_attempts WHERE id=?').get(a.id);
         if (current.outcome !== 'pending' && current.outcome !== target) throw fault(409,'This outcome is already final.');
         sql.prepare("UPDATE troubleshooting_attempts SET outcome=?,outcome_at=? WHERE id=? AND outcome='pending'").run(target,now(),a.id);
-        remote=reuse.feedback(p,{useId:a.use_id,worked:body.worked,confirmed:true,memory:body.memory,allowHandoff:false,note:body.note});
+        remote=reuse.feedback(p,{useId:a.use_id,worked:body.worked,confirmed:true,memory:body.memory,allowHandoff:false,note:body.note,safetyIncident:body.safetyIncident===true});
       }).immediate();
       const r=await remote;
       ev(p,{id:a.ticket_id},body.worked?'suggestion_worked':'suggestion_failed',{source:a.source,sequence:a.sequence,memoryId:a.memory_id});
@@ -152,6 +152,8 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
       await processFeedback(p,{attemptId:pending.id,worked,confirmed:true,memory:enabled});
       if(worked) return response('You confirmed that it worked. Your request is resolved.',{workflow:{stage:'resolved'}});
       t=provider(store,p).ticket(t.id);rows=attempts(p,t);
+      const opened=t.handoffs?.find(h=>!['Resolved','Closed'].includes(h.status));
+      if(opened) return response('That did not work. Your case has been submitted to the company support team.',{decision:{mode:'waiting',action:null,handoffId:opened.id},workflow:{stage:'human',handoffId:opened.id}});
     } else if(pending) {
       if(pending.source==='learned' && enabled) {
         authorize(p);
@@ -186,7 +188,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const missing=b.requiredContext.filter(k=>!context[k]);
     const unavailable=/\b(?:don.t know|do not know|not sure|no idea|(?:not able|unable|can.t|cannot)\s+(?:to\s+)?(?:confirm|find|identify|provide))\b/i.test(message);
     const related=[...tokens(message)].some(word=>tokens(t.title+' '+t.issue).has(word));
-    if(!(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length)))
+    if(!(worked||failed) && !(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length)))
       return response(`${b.name} handles ${b.supportedTopics.join(', ')}. ${b.escalationRules.supportRoute}`,{action:b.allowedActions.includes('handoff')?{kind:'handoff',ticketId:t.id,summary:message}:null,workflow:{stage:'unsupported'}});
     if(missing.length) {
       if(unavailable) return response('That is okay. A specialist can help identify your device and check the problem. '+(b.allowedActions.includes('handoff')?'I have prepared a handoff; review it to send your case.':b.escalationRules.supportRoute),{

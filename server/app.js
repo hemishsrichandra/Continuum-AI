@@ -20,6 +20,7 @@ import { createProviderActions } from './provider-actions.js';
 import { requestReference } from './request-reference.js';
 import { createMemoryPool } from './memory-pool.js';
 import { createFollowThrough } from './follow-through.js';
+import { intelligenceFor } from './intelligence.js';
 
 export function createHandler({ file, config = process.env, service } = {}) {
   config = { APP_URL: 'http://localhost:3000', ...config };
@@ -220,6 +221,19 @@ export function createHandler({ file, config = process.env, service } = {}) {
       }
       if (await companies.handle(req, endpoint, session, write)) return;
       const staff = companies.staff(profile);
+      const intel = url.pathname.match(/^\/api\/companies\/([^/]+)\/intelligence$/);
+      if (intel) {
+        if (req.method !== 'GET') throw fault(405, 'Use GET.');
+        // The company is taken from the authenticated membership; the path value only has to agree with it.
+        if (!staff || decodeURIComponent(intel[1]) !== profile.companyId)
+          throw fault(403, 'Resolution Intelligence is available to staff of your own company.');
+        let scopeBot = url.searchParams.get('chatbotId') || (staff.role === 'owner' ? null : botId(profile));
+        if (scopeBot) {
+          const bot = getBot(store.db, profile.companyId, scopeBot);
+          if (staff.role !== 'owner' && bot.adapter !== staff.provider) throw fault(403, 'This service is not available to your membership.');
+        }
+        return write(200, intelligenceFor(store, profile.companyId, { slaHours: followThrough.slaHours, chatbotId: scopeBot }));
+      }
       if (url.pathname.startsWith('/api/operator')) {
         if (!staff) throw fault(403, 'This area requires explicitly provisioned support staff access.');
         const selectedProvider = url.searchParams.get('provider');
@@ -260,12 +274,26 @@ export function createHandler({ file, config = process.env, service } = {}) {
                   }).ticket(h.ticketId),
                 },
                 attempts: troubleshooting.attempts({...operator,id:h.customerId},{id:h.ticketId}),
+                timeline: followThrough.timeline(operator.companyId, operator.chatbotId, h.ticketId),
                 conversation: store.data.conversations
                   .filter((c) => c.scope === h.scope && c.ticketId === h.ticketId && !c.archivedAt)
                   .slice(-50),
               })),
             resolutions: learning.list(operator.companyId, operator.provider, operator.chatbotId),
+            passports: memoryPool.list(operator.companyId, operator.chatbotId),
+            followThrough: followThrough.queue(operator.companyId, [operator.chatbotId]),
           });
+        if (endpoint === 'POST /api/operator/preview-passport') {
+          // Server-side scrub + C_init preview; nothing is stored.
+          const body = await json(req);
+          return write(200, learning.preview(operator, body));
+        }
+        if (endpoint === 'POST /api/operator/revise') {
+          const body = await json(req);
+          const result = memoryPool.revise(operator, field(body.id, 'resolution ID', 100), body);
+          store.update((data) => data.audit.push({ id: randomUUID(), scope: `company:${operator.companyId}`, kind: 'resolution_revised', resolutionId: body.id, newVersionId: result.id, version: result.version, authorId: operator.id, createdAt: new Date().toISOString() }));
+          return write(201, result);
+        }
         if (
           ['POST /api/operator/resolve', 'POST /api/operator/assign', 'POST /api/operator/progress'].includes(
             endpoint,
