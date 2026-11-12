@@ -159,7 +159,7 @@ export function createMemoryPool(store, config = {}) {
     // 2b. Embeddings: configured remote backend where available, else local.
     let backend = LOCAL_EMBEDDING_MODEL;
     let qVec = localEmbedding(text);
-    let vectors = rows.map((r) => (r.embedding_model === LOCAL_EMBEDDING_MODEL ? blobToVector(r.embedding_blob) : localEmbedding(docText(r))));
+    let vectors = rows.map((r) => (r.embedding_model === LOCAL_EMBEDDING_MODEL && r.embedding_blob ? blobToVector(r.embedding_blob) : localEmbedding(docText(r))));
     const remote = await remoteEmbed([text, ...rows.map(docText)]);
     if (remote) {
       backend = remoteModel;

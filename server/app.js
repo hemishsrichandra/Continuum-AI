@@ -22,6 +22,7 @@ import { createMemoryPool } from './memory-pool.js';
 import { createFollowThrough } from './follow-through.js';
 import { intelligenceFor } from './intelligence.js';
 import { handleDemo, isDemoPath } from './demo-learning.js';
+import { createDataSources } from './data-sources.js';
 
 export function createHandler({ file, config = process.env, service } = {}) {
   config = { APP_URL: 'http://localhost:3000', ...config };
@@ -46,6 +47,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
   const memory = service || createMemory(store, config);
   const providerActions = createProviderActions(store, delivery, config);
   const memoryPool = createMemoryPool(store, config);
+  const dataSources = createDataSources(store, delivery, config);
   const followThrough = createFollowThrough(store, { delivery, config });
   const reuse = createReuse(store, memory, providerActions, memoryPool);
   const learning = createLearning(store, memory, companies, config, reuse, providerActions, { memoryPool, followThrough });
@@ -225,6 +227,10 @@ export function createHandler({ file, config = process.env, service } = {}) {
       if (endpoint.includes('/connector')) {
         limit(session.token_hash + ':connector', 10);
         if (await connector.handle(req, endpoint, session, write)) return;
+      }
+      if (endpoint.includes('/api/company/data-sources')) {
+        limit(session.token_hash + ':datasource', 30);
+        if (await dataSources.handle(req, endpoint, session, write)) return;
       }
       if (await companies.handle(req, endpoint, session, write)) return;
       const staff = companies.staff(profile);
@@ -831,6 +837,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
   };
   handler.store = store;
   handler.memoryPool = memoryPool;
+  handler.dataSources = dataSources;
   handler.followThrough = followThrough;
   handler.troubleshooting = troubleshooting;
   handler.delivery = delivery;

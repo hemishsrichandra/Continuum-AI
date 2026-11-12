@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { field, json } from './requests.js';
 import { fault } from './providers.js';
-import { ensureBots, botId, getBot, validateBot } from './chatbots.js';
+import { ensureBots, botId, getBot, validateBot, normalizeBot } from './chatbots.js';
 import { syncPlaybooks } from './passports.js';
 
 export const tokenHash = (value) => createHash('sha256').update(value).digest('hex');
@@ -72,7 +72,7 @@ export function createCompanies(store, config) {
       throw fault(403, 'Only a company owner can manage the team.');
     const companyId = session.profile.companyId;
     if (endpoint === 'GET /api/company/chatbots') {
-      send(200, { chatbots: sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(companyId).map(r=>JSON.parse(r.config)) });
+      send(200, { chatbots: sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(companyId).map(r=>normalizeBot(JSON.parse(r.config))) });
       return true;
     }
     if (endpoint === 'POST /api/company/chatbots') {

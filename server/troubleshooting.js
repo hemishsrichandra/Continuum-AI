@@ -175,11 +175,11 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const previous=sql.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(...args(p,t));
     const context=previous?JSON.parse(previous.context):{};
     if(inputContext && typeof inputContext==='object' && !Array.isArray(inputContext)) {
-      for(const k of b.requiredContext) if(typeof inputContext[k]==='string' && inputContext[k].trim() && inputContext[k].length<=1000) context[k]=inputContext[k].trim();
+      for(const k of b.diagnosticSchema.map(f=>f.key)) if(typeof inputContext[k]==='string' && inputContext[k].trim() && inputContext[k].length<=1000) context[k]=inputContext[k].trim();
     }
     if(!context.environment && /\b(?:model|firmware|windows|macos|ubuntu|android|ios|version)\s+[\w.-]+/i.test(t.title+' '+t.issue)) context.environment=t.title+' '+t.issue;
     if(/\b(?:model|firmware|windows|macos|ubuntu|android|ios|version)\s+[\w.-]+/i.test(message)) context.environment=message;
-    for(const k of b.requiredContext) {
+    for(const k of b.diagnosticSchema.map(f=>f.key)) {
       const match=message.match(new RegExp('(?:^|\\n)'+k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+':\\s*([^\\n]+)','i'));
       if(match) context[k]=match[1].slice(0,1000);
     }
@@ -192,10 +192,12 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
       return response(`${b.name} handles ${b.supportedTopics.join(', ')}. ${b.escalationRules.supportRoute}`,{action:b.allowedActions.includes('handoff')?{kind:'handoff',ticketId:t.id,summary:message}:null,workflow:{stage:'unsupported'}});
     if(missing.length) {
       if(unavailable) return response('That is okay. A specialist can help identify your device and check the problem. '+(b.allowedActions.includes('handoff')?'I have prepared a handoff; review it to send your case.':b.escalationRules.supportRoute),{
-        action:b.allowedActions.includes('handoff')?{kind:'handoff',ticketId:t.id,summary:t.issue+'\nThe customer could not provide: '+missing.map(k=>k==='environment'?'device model and operating-system version':k.replaceAll('_',' ')).join(', ')}:null,
+        action:b.allowedActions.includes('handoff')?{kind:'handoff',ticketId:t.id,summary:t.issue+'\nThe customer could not provide: '+missing.map(k=>k==='environment'?'device model and operating-system version':(b.diagnosticSchema.find(f=>f.key===k)?.label||k).replaceAll('_',' ')).join(', ')}:null,
         workflow:{stage:b.allowedActions.includes('handoff')?'handoff_prepared':'support_route',missing}});
-      const labels=missing.map(k=>k==='environment'?'your device model and operating-system version':k.replaceAll('_',' '));
-      return response('Before suggesting a fix, please tell me '+labels.join(', ')+'. For example: “Model X, Windows 11”. If you do not know, say “I don’t know” and I can help you contact a specialist.',{workflow:{stage:'context',missing}});
+      const fieldOf=k=>b.diagnosticSchema.find(f=>f.key===k)||{key:k,label:k.replaceAll('_',' ')};
+      const labels=missing.map(k=>fieldOf(k).label);
+      const example=(fieldOf(missing[0]).help||'For example: Model X, Windows 11').replace(/^For example:\s*/i,'');
+      return response('Before suggesting a fix, please tell me '+labels.join(', ')+'. For example: “'+example+'”. If you do not know, say “I don’t know” and I can help you contact a specialist.',{workflow:{stage:'context',missing,fields:missing.map(fieldOf)}});
     }
     const standard=rows.find(a=>a.source==='standard');
     if(!standard) {
