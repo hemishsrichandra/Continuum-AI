@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { ensureBots, defaultBotId, knowledgeScope } from './chatbots.js';
+import { SCHEMA_V5, backfillV5 } from './passports.js';
 
 const collections = [
   'repair',
@@ -61,6 +62,7 @@ export class SqliteStore {
           if (!Array.isArray(data[key])) throw new Error('Invalid data store: ' + key + ' must be an array.');
         }
         this.save(data);
+        this.freshInstall = true;
         this.db.prepare('INSERT INTO schema_migrations VALUES(1, ?)').run(new Date().toISOString());
       })
       .immediate();
@@ -205,6 +207,47 @@ export class SqliteStore {
       }
       this.db.prepare('INSERT INTO schema_migrations VALUES(4,?)').run(new Date().toISOString());
     }).immediate();
+    this.migrateV5();
+  }
+  // Migration 5: unified company memory (Resolution Passports), FTS5 index,
+  // follow-through tasks, case timeline, company data sources and sequential
+  // troubleshooting attempts. Additive, transactional and idempotent. A file
+  // database is copied to <file>.pre-v5.bak before the first upgrade.
+  migrateV5() {
+    if (this.db.prepare('SELECT 1 FROM schema_migrations WHERE version=5').get()) return;
+    if (this.file !== ':memory:' && this.db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n > 1 && !this.freshInstall) {
+      const backup = this.file + '.pre-v5.bak';
+      if (!existsSync(backup)) {
+        this.db.pragma('wal_checkpoint(TRUNCATE)');
+        this.db.prepare('VACUUM INTO ?').run(backup);
+        try { chmodSync(backup, 0o600); } catch { /* best effort */ }
+      }
+    }
+    this.db.transaction(() => {
+      if (this.db.prepare('SELECT 1 FROM schema_migrations WHERE version=5').get()) return;
+      this.db.exec(SCHEMA_V5);
+      // Rebuild attempts so one ticket can hold up to three sequential learned suggestions.
+      this.db.exec(`
+        CREATE TABLE troubleshooting_attempts_v5 (
+          id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id), chatbot_id TEXT NOT NULL,
+          customer_id TEXT NOT NULL, ticket_id TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('standard','learned')),
+          sequence INTEGER NOT NULL DEFAULT 1 CHECK(sequence BETWEEN 1 AND 3),
+          fix_id TEXT NOT NULL, memory_id TEXT, snapshot TEXT NOT NULL CHECK(json_valid(snapshot)), context TEXT NOT NULL CHECK(json_valid(context)),
+          score TEXT CHECK(score IS NULL OR json_valid(score)),
+          outcome TEXT NOT NULL DEFAULT 'pending' CHECK(outcome IN ('pending','succeeded','failed','skipped')),
+          exchange_id TEXT, use_id TEXT REFERENCES resolution_uses(id), handoff_id TEXT, created_at TEXT NOT NULL,outcome_at TEXT,
+          FOREIGN KEY(company_id,chatbot_id) REFERENCES chatbots(company_id,id),
+          UNIQUE(company_id,chatbot_id,customer_id,ticket_id,source,sequence));
+        INSERT INTO troubleshooting_attempts_v5(id,company_id,chatbot_id,customer_id,ticket_id,source,sequence,fix_id,memory_id,snapshot,context,outcome,exchange_id,use_id,handoff_id,created_at,outcome_at)
+          SELECT id,company_id,chatbot_id,customer_id,ticket_id,source,1,fix_id,CASE WHEN source='learned' THEN fix_id END,snapshot,context,outcome,exchange_id,use_id,handoff_id,created_at,outcome_at FROM troubleshooting_attempts;
+        DROP TABLE troubleshooting_attempts;
+        ALTER TABLE troubleshooting_attempts_v5 RENAME TO troubleshooting_attempts;
+        CREATE INDEX troubleshooting_ticket ON troubleshooting_attempts(company_id,chatbot_id,customer_id,ticket_id);
+        CREATE INDEX resolution_use_ticket ON resolution_uses(company_id,chatbot_id,customer_id,ticket_id);
+      `);
+      backfillV5(this.db, this.data, this.db.prepare('SELECT * FROM resolution_uses').all());
+      this.db.prepare('INSERT INTO schema_migrations VALUES(5,?)').run(new Date().toISOString());
+    }).immediate();
   }
   get data() {
     const data = Object.fromEntries(collections.map((key) => [key, []]));
@@ -212,7 +255,7 @@ export class SqliteStore {
       .prepare('SELECT collection, payload FROM records ORDER BY collection, position')
       .all())
       data[row.collection].push(JSON.parse(row.payload));
-    data.schemaVersion = 4;
+    data.schemaVersion = 5;
     return data;
   }
   save(data) {

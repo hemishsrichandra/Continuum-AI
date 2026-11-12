@@ -114,9 +114,16 @@ export function createIntegrations(store, config) {
     }
     return { providerId: id };
   }
+  // Additional periodic work (e.g. follow-through deadlines) runs on this same
+  // worker tick, never per web request.
+  const tickTasks = [];
+  function register(task) { tickTasks.push(task); }
   async function flush() {
     if (running) return running;
     running = Promise.resolve().then(async () => {
+      for (const task of tickTasks) {
+        try { await task(); } catch (e) { console.warn('Worker task failed:', e.message); }
+      }
       for (let count = 0; count < 10; count++) {
         const job = store.update((data) => {
           const next = data.outbox.find((j) => {
@@ -193,5 +200,5 @@ export function createIntegrations(store, config) {
     return false;
   }
   if (emailConfigured || googleConfigured) encryptionKey();
-  return { emailConfigured, googleConfigured, queueEmail, queueBooking, available, flush, start, close, status, handle, seal, unseal };
+  return { register, emailConfigured, googleConfigured, queueEmail, queueBooking, available, flush, start, close, status, handle, seal, unseal };
 }
