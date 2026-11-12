@@ -2,6 +2,7 @@ import {staffAccountControls, bindStaffAccount} from './staff-account.js';
 import { request, escapeHtml as q } from './client.js';
 import { mountConnector } from './connector-ui.js';
 import { mountChatbotConfig } from './chatbot-config.js';
+import { mountDataSources } from './data-sources-ui.js';
 export async function mountTeam() {
   const app = document.querySelector('#app');
   try {
@@ -9,6 +10,12 @@ export async function mountTeam() {
     app.innerHTML = `<section class="wrap section"><span class="eyebrow">OWNER · COMPANY & TEAM</span><h1>${q(data.company.name)}</h1><p class="lead">Manage your team and connections. Handle customer cases in the specialist console.</p><div class="actions">${staffAccountControls}<a class="button" href="/operator">Customer cases</a></div><p id="team-result" role="status"></p><section class="panel content-panel"><h2>Customer registration</h2><p>Create a signup link for your customers. Generating another link disables the previous signup link. Existing accounts stay active.</p><button class="button" id="customer-code">Generate customer signup link</button><label id="customer-link-label" hidden>Customer signup link<input id="customer-link" readonly></label></section><section class="panel content-panel"><h2>Invite a team member</h2><form id="invite-form"><label>Email<input name="email" type="email" required maxlength="254"></label><label>Access<select name="role"><option value="staff">Specialist</option><option value="customer">Customer</option></select></label><label>Schema adapter<select name="provider"><option value="repair">Standard service requests</option><option value="it">IT incidents</option></select></label><button class="button primary">Create private invitation</button></form><label id="invitation-label" hidden>Share this link with the invited person<input id="invitation-link" readonly></label><p>Invitations expire after 48 hours and work only for the specified email address.</p></section><section class="panel content-panel"><h2>Members</h2>${data.members.map((m) => `<article class="memory-entry"><b>${q(m.name)}</b><p>${q(m.email)} · ${q(m.role)} · ${q(m.provider)} · ${q(m.status)}</p>${m.role !== 'owner' && m.status === 'active' ? `<button class="button small" data-revoke-membership="${q(m.id)}">Revoke company access</button>` : ''}${m.role === 'staff' ? `<button class="button small" data-revoke="${q(m.id)}">Remove specialist access</button>` : ''}</article>`).join('')}</section></section>`;
     bindStaffAccount(app);
     await mountChatbotConfig(app);
+    await mountDataSources(app).catch(() => {
+      const note = document.createElement('p');
+      note.role = 'alert';
+      note.textContent = 'Knowledge sources could not load. Company and team controls remain available.';
+      app.querySelector('section.wrap').append(note);
+    });
     const notice = (text) => {
       document.querySelector('#team-result').textContent = text;
     };

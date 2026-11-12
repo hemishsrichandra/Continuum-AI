@@ -6,7 +6,7 @@ Continuum AI is a multi-company support platform that turns customer-confirmed s
 
 One account can access multiple companies. Each company can run distinct support services, manage its own specialists and customers, and build a knowledge library that stays within its authorized workspace.
 
-**Project status:** Working prototype with a reproducible fictional demo, 79 passing automated tests, and browser-verified cross-customer resolution reuse.
+**Project status:** Working prototype with two modes — the real company-scoped application and a separate **[Interactive Learning Demo](DEMO_GUIDE.md)** at `/demo` — plus an automated suite (see [STATUS.md](STATUS.md) for the latest actual results and limitations). See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 [Try the demo](#quick-start) · [How it works](#how-it-works) · [Architecture](#architecture) · [Verification](#verification) · [Documentation](#documentation)
 
@@ -32,7 +32,7 @@ The intended benefit is less repeated diagnosis and a smoother handoff between a
 | Outcome feedback | Explicit success/failure controls, durable attempts, reuse statistics and review after unsuccessful reuse. |
 | Secure customer imports | Owner-triggered gateway lookups and verified-identity linking without creating accounts or granting privileges implicitly. |
 | Continuous case history | Requests, conversations, attempts and confirmations persist across refreshes, sessions and server restarts. |
-| Customer controls | Workspace switching, source inspection, optional AI memory, request notes and appointment management. |
+| Customer controls | Workspace switching, source inspection, privacy-protected learning, request notes and appointment management. |
 
 ## How it works
 
@@ -52,7 +52,7 @@ flowchart TD
     A -. Human help requested .-> E
 ```
 
-For each issue, the prototype permits at most one applicable standard fix and one learned fix before human escalation. A direct request for human help bypasses troubleshooting; its prepared handoff still requires explicit submission confirmation. Configured urgent conditions also provide an immediate specialist route.
+For each issue, the flow is: one applicable standard playbook, then up to **three** distinct, ranked, compatible fixes from the company's Resolution Passport memory (each only if it scores ≥ 0.70 and nothing conflicts), then a specialist. Fewer qualifying fixes mean an earlier handoff. A direct request for human help bypasses troubleshooting; its prepared handoff still requires explicit submission confirmation. Configured urgent conditions also provide an immediate specialist route.
 
 A helpful rating, positive reaction or silence never counts as resolution. Customers explicitly choose **It worked** or **Still need help**. Missing details prompt a plain-language clarification; customers who do not know their device details can ask a specialist rather than getting stuck in repeated questions.
 
@@ -67,7 +67,7 @@ Continuum does not train or update model weights. It retrieves and reuses approv
 - **Recovery:** failed reuse reaches human support and pauses the solution for review. Equivalent failed steps are suppressed for the affected customer, even after re-publication.
 - **Presentation:** customers receive ordinary troubleshooting advice. Specialist attribution remains available in source details rather than appearing in the main recommendation.
 
-Turning AI memory off disables optional recall and retention for that exchange. Operational records remain available to maintain the case, prevent duplicate actions and preserve workflow state. A specialist solution confirmed with memory off resolves privately without shared-memory publication.
+The customer memory switch was removed from the workflow. Privacy is handled by design: personal details are scrubbed server-side, a specialist previews reusable text, and only the original customer's explicit confirmation publishes it immediately. If the customer stays silent past the deadline (default 24 h), a high-confidence fix (C_init ≥ 0.75, no policy blockers) may be published clearly labelled **UNCONFIRMED BY CUSTOMER**; it never counts as a verified success and never closes the customer's case. The server still honours an explicit `memory:false` API opt-out.
 
 ## Quick start
 
@@ -77,7 +77,16 @@ Turning AI memory off disables optional recall and retention for that exchange. 
 - Use Linux, macOS or WSL with dependencies installed for that environment. On this Windows development setup, testing runs in WSL because `better-sqlite3` is a native module.
 - Run the commands below from a checkout containing this implementation.
 
-### Explore the complete demo
+### Explore the isolated learning demo
+
+```sh
+npm ci
+npm start    # open http://localhost:3100/demo
+```
+
+See [DEMO_GUIDE.md](DEMO_GUIDE.md) for the 2–4 minute script. `npm run demo:learning` runs the same chain headlessly.
+
+### Explore the complete multi-company demo
 
 ```sh
 npm ci
@@ -205,7 +214,7 @@ npm run db:backup -- /absolute/new/path/continuum-backup.sqlite
 
 | Check | Recorded result |
 | --- | --- |
-| Automated regression and integration suite | **79 passed, 0 failed** |
+| Automated regression and integration suite | **165 passed, 0 failed** (two consecutive runs; see STATUS.md) |
 | HTTP checks | Passed: pages/assets, authentication, CSRF, isolation, validation, logout, proxy and replay behavior. |
 | Fictional multi-company demo | Passed: standard → human → confirmed knowledge → compatible reuse, failed reuse and scope isolation. |
 | Browser verification | Confirmed workspace switching, specialist handoff, publication gating, standard-first charging support, cross-customer reuse and generalized advice. |
