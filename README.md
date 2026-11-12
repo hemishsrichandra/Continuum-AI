@@ -6,7 +6,7 @@ Continuum AI is a multi-company support platform that turns customer-confirmed s
 
 One account can access multiple companies. Each company can run distinct support services, manage its own specialists and customers, and build a knowledge library that stays within its authorized workspace.
 
-**Project status:** Working prototype with two modes — the real company-scoped application and a separate **[Interactive Learning Demo](DEMO_GUIDE.md)** at `/demo` — plus an automated suite (see [STATUS.md](STATUS.md) for the latest actual results and limitations). See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
+**Project status:** Working prototype with two modes — the real company-scoped application and a separate **[Interactive Learning Demo](DEMO_GUIDE.md)** at `/demo` — plus an automated suite (see [STATUS.md](STATUS.md) for the latest actual results and limitations). See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and [FLAW-REGISTER-STATUS.md](FLAW-REGISTER-STATUS.md) for how each item in the independent flaw report was validated, fixed or left open.
 
 [Try the demo](#quick-start) · [How it works](#how-it-works) · [Architecture](#architecture) · [Verification](#verification) · [Documentation](#documentation)
 

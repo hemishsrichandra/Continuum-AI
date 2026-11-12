@@ -12,6 +12,7 @@ import {
   THRESHOLDS,
   LOCAL_EMBEDDING_MODEL,
   localEmbedding,
+  EMBEDDING_DIMENSIONS,
   blobToVector,
   vectorToBlob,
   cosine,
@@ -163,15 +164,23 @@ export function createMemoryPool(store, config = {}) {
     // Rows embedded by an older local model version are re-embedded once and stored again.
     const refresh = sql.prepare('UPDATE memory_pool SET embedding_blob=?,embedding_model=? WHERE id=? AND company_id=?');
     let vectors = rows.map((r) => {
-      if (r.embedding_model === LOCAL_EMBEDDING_MODEL && r.embedding_blob) return blobToVector(r.embedding_blob);
+      if (r.embedding_model === LOCAL_EMBEDDING_MODEL && r.embedding_blob) {
+        const stored = blobToVector(r.embedding_blob);
+        // A stored vector of the wrong dimension is corrupt or from another model: never compare it.
+        if (stored && stored.length === EMBEDDING_DIMENSIONS) return stored;
+      }
       const v = localEmbedding(docText(r));
       if (!r.embedding_model || r.embedding_model.startsWith('local-hashed-concepts')) refresh.run(vectorToBlob(v), LOCAL_EMBEDDING_MODEL, r.id, companyId);
       return v;
     });
     const remote = await remoteEmbed([text, ...rows.map(docText)]);
     if (remote) {
-      backend = remoteModel;
-      [qVec, ...vectors] = remote;
+      // A remote result is only usable if every vector has the same dimension as the query vector.
+      const dimension = remote[0]?.length;
+      if (dimension && remote.every((v) => v?.length === dimension)) {
+        backend = remoteModel;
+        [qVec, ...vectors] = remote;
+      } else console.warn('Embedding dimensions were inconsistent; using the local representation.');
     }
     // `text` drives similarity; `factsText` (default: text) drives compatibility and safety, so a
     // short follow-up message can be matched on its own while still honouring the ticket's device facts.

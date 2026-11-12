@@ -293,6 +293,26 @@ export function createHandler({ file, config = process.env, service } = {}) {
                   .slice(-50),
               })),
             resolutions: learning.list(operator.companyId, operator.provider, operator.chatbotId),
+            // Every customer request stays visible to the company team even before escalation.
+            requests: (() => {
+              const open = new Set(store.data.handoffs.filter((h) => h.companyId === operator.companyId && h.chatbotId === operator.chatbotId && !['Resolved', 'Closed'].includes(h.status)).map((h) => h.ticketId));
+              return store.data[operator.provider]
+                .filter((r) => r.companyId === operator.companyId && r.chatbotId === operator.chatbotId)
+                .map((r) => ({ r, ticketId: r.ticket_id || r.id, customerId: r.customer_id || r.user_id }))
+                .filter(({ r, ticketId }) => !open.has(ticketId) && !['Resolved'].includes(r.status || r.state))
+                .sort((a, b) => String(b.r.createdAt || '').localeCompare(String(a.r.createdAt || '')))
+                .slice(0, 100)
+                .map(({ r, ticketId, customerId }) => ({
+                  ticketId,
+                  title: r.device || r.problem,
+                  issue: r.issue || r.details,
+                  status: r.status || r.state,
+                  createdAt: r.createdAt || null,
+                  customer: store.db.prepare('SELECT name FROM accounts WHERE id=?').get(customerId)?.name || 'Customer',
+                  attempts: store.db.prepare('SELECT source,sequence,outcome FROM troubleshooting_attempts WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=? ORDER BY created_at').all(operator.companyId, operator.chatbotId, customerId, ticketId),
+                  timeline: followThrough.timeline(operator.companyId, operator.chatbotId, ticketId),
+                }));
+            })(),
             passports: memoryPool.list(operator.companyId, operator.chatbotId),
             followThrough: followThrough.queue(operator.companyId, [operator.chatbotId]),
           });
@@ -759,6 +779,8 @@ export function createHandler({ file, config = process.env, service } = {}) {
                 return { ...saved, providerDelivery };
               })
               .immediate();
+            if (kind === 'request')
+              followThrough.log({ companyId: profile.companyId, chatbotId: botId(profile), ticketId: result.ticketId, customerId: profile.id, kind: 'request_opened', detail: { title: data.title }, actor: 'customer' });
             const text = {
               request: 'A service request was opened: ' + data.title + '.',
               requirement: 'A confirmed requirement was added: ' + data.note,

@@ -102,12 +102,15 @@ test('retrieval threshold: >= 0.70 passes, just below is rejected; ties are dete
   assert.equal(THRESHOLDS.retrieval, 0.7);
 });
 
-test('review flag: 2 consecutive failures or W < 0.55', () => {
+test('review flag: 2 consecutive failures, or W < 0.55 once at least two outcomes exist (one failure never flags)', () => {
   assert.equal(needsReviewFlag({ consecutiveFailures: 2, cInit: 1, successes: 50, failures: 2 }).flag, true);
   assert.equal(needsReviewFlag({ consecutiveFailures: 1, cInit: 0.8375, successes: 0, failures: 1 }).flag, false, 'one ordinary failure');
-  assert.equal(needsReviewFlag({ consecutiveFailures: 1, cInit: 0.7, successes: 0, failures: 1 }).flag, true, 'W=0.467 < 0.55');
-  assert.equal(needsReviewFlag({ consecutiveFailures: 0, cInit: 0.55, successes: 0, failures: 0 }).flag, false, 'W exactly 0.55 is not < 0.55');
-  assert.equal(needsReviewFlag({ consecutiveFailures: 0, cInit: 0.5499, successes: 0, failures: 0 }).flag, true);
+  assert.equal(needsReviewFlag({ consecutiveFailures: 1, cInit: 0.75, successes: 0, failures: 1 }).flag, false, 'W=0.50 after one failure still does not flag');
+  assert.equal(needsReviewFlag({ consecutiveFailures: 1, cInit: 0.7, successes: 0, failures: 1 }).flag, false, 'minimum-sample rule');
+  assert.equal(needsReviewFlag({ consecutiveFailures: 1, cInit: 0.5, successes: 1, failures: 1 }).flag, true, 'W=0.50 with two outcomes');
+  assert.equal(needsReviewFlag({ consecutiveFailures: 1, cInit: 0.6, successes: 1, failures: 1 }).flag, false, 'W exactly 0.55 is not < 0.55');
+  assert.equal(needsReviewFlag({ consecutiveFailures: 1, cInit: 0.5999, successes: 1, failures: 1 }).flag, true);
+  assert.equal(needsReviewFlag({ consecutiveFailures: 0, cInit: 0.4, successes: 0, failures: 0 }).flag, false, 'no outcomes, no flag');
 });
 
 test('compatibility gate: conflicts and safety restrictions make a candidate ineligible; unknown withholds', () => {

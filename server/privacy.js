@@ -4,10 +4,14 @@ const patterns = [
   ['email', /[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}/gi],
   ['imei', /\b(?:imei\s*[:#]?\s*)?\d{15}\b/gi],
   ['serial', /\b(?:s\/n|serial(?:\s*(?:no\.?|number))?)\s*[:#]?\s*[a-z0-9-]{4,}\b/gi],
-  ['phone', /(?:\+?\d[\d\s().-]{8,}\d)/g],
+  // Any run of 10–15 digits with common separators (spaces, dots, dashes, brackets), including
+  // grouped national formats such as +91 98765 43210. Short dotted versions (4.2, 13.1.2) are untouched.
+  ['phone', /(?:\+\s?\d[\d\s().-]{8,}\d|\(?\d{2,5}\)?[\s.-]?\d{3,5}[\s.-]?\d{3,5}(?:[\s.-]?\d{1,4})?)/g],
+  ['address', /\b\d{1,5}[A-Za-z]?\s+(?:[A-Z][a-z]+\s+){1,3}(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Boulevard|Blvd|Way|Nagar|Colony)\b\.?(?:,\s*[A-Z][a-z]+(?:\s[A-Z][a-z]+)?)?/g],
+  ['id-number', /\b\d{4}\s\d{4}\s\d{4}\b/g],
   ['ip', /\b(?:\d{1,3}\.){3}\d{1,3}\b/g],
   ['card', /\b(?:\d[ -]?){13,19}\b/g],
-  ['name', /\b(?:[Mm]y name is|[Cc]ustomer name:?|[Nn]ame:)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?/g],
+  ['name', /\b(?:[Mm]y name is|[Cc]ustomer name:?|[Nn]ame:)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?|\b(?:Mr|Mrs|Ms|Miss|Dr|Shri|Smt)\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?/g],
 ];
 const secret = /\b(?:password|passcode|api[_ -]?key|access[_ -]?token|secret|private key)\s*[:=]|\bsk-[\w-]{8,}|\bgsk_[\w-]+|-----BEGIN [A-Z ]*PRIVATE KEY-----/i;
 
@@ -24,7 +28,11 @@ export function scrubPII(text, { names = [] } = {}) {
   for (const [kind, pattern] of patterns) {
     out = out.replace(pattern, (m) => {
       // Short dotted version numbers such as "4.2" or "13.1.2" are not IPs or phones.
-      if (kind === 'phone' && !/\d{3}.*\d{3}.*\d{3}/.test(m.replace(/\D/g, '').length >= 10 ? m : '')) return m;
+      if (kind === 'phone') {
+        const digits = m.replace(/\D/g, '').length;
+        // Too short or too long, or an IPv4 address (handled by its own rule): not a phone number.
+        if (digits < 10 || digits > 15 || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(m.trim())) return m;
+      }
       hit(kind);
       return `[redacted ${kind}]`;
     });
@@ -54,6 +62,7 @@ const dangerous = [
   [/\b(?:unofficial|unsigned|third[- ]party)\b[^.]{0,20}\bfirmware\b/i, 'unsigned firmware'],
   [/\b(?:root|jailbreak)\b[^.]{0,20}\b(?:device|phone|tablet)\b/i, 'device rooting'],
   [/<script\b|javascript:|\bon\w+\s*=/i, 'active content'],
+  [/\b(?:ignore|disregard|forget)\b[^.]{0,40}\b(?:previous|prior|above|earlier|all)\b[^.]{0,30}\b(?:instructions?|rules|prompts?)\b|\bsystem prompt\b|\byou are now\b|\b(?:reveal|print|show)\b[^.]{0,20}\b(?:your|the) (?:instructions|prompt|secrets?)\b/i, 'instruction injection'],
 ];
 export function dangerousInstructions(text) {
   const t = String(text || '');

@@ -242,7 +242,7 @@ function sourceBanner(response) {
 }
 // Dynamic diagnostic fields from the service's schema (device, OS, firmware, tier, region …).
 function contextForm(response, latest) {
-  const fields = response.workflow?.stage === 'context' ? response.workflow.fields : null;
+  const fields = ['context', 'context_conflict'].includes(response.workflow?.stage) ? response.workflow.fields : null;
   if (!fields?.length || !latest) return '';
   return `<form class="context-form" data-context-form>${fields.map((f) => `<label>${q(f.label)}${f.options?.length ? `<select name="${q(f.key)}" required><option value="">Choose…</option>${f.options.map((o) => `<option>${q(o)}</option>`).join('')}</select>` : `<input name="${q(f.key)}" required maxlength="1000" placeholder="${q((f.help || '').replace(/^For example:\s*/i, ''))}">`}</label>`).join('')}<button class="button small primary" ${disabled()}>Continue</button><small>Not sure? Say “I don’t know” in the message box and a specialist can help.</small></form>`;
 }

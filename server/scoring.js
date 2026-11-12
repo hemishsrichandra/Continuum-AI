@@ -12,6 +12,7 @@ export const THRESHOLDS = Object.freeze({
   autoPublish: 0.75, // C_init required for overdue (unconfirmed) publication
   reliabilityFlag: 0.55, // W_reliability below this flags for review
   consecutiveFailures: 2, // consecutive failures that flag for review
+  minOutcomesForReliability: 2, // reliability rule only applies after this many outcomes
   maxSuggestions: 3,
 });
 export const AUTHOR_DEFAULTS = Object.freeze({ verifiedImport: 0.85, newStaff: 0.75, unverifiedImport: 0.5, standardPlaybook: 0.85 });
@@ -178,7 +179,10 @@ export const finalScore = (hybrid, compat, w) => round(clamp01(0.55 * clamp01(hy
 /** Should an active passport be flagged for review after an outcome? */
 export function needsReviewFlag({ consecutiveFailures = 0, cInit = 0, successes = 0, failures = 0 }) {
   const w = reliability(cInit, successes, failures);
-  return { flag: consecutiveFailures >= THRESHOLDS.consecutiveFailures || w < THRESHOLDS.reliabilityFlag, reliability: w };
+  // The reliability rule needs at least two recorded outcomes: with no history W is just
+  // a function of C_init, so a single ordinary failure must never flag (or lock out) a fix.
+  const enough = successes + failures >= THRESHOLDS.minOutcomesForReliability;
+  return { flag: consecutiveFailures >= THRESHOLDS.consecutiveFailures || (enough && w < THRESHOLDS.reliabilityFlag), reliability: w };
 }
 
 // ---------------------------------------------------------------------------

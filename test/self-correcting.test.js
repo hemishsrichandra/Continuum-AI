@@ -68,12 +68,19 @@ test('a success between failures resets the consecutive counter', async (t) => {
   assert.equal(r.reuse_failure_count, 2);
 });
 
-test('low reliability (W < 0.55) flags after a failure even without consecutive failures', async (t) => {
+test('low reliability (W < 0.55) flags once there are two outcomes, even without consecutive failures', async (t) => {
   const w = await world(t);
-  const fix = w.seed(w.company, { title: FOUR[0][0], symptoms: FOUR[0][1], steps: [FOUR[0][2]], cInit: 0.7 });
+  const fix = w.seed(w.company, { title: FOUR[0][0], symptoms: FOUR[0][1], steps: [FOUR[0][2]], cInit: 0.5, successes: 1 });
   const a = await w.customer('alice');
   await fail(w, a, await w.ticket(a, ISSUE));
-  assert.equal(row(w, fix.id).status, 'flagged_for_review', 'W = 1.4/3 = 0.467');
+  assert.equal(row(w, fix.id).status, 'flagged_for_review', 'W = (1.0+1)/4 = 0.50 with two outcomes');
+  // Separate company: one failure on a low-confidence fix must not flag it.
+  const w2 = await world(t);
+  const lone = w2.seed(w2.company, { title: FOUR[0][0], symptoms: FOUR[0][1], steps: [FOUR[0][2]], cInit: 0.7 });
+  const b = await w2.customer('bob');
+  await fail(w2, b, await w2.ticket(b, ISSUE));
+  assert.equal(row(w2, lone.id).status, 'active', 'a single ordinary failure never flags, whatever C_init is');
+  assert.equal(row(w2, lone.id).reuse_failure_count, 1);
 });
 
 test('a reported safety incident quarantines immediately', async (t) => {
