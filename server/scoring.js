@@ -4,7 +4,7 @@
 // application's retriever (server/memory-pool.js) and by the isolated learning
 // demo (server/demo-learning.js). All formulas are documented in ARCHITECTURE.md
 // and unit-tested in test/scoring.test.js.
-import { tokens, compatibility } from './context.js';
+import { tokens, conceptTokens, compatibility } from './context.js';
 import { evaluateConditions, conditionsFromText, describeCondition } from './applicability.js';
 
 export const THRESHOLDS = Object.freeze({
@@ -76,7 +76,7 @@ export function initialConfidence({ passport = 0, diag = 0, author = 0 }) {
 // Local, offline embedding: a hashed feature vector of concept-normalised
 // tokens, token bigrams and character 4-grams. This is a lexical-concept
 // representation, NOT a neural semantic model; it is labelled as such.
-export const LOCAL_EMBEDDING_MODEL = 'local-hashed-concepts-v1';
+export const LOCAL_EMBEDDING_MODEL = 'local-hashed-concepts-v2';
 export const EMBEDDING_DIMENSIONS = 512;
 function fnv(text) {
   let h = 0x811c9dc5;
@@ -92,10 +92,13 @@ export function localEmbedding(text) {
   const add = (feature, weight) => {
     v[fnv(feature) % EMBEDDING_DIMENSIONS] += weight;
   };
+  // Shared normalised concepts (display, flicker, startup …) carry most of the meaning across
+  // paraphrases, so they outweigh incidental words and character n-grams.
+  for (const c of conceptTokens(text)) add('k:' + c, 1.6);
   for (const w of words) {
     add('w:' + w, 1);
     const padded = `#${w}#`;
-    for (let i = 0; i + 4 <= padded.length; i++) add('c:' + padded.slice(i, i + 4), 0.25);
+    for (let i = 0; i + 4 <= padded.length; i++) add('c:' + padded.slice(i, i + 4), 0.12);
   }
   const sorted = [...words].sort();
   for (let i = 0; i + 1 < sorted.length; i++) add('b:' + sorted[i] + ' ' + sorted[i + 1], 0.2);

@@ -210,6 +210,6 @@ test('embedding backend failure falls back to the offline representation', async
   const w = await world(t, { config: { OPENAI_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
   w.seed(w.company, { title: FOUR[0][0], symptoms: FOUR[0][1], steps: [FOUR[0][2]] });
   const out = await w.h.memoryPool.retrieve({ companyId: w.company, chatbotId: w.botOf(w.company), text: ISSUE });
-  assert.equal(out.backend, 'local-hashed-concepts-v1');
+  assert.equal(out.backend, 'local-hashed-concepts-v2');
   assert.equal(out.eligible.length, 1);
 });

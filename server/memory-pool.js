@@ -13,6 +13,7 @@ import {
   LOCAL_EMBEDDING_MODEL,
   localEmbedding,
   blobToVector,
+  vectorToBlob,
   cosine,
   normBm25,
   hybridScore,
@@ -129,7 +130,7 @@ export function createMemoryPool(store, config = {}) {
    * distinct suggestions plus withheld (unknown applicability) candidates and the
    * internal evidence for each decision.
    */
-  async function retrieve({ companyId, chatbotId, text, fields = {}, excludeIds = new Set(), excludeSignatures = new Set(), allowedOrigins = ORIGINS, limit = THRESHOLDS.maxSuggestions }) {
+  async function retrieve({ companyId, chatbotId, text, factsText, fields = {}, excludeIds = new Set(), excludeSignatures = new Set(), allowedOrigins = ORIGINS, limit = THRESHOLDS.maxSuggestions }) {
     if (!companyId || !chatbotId) throw fault(403, 'A company and service scope is required.');
     const origins = allowedOrigins.filter((o) => ORIGINS.includes(o));
     if (!origins.length) return { eligible: [], withheld: [], rejected: [], backend: 'none' };
@@ -159,18 +160,28 @@ export function createMemoryPool(store, config = {}) {
     // 2b. Embeddings: configured remote backend where available, else local.
     let backend = LOCAL_EMBEDDING_MODEL;
     let qVec = localEmbedding(text);
-    let vectors = rows.map((r) => (r.embedding_model === LOCAL_EMBEDDING_MODEL && r.embedding_blob ? blobToVector(r.embedding_blob) : localEmbedding(docText(r))));
+    // Rows embedded by an older local model version are re-embedded once and stored again.
+    const refresh = sql.prepare('UPDATE memory_pool SET embedding_blob=?,embedding_model=? WHERE id=? AND company_id=?');
+    let vectors = rows.map((r) => {
+      if (r.embedding_model === LOCAL_EMBEDDING_MODEL && r.embedding_blob) return blobToVector(r.embedding_blob);
+      const v = localEmbedding(docText(r));
+      if (!r.embedding_model || r.embedding_model.startsWith('local-hashed-concepts')) refresh.run(vectorToBlob(v), LOCAL_EMBEDDING_MODEL, r.id, companyId);
+      return v;
+    });
     const remote = await remoteEmbed([text, ...rows.map(docText)]);
     if (remote) {
       backend = remoteModel;
       [qVec, ...vectors] = remote;
     }
-    const facts = customerFacts(text, fields);
+    // `text` drives similarity; `factsText` (default: text) drives compatibility and safety, so a
+    // short follow-up message can be matched on its own while still honouring the ticket's device facts.
+    const gateText = factsText ?? text;
+    const facts = customerFacts(gateText, fields);
     const scoredRows = rows.map((r, i) => {
       const cos = cosine(qVec, vectors[i]);
       const bm = normBm25({ raw: raw.has(r.id) ? raw.get(r.id) : null, rawBest, queryTokens, docTokens: tokens(r.title + ' ' + r.symptoms_text) });
       const hybrid = hybridScore(cos, bm);
-      const gate = compatibilityGate({ applicability: parse(r.applicability_json, {}), safety: parse(r.safety_restrictions_json, {}), facts, text, fields });
+      const gate = compatibilityGate({ applicability: parse(r.applicability_json, {}), safety: parse(r.safety_restrictions_json, {}), facts, text: gateText, fields });
       const w = reliability(r.initial_confidence_score, r.reuse_success_count, r.reuse_failure_count);
       const final = gate.eligible ? finalScore(hybrid, gate.compat, w) : 0;
       return {

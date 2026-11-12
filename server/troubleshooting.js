@@ -79,7 +79,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     return result;
   }
   // Next eligible company-memory suggestion for this ticket (none once three were tried).
-  async function nextSuggestion(p,t,context,message='') {
+  async function nextSuggestion(p,t,context,message='',{messageOnly=false}={}) {
     const rows=attempts(p,t),learnedRows=rows.filter(a=>a.source==='learned');
     if(learnedRows.length>=THRESHOLDS.maxSuggestions) return {eligible:[],withheld:[],backend:'none'};
     const failedBefore=failedResolutions(store,p.companyId,p.provider,p.id,botId(p));
@@ -89,7 +89,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const stdFix=std?JSON.parse(std.snapshot):null;
     const stdSig=stdFix?.steps?[signatureOf([stdFix.steps])]:[];
     const query=[t.title,t.issue,message,...Object.values(context)].join('\n');
-    return memoryPool.retrieve({companyId:p.companyId,chatbotId:botId(p),text:query,fields:context,
+    return memoryPool.retrieve({companyId:p.companyId,chatbotId:botId(p),text:messageOnly&&message.trim()?message:query,factsText:query,fields:context,
       excludeIds:new Set([...triedIds,...failedBefore.ids]),excludeSignatures:new Set([...triedSig,...failedBefore.signatures,...stdSig]),
       allowedOrigins:['specialist_confirmed','company_db_sync','auto_published_overdue']});
   }
@@ -158,14 +158,17 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
       if(pending.source==='learned' && enabled) {
         authorize(p);
         const row=memoryPool.get(p.companyId,botId(p),pending.memory_id||pending.fix_id);
-        // Latest facts must still be compatible with the pending fix; a conflict withholds the steps.
+        // The pending fix is shown again only if the NEW message still retrieves it through the same
+        // hybrid scoring and compatibility gate (the ticket's own device facts apply, but the ticket text
+        // alone cannot make an unrelated message look relevant).
         const prior=sql.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(...args(p,t));
         const pctx=prior?JSON.parse(prior.context):{};
-        const text=[t.title,t.issue,message,...Object.values(pctx)].join('\n');
-        const gate=row&&compatibilityGate({applicability:JSON.parse(row.applicability_json),safety:JSON.parse(row.safety_restrictions_json),facts:customerFacts(text,pctx),text,fields:pctx});
-        if(row && row.status==='active' && gate.eligible && relevance(message,row.symptoms_text+' '+row.title)>=0.35) return response(customerAdvice(JSON.parse(row.steps_json).join(' ')),{attempt:pending,resolutionUse:reuse.current(privateScope(p),pending.use_id),
-          decision:{mode:'recommend',action:null},evidence:[evidenceFor(row,pending.score&&JSON.parse(pending.score))],
-          learnedSource:sourceInfo(row,pending.score&&JSON.parse(pending.score)),
+        const factsText=[t.title,t.issue,message,...Object.values(pctx)].join('\n');
+        const again=row&&row.status==='active'?await memoryPool.retrieve({companyId:p.companyId,chatbotId:botId(p),text:message,factsText,fields:pctx,allowedOrigins:['specialist_confirmed','company_db_sync','auto_published_overdue']}):null;
+        const hit=again?.eligible.find(x=>x.id===row.id);
+        if(hit) return response(customerAdvice(JSON.parse(row.steps_json).join(' ')),{attempt:pending,resolutionUse:reuse.current(privateScope(p),pending.use_id),
+          decision:{mode:'recommend',action:null},evidence:[evidenceFor(row,hit.breakdown)],
+          learnedSource:sourceInfo(row,hit.breakdown),
           trace:{knowledge:'Company memory',memory:'Operational workflow',recalled:1,learnedResolutions:1,elapsedMs:0},workflow:{stage:'learned_pending',sequence:pending.sequence}});
       }
       // Questions, reactions and preferences never finalize an outcome.
@@ -188,7 +191,11 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const missing=b.requiredContext.filter(k=>!context[k]);
     const unavailable=/\b(?:don.t know|do not know|not sure|no idea|(?:not able|unable|can.t|cannot)\s+(?:to\s+)?(?:confirm|find|identify|provide))\b/i.test(message);
     const related=[...tokens(message)].some(word=>tokens(t.title+' '+t.issue).has(word));
-    if(!(worked||failed) && !(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length)))
+    // A strong, compatible retrieval match on the customer's own wording also counts as in-scope:
+    // a service's topic word list can never be complete, but retrieval is gated by score and compatibility.
+    const outOfTopic=!(worked||failed) && !(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length));
+    const retrievable=outOfTopic && enabled && !missing.length && message.trim().length>=12 && (await nextSuggestion(p,t,context,message,{messageOnly:true})).eligible.length>0;
+    if(!retrievable && !(worked||failed) && !(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length)))
       return response(`${b.name} handles ${b.supportedTopics.join(', ')}. ${b.escalationRules.supportRoute}`,{action:b.allowedActions.includes('handoff')?{kind:'handoff',ticketId:t.id,summary:message}:null,workflow:{stage:'unsupported'}});
     if(missing.length) {
       if(unavailable) return response('That is okay. A specialist can help identify your device and check the problem. '+(b.allowedActions.includes('handoff')?'I have prepared a handoff; review it to send your case.':b.escalationRules.supportRoute),{

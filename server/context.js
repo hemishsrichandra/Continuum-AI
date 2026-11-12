@@ -13,38 +13,56 @@ export const resolutionSignature = (r) =>
     )
     .join('\n');
 const concepts = [
-  ['display', /\b(screen|monitor|display|panel)\b/g],
-  ['flicker', /\b(flicker\w*|flash\w*|blink\w*)\b/g],
-  ['startup', /\b(startup|boot\w*|start[ -]?up|power[ -]?on)\b/g],
+  ['display', /\b(screen|monitor|display|panel|picture|image|visuals?)\b/g],
+  ['flicker', /\b(flicker\w*|flash\w*|blink\w*|strob\w*|shimmer\w*|jitter\w*|jittery|puls(?:e|es|ing)|alternat\w*|unsteady|glitch\w*)\b/g],
+  ['startup', /\b(startup|boot\w*|start[ -]?up|power[ -]?on|powers? on|switch(?:ed|es|ing)? on|turn(?:ed|s|ing)? on)\b/g],
   ['laptop', /\b(notebook|laptop)\b/g],
-  ['network', /\b(wi[ -]?fi|wireless|internet|network|connectivity)\b/g],
+  ['network', /\b(wi[ -]?fi|wireless|internet|network|connectivity|link)\b/g],
   ['offline', /\b(offline|disconnected|unavailable|no connection|not connecting)\b/g],
   ['restart', /\b(reboot\w*|restart\w*)\b/g],
-  ['battery', /\b(battery|charge|charging)\b/g],
-  ['drain', /\b(drain\w*|deplet\w*|discharg\w*)\b/g],
-  ['disconnect', /\b(disconnect\w*|dropping|drops)\b/g],
-  ['login', /\b(sign[ -]?in|log[ -]?in)\b/g],
-  ['rejected', /\b(refus\w*|reject\w*)\b/g],
-  ['audio', /\b(audio|sound|speakers?)\b/g],
-  ['silent', /\b(silent|muted|no sound)\b/g],
+  ['drain', /\b(drain\w*|deplet\w*|discharg\w*|plummet\w*|runs? (?:down|out)|loses? (?:its |their |the |my )?(?:charge|power)|falls? (?:unusually |very |far |too )?(?:fast|quickly|rapidly)|(?:much )?sooner than)\b/g, 'drain battery'],
+  ['rapid', /\b(rapid\w*|fast|quick\w*|swift\w*)\b/g],
+  ['battery', /\b(battery|charge|charging|energy)\b/g],
+  ['disconnect', /\b(disconnect\w*|dropping|drops|cut(?:s|ting)? out|vanish\w*|kicked off|rejoin\w*|intermittent\w*|loses? (?:its |the |my )?(?:connection|link|signal))\b/g],
+  ['login', /\b(sign[ -]?in|log[ -]?in|authenticat\w*|credentials?)\b/g],
+  ['rejected', /\b(refus\w*|reject\w*|declin\w*|denied|denies|turns? down|not accept\w*|fails?|failed|failing|failure)\b/g],
+  // More specific phrases come first so "no sound" is not consumed by the plain "sound" rule.
+  ['silent', /\b(silent|muted|no sound|nothing (?:comes out|is heard)|quiet|inaudible|cannot hear|can.t hear|hear no(?:thing)?)\b/g, 'silent audio'],
+  ['audio', /\b(audio|sound|speakers?|music|hear|heard|audible)\b/g],
   ['webcam', /\b(webcam|camera)\b/g],
-  ['black', /\b(black|blank)\b/g],
+  ['black', /\b(black|blank|empty)\b/g],
   ['storage', /\b(disk|drive|storage)\b/g],
-  ['full', /\b(full|out of space|no free space)\b/g],
-  ['email', /\b(email|mail)\b/g],
-  ['sync', /\b(sync\w*|synchroniz\w*)\b/g],
-  ['application', /\b(app|application)\b/g],
-  ['crash', /\b(crash\w*|closes unexpectedly)\b/g],
+  ['full', /\b(full|out of space|no free space|no (?:available |free )?(?:room|space|capacity)|used up)\b/g],
+  ['email', /\b(email|mail|mailbox|inbox)\b/g],
+  ['sync', /\b(sync\w*|synchroniz\w*|refresh\w*|stall\w*|stopped updating)\b/g],
+  ['application', /\b(app|application|software|program)\b/g],
+  ['crash', /\b(crash\w*|closes unexpectedly|unexpectedly (?:closes|quits|exits)|shuts? down|quits?|terminat\w*|closes? (?:by itself|immediately))\b/g],
+  ['jam', /\b(jam\w*|stuck|wedged|trapped|caught|clogged)\b/g],
+  ['paper', /\b(paper|sheets?|pages?)\b/g],
 ];
 const stop = new Set(
-  'the and for with that this please what have from request issue still when after before then how can my your does help device model firmware version laptop a an on is to it not'.split(
+  'the and for with that this please what have from request issue still when after before then how can my your does help device model firmware version laptop a an on is to it not there left much too very every keeps keep been also just really all any some while right even only into out'.split(
     ' ',
   ),
 );
-export function tokens(text) {
+function normalize(text) {
   let normalized = String(text).toLowerCase();
-  for (const [word, pattern] of concepts) normalized = normalized.replace(pattern, word);
+  const found = new Set();
+  for (const [word, pattern, emit] of concepts) {
+    normalized = normalized.replace(pattern, () => {
+      for (const part of (emit || word).split(' ')) found.add(part);
+      return ' ' + (emit || word) + ' ';
+    });
+  }
+  return { normalized, found };
+}
+export function tokens(text) {
+  const { normalized } = normalize(text);
   return new Set((normalized.match(/[a-z0-9]+/g) || []).filter((w) => w.length > 2 && !stop.has(w)));
+}
+/** The normalised concepts present in a text (e.g. display, flicker, startup). Stop words excluded. */
+export function conceptTokens(text) {
+  return new Set([...normalize(text).found].filter((w) => w.length > 2 && !stop.has(w)));
 }
 export function relevance(query, symptoms) {
   const q = tokens(query),
