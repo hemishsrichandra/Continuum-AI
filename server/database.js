@@ -242,8 +242,8 @@ export class SqliteStore {
           SELECT id,company_id,chatbot_id,customer_id,ticket_id,source,1,fix_id,CASE WHEN source='learned' THEN fix_id END,snapshot,context,outcome,exchange_id,use_id,handoff_id,created_at,outcome_at FROM troubleshooting_attempts;
         DROP TABLE troubleshooting_attempts;
         ALTER TABLE troubleshooting_attempts_v5 RENAME TO troubleshooting_attempts;
-        CREATE INDEX troubleshooting_ticket ON troubleshooting_attempts(company_id,chatbot_id,customer_id,ticket_id);
-        CREATE INDEX resolution_use_ticket ON resolution_uses(company_id,chatbot_id,customer_id,ticket_id);
+        CREATE INDEX IF NOT EXISTS troubleshooting_ticket ON troubleshooting_attempts(company_id,chatbot_id,customer_id,ticket_id);
+        CREATE INDEX IF NOT EXISTS resolution_use_ticket ON resolution_uses(company_id,chatbot_id,customer_id,ticket_id);
       `);
       backfillV5(this.db, this.data, this.db.prepare('SELECT * FROM resolution_uses').all());
       this.db.prepare('INSERT INTO schema_migrations VALUES(5,?)').run(new Date().toISOString());

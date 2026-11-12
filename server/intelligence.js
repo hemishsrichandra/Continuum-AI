@@ -69,7 +69,7 @@ export function intelligenceFor(store, companyId, { at = Date.now(), slaHours = 
     rejectedByCustomer: confirmed.filter((r) => r.customerAccepted === false).length,
     awaitingCustomer: confirmed.filter((r) => r.status === 'pending_confirmation').length,
   };
-  const empty = !Object.values(knowledge).some(Boolean) && !handoffs.length && !resolutions.proposed;
+  const empty = !Object.entries(knowledge).some(([k, v]) => k !== 'standardPlaybooks' && v) && !handoffs.length && !resolutions.proposed;
   return {
     companyId,
     generatedAt: nowIso,
