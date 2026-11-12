@@ -21,6 +21,7 @@ import { requestReference } from './request-reference.js';
 import { createMemoryPool } from './memory-pool.js';
 import { createFollowThrough } from './follow-through.js';
 import { intelligenceFor } from './intelligence.js';
+import { handleDemo, isDemoPath } from './demo-learning.js';
 
 export function createHandler({ file, config = process.env, service } = {}) {
   config = { APP_URL: 'http://localhost:3000', ...config };
@@ -105,6 +106,12 @@ export function createHandler({ file, config = process.env, service } = {}) {
           throw fault(403, 'Cross-site submissions are not allowed.');
         if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host)
           throw fault(403, 'Submit this request from the app.');
+      }
+      // The Interactive Learning Demo is fully isolated: it is answered before any session,
+      // company, database or integration code runs, and never receives the store.
+      if (isDemoPath(url.pathname)) {
+        await handleDemo(req, url, write);
+        return;
       }
       const session = auth.authenticate(req);
       auth.csrf(req, session);

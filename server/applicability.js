@@ -11,6 +11,8 @@ const VALUE = '(\\d+(?:\\.\\d+)*)';
 const OP = '(>=|<=|>|<|=)?\\s*';
 const patterns = [
   ['model', /\bmodels?\s+([a-z0-9][a-z0-9_-]*)/gi],
+  // Product names such as "Laptop X1" or "phone Z9" (letters followed by a digit) also identify a model.
+  ['model', /\b(?:laptop|notebook|phone|tablet|printer|router|watch|device)\s+([a-z]+\d[a-z0-9_-]*)/gi],
   ['firmware', new RegExp('\\bfirmware\\s*(?:version\\s*|v\\s*)?' + OP + VALUE, 'gi')],
   ['android', new RegExp('\\bandroid\\s*(?:os\\s*)?(?:version\\s*|v\\s*)?' + OP + VALUE, 'gi')],
   ['ios', new RegExp('\\b(?:ios|ipados)\\s*(?:version\\s*|v\\s*)?' + OP + VALUE, 'gi')],
