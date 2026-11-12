@@ -73,10 +73,10 @@ export function createAuth(store, config, delivery, companies) {
     ensureBots(sql, membership.company_id);
     let bot;
     try { bot = getBot(sql, membership.company_id, chatbotId || defaultBotId(membership.company_id, membership.provider)); } catch(e) { if(!recover) throw e; }
-    if(recover && (!bot?.active || (membership.role === 'staff' && bot.adapter !== membership.provider))) bot=sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(membership.company_id).map(r=>JSON.parse(r.config)).find(b=>b.active && (membership.role !== 'staff' || b.adapter===membership.provider));
+    if(recover && (!bot?.active || (membership.role === 'staff' && !companies.mayUseBot(membership, bot)))) bot=sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(membership.company_id).map(r=>JSON.parse(r.config)).find(b=>b.active && companies.mayUseBot(membership, b));
     if(!bot && (membership.role==='owner' || recover)) bot=getBot(sql,membership.company_id,defaultBotId(membership.company_id,membership.provider));
     if(!bot) throw fault(403,'No active service is available in this company.');
-    if ((!bot.active && membership.role !== 'owner' && !recover) || (membership.role === 'staff' && bot.adapter !== membership.provider)) throw fault(403, 'This service is not available to your membership.');
+    if ((!bot.active && membership.role !== 'owner' && !recover) || (membership.role === 'staff' && !companies.mayUseBot(membership, bot))) throw fault(403, 'This service is not available to your membership.');
     return {
       id: account.id,
       companyId: membership.company_id,
@@ -202,7 +202,7 @@ export function createAuth(store, config, delivery, companies) {
       if (!session?.account_id) throw fault(401, 'Sign in to select a workspace.');
       const memberships = sql.prepare("SELECT m.company_id AS companyId,c.name,m.role FROM company_memberships m JOIN companies c ON c.id=m.company_id WHERE account_id=? AND status='active'").all(session.account_id);
       send(200, { memberships, companyId: session.profile.companyId, chatbotId: session.profile.chatbotId,
-        chatbots: sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(session.profile.companyId).map(r=>normalizeBot(JSON.parse(r.config))).filter(b=>b.active && (session.profile.role !== 'staff' || b.adapter === session.profile.provider)) });
+        chatbots: sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(session.profile.companyId).map(r=>normalizeBot(JSON.parse(r.config))).filter(b=>b.active && (session.profile.role !== 'staff' || companies.mayUseBot({role:'staff',provider:session.profile.provider,company_id:session.profile.companyId,account_id:session.account_id}, b))) });
       return true;
     }
     if (endpoint === 'POST /api/auth/workspace') {

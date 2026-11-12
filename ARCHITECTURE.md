@@ -62,6 +62,22 @@ Collect required diagnostic fields (per-service editable schema) → applicable 
 ### Intelligence (`GET /api/companies/:companyId/intelligence`)
 Owner/staff of that company only (tenant from the session). Reports customer-confirmed fixes, auto-published (unconfirmed) fixes separately, imports (not counted as learned), reuse outcomes by source, review flags, pending/overdue confirmations, SLA breaches and mean response times with sample sizes.
 
+### Per-service staff access
+Owners can restrict a specialist to particular services (`staff_chatbot_access`, Migration 6). With no rows a specialist keeps every service of their adapter (the old behaviour). Enforcement is in one place (`companies.mayUseBot`) and is used by workspace selection, the specialist queue, Resolution Intelligence and the assignable-staff roster. Narrowing access returns cases the specialist holds in a removed service to that service's queue and writes an audit record.
+
+### Scheduled data-source sync
+A source can carry `sync_interval_hours` (1–720). The worker tick calls `dataSources.runDue()`, which claims each due source with a conditional update that moves `next_sync_at` forward *before* syncing, so concurrent workers or a slow sync can never run a source twice. Failures are recorded on the source and retried at the next interval; local review decisions are preserved exactly as for manual syncs.
+
+### Customer data controls and retention (`server/privacy-controls.js`)
+`GET /api/privacy/export` returns the caller's own data in the workspace. `POST /api/privacy/erase` (optionally for one request) blanks the content of the customer's conversations and remembered context, clears the copies held in specialist case files, asks the remote memory service to invalidate remembered items (best effort) and unlinks shared knowledge from the erased request. Operational records (the request, status, appointments, specialist updates) are kept, and shared knowledge was already de-identified. Retention is **off by default**; `RETENTION_*` variables enable a worker-run sweep for archived conversations, finished follow-through tasks and old outbox jobs.
+
+### Store access paths and scalability
+Tickets, conversations and similar records still live in the JSON `records` store, but every hot path now avoids loading other tenants' data: `store.dataFor(companyId)` reads one company through expression indexes (`records_company`, `record_scope`), and `store.updateFor(companyId, change)` loads and writes only that company's slice and only the rows that changed. The full-store forms remain for cross-tenant background work. With 30,000 rows belonging to another company, request latency stayed at a few milliseconds (it was 0.5–3.7 s before); `test/scalability.test.js` enforces this and checks that scoped reads equal filtering the full store, that company ids sharing a prefix do not leak, and that scoped and full writes interleave safely. This is a mitigation, not a normalised schema: a single very large tenant is still O(that tenant's data) per request.
+
+### Matching details worth knowing
+* **Negation** applies only to the mention a negative word directly governs (“not a Model X”, “do not have a Model X”) and covers an adjacent attribute (“not Model X firmware 4”). A stray “never” earlier in a sentence no longer negates a later device (this previously could hide a device mismatch).
+* **Typo tolerance** maps misspellings back to concepts with one edit (same first letter; last letter must match for short words; ambiguous matches are dropped; a curated vocabulary plus a blocklist for real words such as *internal* or *block*). `test/fixtures/fuzzy-neighbours.txt` is an audit of ~25,000 common words kept as a regression test: only intended inflections/typos may gain a concept.
+
 ## Isolated learning demo
 See `DEMO_GUIDE.md`. `server/demo-learning.js` contains its own state and HTTP layer. `test/demo-isolation.test.js` enforces: only pure imports, no network calls, no main-database change (every table hashed before/after), no cross-session visibility, reset really clears.
 

@@ -36,7 +36,7 @@ export function intelligenceFor(store, companyId, { at = Date.now(), slaHours = 
       imported: origin('company_db_sync'),
     },
   };
-  const data = store.data;
+  const data = store.dataFor(companyId);
   const handoffs = data.handoffs.filter((h) => h.companyId === companyId && (!chatbotId || h.chatbotId === chatbotId));
   const audit = data.audit;
   const firstResponse = [], resolution = [];

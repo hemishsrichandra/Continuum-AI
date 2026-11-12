@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -9,9 +9,33 @@ import { cases } from '../evaluation/cases.js';
 import { challengeCases } from '../evaluation/challenge.js';
 import { holdoutCases } from '../evaluation/holdout.js';
 import { validationCases } from '../evaluation/validation.js';
+import { informalCases } from '../evaluation/informal.js';
+import { informal2Cases } from '../evaluation/informal2.js';
 
-export async function evaluate({ live = false, challenge = false, holdout = false, validation = false, log = () => {} } = {}) {
-  const dataset = validation ? validationCases : holdout ? holdoutCases : challenge ? challengeCases : cases;
+/**
+ * Validate a dataset of your own: `[{ id, title, symptoms, environment, solution, queries: [..] }]`
+ * (or `{ cases: [...] }`). `symptoms`/`solution` describe the reviewed fix to store; `queries` are real
+ * customer wordings that should retrieve it.
+ */
+export function validateDataset(input) {
+  const list = Array.isArray(input) ? input : input?.cases;
+  if (!Array.isArray(list) || !list.length || list.length > 100) throw new Error('A dataset must contain 1 to 100 cases.');
+  const text = (v, name, i, max, optional = false) => {
+    if (optional && (v === undefined || v === '')) return '';
+    if (typeof v !== 'string' || !v.trim() || v.length > max) throw new Error(`Case ${i + 1}: “${name}” must be a non-empty string of at most ${max} characters.`);
+    return v.trim();
+  };
+  const ids = new Set();
+  return list.map((c, i) => {
+    const id = text(c?.id, 'id', i, 40);
+    if (!/^[A-Za-z0-9_-]+$/.test(id) || ids.has(id)) throw new Error(`Case ${i + 1}: “id” must be unique and use only letters, digits, “-” and “_”.`);
+    ids.add(id);
+    if (!Array.isArray(c.queries) || !c.queries.length || c.queries.length > 20) throw new Error(`Case ${i + 1}: “queries” must list 1 to 20 customer wordings.`);
+    return { id, title: text(c.title, 'title', i, 100), symptoms: text(c.symptoms, 'symptoms', i, 1000), environment: text(c.environment, 'environment', i, 500, true), solution: text(c.solution, 'solution', i, 2000), queries: c.queries.map((q) => text(q, 'queries[]', i, 1000)) };
+  });
+}
+export async function evaluate({ live = false, challenge = false, holdout = false, validation = false, informal = false, informal2 = false, dataset: custom = null, embeddings = false, embeddingEnv = process.env, redact = Boolean(custom), log = () => {} } = {}) {
+  const dataset = custom ? validateDataset(custom) : informal2 ? informal2Cases : informal ? informalCases : validation ? validationCases : holdout ? holdoutCases : challenge ? challengeCases : cases;
   if (live) process.loadEnvFile('.env');
   const run = randomUUID().slice(0, 8),
     directory = await mkdtemp(join(tmpdir(), 'continuum-evaluation-'));
@@ -30,19 +54,25 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
     HINDSIGHT_BANK_PREFIX: (process.env.HINDSIGHT_BANK_PREFIX || 'continuum') + '-evaluation-' + run,
     REQUIRE_LIVE_INTEGRATIONS: live ? 'true' : 'false',
   };
+  if (embeddings) {
+    // Use a real embedding model for retrieval (no Hindsight needed). Fails loudly instead of silently using the local fallback.
+    if (!embeddingEnv.EMBEDDING_MODEL || !embeddingEnv.OPENAI_API_KEY) throw new Error('Embedding evaluation requires EMBEDDING_MODEL and OPENAI_API_KEY (and optionally OPENAI_BASE_URL).');
+    Object.assign(config, { EMBEDDING_MODEL: embeddingEnv.EMBEDDING_MODEL, OPENAI_API_KEY: embeddingEnv.OPENAI_API_KEY, ...(embeddingEnv.OPENAI_BASE_URL && { OPENAI_BASE_URL: embeddingEnv.OPENAI_BASE_URL }) });
+  }
   if (live && (!config.HINDSIGHT_BASE_URL || !config.HINDSIGHT_API_KEY || !config.OPENAI_API_KEY))
     throw new Error('Live evaluation requires Hindsight and model credentials in .env.');
   const h = createHandler({ file: join(directory, 'evaluation.sqlite'), config });
   const report = {
     run,
     startedAt: new Date().toISOString(),
-    dataset: validation ? 'synthetic validation v1' : holdout ? 'synthetic held-out v1' : challenge ? 'synthetic challenge v1' : 'synthetic regression v1',
+    dataset: custom ? 'custom (your data)' : informal2 ? 'synthetic informal v2' : informal ? 'synthetic informal v1' : validation ? 'synthetic validation v1' : holdout ? 'synthetic held-out v1' : challenge ? 'synthetic challenge v1' : 'synthetic regression v1',
     datasetSha256: createHash('sha256').update(JSON.stringify(dataset)).digest('hex'),
     plannedCases: dataset.length,
     plannedPositiveQuestions: dataset.reduce((n, c) => n + c.queries.length, 0),
     namespace: config.HINDSIGHT_BANK_PREFIX,
     mode: live ? 'live Hindsight/model' : 'local deterministic regression',
-    synthetic: true,
+    synthetic: !custom,
+    embeddingModel: embeddings ? config.EMBEDDING_MODEL : 'local-hashed-concepts (offline)',
     cases: [],
     counts: {
       positiveQuestions: 0,
@@ -156,12 +186,13 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
         report.counts.correctMemoryOn += Number(correct);
         report.counts.correctMemoryOff += Number(off.reply.includes(c.solution));
         report.counts.memoryOffWithheld += Number(offWithheld);
+        // With your own data the report omits the raw customer wording and replies (they may be personal).
         result.positive.push({
-          question: message,
+          question: redact ? `query ${index + 1}` : message,
           correct,
           offWithheld,
-          on: { reply: on.reply, decision: on.decision.mode, memory: on.trace.knowledge, elapsedMs: onMs },
-          off: { reply: off.reply, decision: off.decision.mode, elapsedMs: offMs },
+          on: { reply: redact ? '(omitted)' : on.reply, decision: on.decision.mode, memory: on.trace.knowledge, elapsedMs: onMs },
+          off: { reply: redact ? '(omitted)' : off.reply, decision: off.decision.mode, elapsedMs: offMs },
         });
       }
       const missing = (
@@ -181,7 +212,7 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
         const safe = answer.trace.learnedResolutions === 0 && !answer.reply.includes(c.solution);
         report.counts.negativeQuestions++;
         report.counts.incorrectRecommendations += Number(!safe);
-        result.negative.push({ question: message, safe, decision: answer.decision.mode, reply: answer.reply });
+        result.negative.push({ question: redact ? '(omitted)' : message, safe, decision: answer.decision.mode, reply: redact ? '(omitted)' : answer.reply });
       }
       if (use) {
         await b.api('resolutions/outcome', { useId: use.id, worked: false, confirmed: true });
@@ -214,11 +245,19 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
 }
 
 if (process.argv[1]?.endsWith('/evaluate.js')) {
-  const report = await evaluate({ live: process.argv.includes('--live'), challenge: process.argv.includes('--challenge'), holdout: process.argv.includes('--holdout'), validation: process.argv.includes('--validation'), log: console.log });
+  const arg = (name) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
+  const file = arg('--file');
+  const report = await evaluate({
+    live: process.argv.includes('--live'), challenge: process.argv.includes('--challenge'), holdout: process.argv.includes('--holdout'),
+    validation: process.argv.includes('--validation'), informal: process.argv.includes('--informal'), informal2: process.argv.includes('--informal2'),
+    embeddings: process.argv.includes('--embeddings'),
+    ...(file && { dataset: JSON.parse(await readFile(file, 'utf8')) }),
+    log: console.log,
+  });
   await mkdir('data', { recursive: true });
-  const file = 'data/evaluation-' + report.run + '.json';
-  await writeFile(file, JSON.stringify(report, null, 2), { mode: 0o600 });
+  const out = 'data/evaluation-' + report.run + '.json';
+  await writeFile(out, JSON.stringify(report, null, 2), { mode: 0o600 });
   console.log(JSON.stringify(report.counts));
-  console.log('Report: ' + file);
+  console.log('Report: ' + out);
   if (!report.passed) process.exitCode = 1;
 }

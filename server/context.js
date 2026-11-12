@@ -45,7 +45,70 @@ const stop = new Set(
     ' ',
   ),
 );
-function normalize(text) {
+// Typo tolerance. Surface words per concept that a misspelling should map back to. Deliberately curated:
+// words with a common real-word neighbour (falling/failing, fill/full, printed/printer, drove/drive) are left out.
+const FUZZY = [
+  ['display', ['screen', 'monitor', 'display', 'panel', 'picture']],
+  ['flicker', ['flicker', 'flickers', 'flickering', 'flashing', 'blinking', 'shimmer', 'shimmering']],
+  ['startup', ['startup', 'booting', 'restarting']],
+  ['network', ['wireless', 'internet', 'network', 'connection', 'connectivity']],
+  ['offline', ['offline']],
+  ['restart', ['restart', 'reboot']],
+  ['battery', ['battery', 'charger', 'charging']],
+  ['drain', ['draining', 'depleting', 'drains']],
+  ['disconnect', ['disconnect', 'disconnects', 'disconnecting', 'dropping', 'intermittent']],
+  ['login', ['authenticate', 'authentication', 'credentials', 'password']],
+  ['rejected', ['rejected', 'refused', 'denied', 'denying', 'declined']],
+  ['rapid', ['quickly', 'rapidly']],
+  ['audio', ['audio', 'sound', 'speakers', 'speaker']],
+  ['silent', ['silent', 'muted', 'quiet']],
+  ['webcam', ['webcam', 'camera']],
+  ['black', ['blank', 'empty']],
+  ['storage', ['storage']],
+  ['email', ['email', 'mailbox', 'inbox']],
+  ['sync', ['sync', 'synchronize', 'synchronise', 'refreshing', 'updating']],
+  ['application', ['application', 'software', 'program']],
+  ['crash', ['crash', 'crashes', 'crashing', 'quits']],
+  ['jam', ['jammed', 'wedged', 'trapped']],
+  ['paper', ['paper']],
+];
+// Real words that sit one edit away from a vocabulary word but mean something else. Found by scanning ~25,000
+// common English words (test/fixtures/fuzzy-neighbours.txt keeps that audit repeatable).
+const FUZZY_NEVER = new Set(['changing', 'clash', 'deleting', 'flushing', 'pager', 'reused', 'stack', 'stick', 'stock', 'tripped', 'etail', 'back', 'block', 'quit']);
+const FUZZY_WORDS = FUZZY.flatMap(([concept, words]) => words.map((w) => [w, concept]));
+export const FUZZY_VOCABULARY = FUZZY_WORDS.map(([w]) => w);
+const FUZZY_EXACT = new Set(FUZZY_WORDS.map(([w]) => w));
+/** Damerau–Levenshtein distance, capped (returns cap+1 once it is exceeded). */
+export function editDistance(a, b, cap = 2) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  return d[a.length][b.length];
+}
+/** The concept a misspelled word most plausibly meant, or null (unknown, or ambiguous between concepts). */
+export function fuzzyConcept(word) {
+  if (word.length < 4 || word.length > 14 || FUZZY_EXACT.has(word) || FUZZY_NEVER.has(word) || stop.has(word)) return null;
+  let best = null, bestDistance = 3, tie = false;
+  for (const [candidate, concept] of FUZZY_WORDS) {
+    if (candidate[0] !== word[0]) continue; // typos rarely change the first letter
+    // One edit only: two edits between real words is far too common.
+    const limit = candidate.length >= 5 ? 1 : 0;
+    if (!limit) continue;
+    // Typos usually keep the last letter. Only long tokens (fewer real-word neighbours) may change it.
+    if (word.length < 10 && candidate[candidate.length - 1] !== word[word.length - 1]) continue;
+    const d = editDistance(word, candidate, limit);
+    if (d > limit) continue;
+    if (d < bestDistance) { best = concept; bestDistance = d; tie = false; }
+    else if (d === bestDistance && concept !== best) tie = true;
+  }
+  return tie ? null : best;
+}
+function normalize(text, fuzzy = true) {
   let normalized = String(text).toLowerCase();
   const found = new Set();
   for (const [word, pattern, emit] of concepts) {
@@ -54,6 +117,14 @@ function normalize(text) {
       return ' ' + (emit || word) + ' ';
     });
   }
+  const conceptNames = new Set(concepts.map(([name]) => name));
+  if (fuzzy) normalized = normalized.replace(/[a-z]{4,14}/g, (word) => {
+    if (conceptNames.has(word)) return word;
+    const concept = fuzzyConcept(word);
+    if (!concept) return word;
+    found.add(concept);
+    return concept;
+  });
   return { normalized, found };
 }
 export function tokens(text) {
@@ -61,8 +132,8 @@ export function tokens(text) {
   return new Set((normalized.match(/[a-z0-9]+/g) || []).filter((w) => w.length > 2 && !stop.has(w)));
 }
 /** The normalised concepts present in a text (e.g. display, flicker, startup). Stop words excluded. */
-export function conceptTokens(text) {
-  return new Set([...normalize(text).found].filter((w) => w.length > 2 && !stop.has(w)));
+export function conceptTokens(text, { fuzzy = true } = {}) {
+  return new Set([...normalize(text, fuzzy).found].filter((w) => w.length > 2 && !stop.has(w)));
 }
 export function relevance(query, symptoms) {
   const q = tokens(query),
@@ -98,7 +169,7 @@ export function compatibility(environment, query, fields = {}) {
 }
 export function safeHistory(store, scope, ticketId, enabled, statedPreferences = []) {
   if (!enabled) return [];
-  const data = store.data;
+  const data = store.dataFor(scope.startsWith('knowledge:') ? scope.split(':')[1] : scope.split(':')[0]);
   const inactive = data.resolutions.filter(
     (r) =>
       r.retiredAt ||

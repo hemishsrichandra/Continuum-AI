@@ -50,7 +50,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     }).immediate();
     sql.prepare('UPDATE troubleshooting_attempts SET handoff_id=? WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').run(result.id,...args(p,t));
     // Specialists see which suggested fixes already failed for this customer.
-    store.update(d=>{const h=d.handoffs.find(x=>x.id===result.id&&x.companyId===p.companyId);
+    store.updateFor(p.companyId,d=>{const h=d.handoffs.find(x=>x.id===result.id&&x.companyId===p.companyId);
       if(h){h.troubleshooting||=[];for(const a of attempts(p,t).filter(a=>a.source==='learned'&&a.outcome==='failed'))
         if(!h.troubleshooting.some(x=>x.attemptId===a.id)) h.troubleshooting.push({id:randomUUID(),attemptId:a.id,resolutionId:a.memory_id,step:JSON.parse(a.snapshot).steps,outcome:'failed',note:'The suggested fix did not resolve the issue.',authorId:p.id,createdAt:a.outcome_at||now()});}});
     ev(p,t,'escalated_to_specialist',{reason,handoffId:result.id,attempts:attempts(p,t).map(a=>({source:a.source,sequence:a.sequence,outcome:a.outcome}))});
@@ -133,7 +133,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
         if(!next.eligible.length && open) return {...r,handoffId:open.id};
         if(!next.eligible.length) {
           const h=human(p,t,'The suggested fixes did not resolve the issue.');
-          store.update(d=>{const row=d[p.provider].find(x=>x.companyId===p.companyId&&x.chatbotId===botId(p)&&(x.ticket_id||x.id)===t.id);if(row){row[p.provider==='repair'?'status':'state']='Reopened';row.updatedAt=now();}});
+          store.updateFor(p.companyId,d=>{const row=d[p.provider].find(x=>x.companyId===p.companyId&&x.chatbotId===botId(p)&&(x.ticket_id||x.id)===t.id);if(row){row[p.provider==='repair'?'status':'state']='Reopened';row.updatedAt=now();}});
           return {...r,handoffId:h.handoffId||r.handoffId};
         }
       }

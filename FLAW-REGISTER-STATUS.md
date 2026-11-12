@@ -13,7 +13,7 @@ Test names refer to files under `test/`. All figures come from synthetic tests, 
 
 | ID | Status | What changed / why it stays open | Evidence |
 | --- | --- | --- | --- |
-| E01 negated facts accepted | Fixed | Typed positive/negated mentions; any conflict makes a fix ineligible. Re-ran the report's exact case: now incompatible. | `regressions-phase0`, `audit-fixes` (E05), `scoring` |
+| E01 negated facts accepted | Fixed | Typed positive/negated mentions; any conflict makes a fix ineligible. Re-ran the report's exact case: now incompatible. A later bug where a stray “never” earlier in a sentence negated a later device (hiding a mismatch) was found and fixed, with a regression test. | `regressions-phase0`, `audit-fixes` (E05), `scoring`, `rag-quality` |
 | E02 Android/iOS versions | Fixed | OS families, versions and ranges are evaluated; a different OS family is a conflict. Android 14 vs 15 → incompatible. | `regressions-phase0`, `scoring` |
 | E03 demo warning stripped | Fixed | Simulation/safety qualifiers are never removed from customer advice. | `customer-advice`, `regressions-phase0`, `demo-isolation` |
 | E04 role allowlist vs real cancel path | Fixed | `/api/book/cancel` added; a matrix test now asserts every customer endpoint rejects owner/staff sessions and customers cannot reach staff areas. A single central route registry was **not** built (see E33). | `audit-fixes` (E04) |
@@ -29,22 +29,22 @@ Test names refer to files under `test/`. All figures come from synthetic tests, 
 | E14 no version lineage | Fixed | Immutable versions with parent pointer; old row superseded atomically. | `self-correcting` |
 | E15 no deadline follow-up | Fixed | Persisted confirmation tasks, worker tick, SLA escalation; silence is never success. | `follow-through` |
 | E16 unified queue | Fixed | `GET /api/operator` now also lists every open request in the service that is not yet escalated (customer, status, attempts, timeline), and a `request_opened` event starts each timeline. | `audit-fixes` (E16), `follow-through` |
-| E17 narrow PII filter | Mitigated | Added grouped/spaced phone numbers (e.g. `+91 98765 43210`), street addresses, national ID numbers, titles + names; versions/IPs/build numbers are preserved. Residual: an unprompted bare personal name cannot be detected by patterns; mitigation is the specialist's preview plus the rule that any redaction blocks auto-publication (failure-closed). | `audit-fixes` (E17), `scoring` |
+| E17 narrow PII filter | Mitigated | Grouped/spaced phone numbers, street addresses, ID numbers, titled names, and now **names after cue words** (“ask Priya Sharma”, “thanks, Raj”) are redacted, with product/role/company words protected. Residual: a bare name with no cue cannot be detected; mitigation is the specialist preview plus the rule that any redaction blocks auto-publication. | `audit-fixes` (E17) |
 | E18 success and sharing coupled | Decision | The memory toggle was removed on request. Publication still needs a specialist-reviewed, scrubbed passport **and** the original customer's explicit “It worked”. A separate “authorisation to share” step was not added. |  |
-| E19 memory-off semantics | Mitigated | Customer copy now says what is and is not retained. No data export/deletion controls were added. | UI |
+| E19 memory-off semantics | Mitigated | Customer copy says what is and is not retained, and customers can now **download their data and remove their conversation content** (workspace sidebar; `GET /api/privacy/export`, `POST /api/privacy/erase`). Operational case records are deliberately kept. | `privacy-controls` |
 | E20 remote memory eventually consistent | Mitigated | Company knowledge is local and authoritative. Per-ticket Hindsight sync is unchanged. |  |
-| E21 whole-collection JSON load/save | Open | Tickets, conversations and audit still live in the JSON `records` store. New v5 data is relational and indexed. Re-architecting the older store was out of scope. |  |
-| E22 tenant scope inside JSON | Mitigated | All new tables carry `company_id` with composite foreign keys and every query is scoped. Legacy JSON collections still rely on application filters (covered by the cross-company tests). | `memory-pool`, `data-sources`, `intelligence` |
+| E21 whole-collection JSON load/save | Mitigated | Hot read and write paths no longer load other tenants' data: `dataFor`/`updateFor` use expression indexes and diff-based writes. With 30k foreign rows, chat went from ~3.7 s to ~6 ms and the staff queue from ~550 ms to ~3 ms. Residual: the data is still JSON records, and a very large single tenant is still O(that tenant's data) per request. | `scalability` |
+| E22 tenant scope inside JSON | Mitigated | New tables are relational with composite foreign keys. Legacy JSON reads are now tenant-scoped in SQL (`dataFor`), tested against filtering the full store, including company ids that share a prefix. | `scalability`, `memory-pool`, `data-sources` |
 | E23 one gateway per company | Fixed | Any number of data sources per company/service with their own mapping, secret and health. The legacy gateway still allows one. | `data-sources` |
 | E24 flat mapping only | Mitigated | Dotted paths for nested JSON/REST fields; CSV/SQL are flat. No transforms (deliberately: no code execution). | `data-sources` |
 | E25 100-record cap | Mitigated | Mediator limit is 2000 with an explicit error; no cursor paging. The legacy gateway cap of 100 is unchanged. |  |
 | E26 resync overwrites local changes | Fixed (mediator) | Reviewed, revised, flagged or failure-tracked records are never overwritten. The legacy gateway's `Object.assign` is unchanged. | `data-sources` |
 | E27 only repair/IT | Mitigated | Diagnostic schema, playbooks and knowledge are now domain-agnostic and editable; the ticket-record adapter enum is still `repair|it`. | `data-sources` |
-| E28 staff not bot-granular | Open | Staff are still scoped to their adapter. |  |
+| E28 staff not bot-granular | Fixed | Owners can restrict a specialist to specific services (Migration 6). Enforced for workspace switching, the queue, intelligence and assignment; narrowing releases held cases; no restriction keeps the old behaviour. | `staff-access` |
 | E29 shared slot model | Open | Scheduling untouched to avoid regressions. |  |
 | E30 hardcoded time zone | Open | As above. |  |
 | E31 failed external jobs | Open | `provider-actions` not changed. |  |
-| E32 manual sync only | Open | Sync is owner-triggered; a scheduled poller was not built. |  |
+| E32 manual sync only | Fixed | Per-source sync interval run by the worker tick, atomically claimed so concurrent workers never run a source twice; failures recorded. | `data-sources` (scheduled sync) |
 | E33 monolithic `app.js` | Open | Routes were added to the same file; no layering refactor. Guarded by the E04 matrix test. |  |
 | E34 large UI files | Open | UI grew; no component refactor. Browser smoke tests were run instead. |  |
 | E35 isolated demo | Fixed | Separate store, API, UI, zero start, hash-checked database isolation. | `demo-isolation` |
@@ -91,8 +91,8 @@ Test names refer to files under `test/`. All figures come from synthetic tests, 
 | F33 follow-up spam | Mitigated | One email per proposal (idempotent id), only when email is configured. No quiet hours/unsubscribe. |
 | F34 outages block flow | Fixed | Offline retrieval, timeouts, fallback. `memory-pool` |
 | F35 removed routes | Fixed | `/operator`, `/team`, scheduling kept; demo is additive. `check-http` |
-| F36 slow analytics | Open | See E21/E36. |
-| F37 lifecycle/retention | Open | No retention policy. |
+| F36 slow analytics | Mitigated | Intelligence reads one company through indexes (2 ms with 30k foreign rows). Very large single tenants still scan their own records. | `scalability` |
+| F37 lifecycle/retention | Mitigated | Optional, worker-run retention for archived conversations, finished follow-through tasks and old outbox jobs (off by default), plus customer export/erasure. No automatic retention for tickets or shared knowledge. | `privacy-controls` |
 | F38 big-bang risk | Mitigated | Delivered in phases with tests at each step. |
 
 ## C. Contradictions the report asked to resolve

@@ -317,7 +317,7 @@ export function createMemoryPool(store, config = {}) {
   }
 
   function specialistHistory(companyId, specialistId) {
-    const rows = store.data.resolutions.filter((r) => r.companyId === companyId && r.authorId === specialistId && typeof r.customerAccepted === 'boolean');
+    const rows = store.dataFor(companyId).resolutions.filter((r) => r.companyId === companyId && r.authorId === specialistId && typeof r.customerAccepted === 'boolean');
     return { accepted: rows.filter((r) => r.customerAccepted).length, rejected: rows.filter((r) => !r.customerAccepted).length };
   }
 

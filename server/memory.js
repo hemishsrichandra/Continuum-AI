@@ -7,8 +7,10 @@ export function createMemory(store, config = process.env) {
   const strict = config.REQUIRE_LIVE_INTEGRATIONS === 'true';
   const bank = (scope) => encodeURIComponent((config.HINDSIGHT_BANK_PREFIX || 'continuum') + '-' + scope);
   const initialized = new Map();
+  // Memory scopes start with the company id (or knowledge:<company>:...), so reads stay tenant-scoped.
+  const companyOf = (scope) => (scope.startsWith('knowledge:') ? scope.split(':')[1] : scope.split(':')[0]);
   const active = (scope) => {
-    const data = store.data;
+    const data = store.dataFor(companyOf(scope));
     const retired = new Set(data.resolutions.filter((r) => r.retiredAt).map((r) => r.id));
     return data.memories.filter(
       (m) =>
@@ -76,7 +78,7 @@ export function createMemory(store, config = process.env) {
   const service = {
     configured: Boolean(base),
     list(scope, ticketId) {
-      return store.data.memories
+      return store.dataFor(companyOf(scope)).memories
         .filter((m) => m.scope === scope && relevant(m, ticketId))
         .map(({ id, kind, text, createdAt, invalidatedAt }) => ({ id, kind, text, createdAt, invalidatedAt }))
         .reverse();
@@ -153,7 +155,7 @@ export function createMemory(store, config = process.env) {
       );
       if (duplicate) item = duplicate;
       else
-        store.update((data) => {
+        store.updateFor(companyOf(item.scope), (data) => {
           const existing = data.memories.find(
             (m) =>
               m.scope === item.scope &&
@@ -197,11 +199,11 @@ export function createMemory(store, config = process.env) {
       }
     },
     async invalidate(scope, ticketId, id) {
-      const item = store.data.memories.find(
+      const item = store.dataFor(companyOf(scope)).memories.find(
         (m) => m.scope === scope && m.id === id && m.ticketId === ticketId,
       );
       if (!item) {
-        const preference = store.data.memories.find(
+        const preference = store.dataFor(companyOf(scope)).memories.find(
           (m) => m.scope === scope && m.id === id && m.customerWide && m.kind === 'preference',
         );
         if (preference) return service.invalidate(scope, preference.ticketId, id);
