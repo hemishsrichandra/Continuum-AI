@@ -7,7 +7,10 @@ import { createApi } from './app.js';
 if (existsSync('.env')) process.loadEnvFile('.env');
 const requestedApiPort = Number(process.env.API_PORT || 5000);
 const frontendPort = Number(process.env.FRONTEND_PORT || 3000);
+// Loopback by default. Set HOST=0.0.0.0 (behind a TLS-terminating reverse proxy) to accept remote connections;
+// the internal API listener always stays on loopback.
 const host = '127.0.0.1';
+const publicHost = process.env.HOST || host;
 const routes = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/about': ['index.html', 'text/html; charset=utf-8'],
@@ -93,7 +96,7 @@ backend.on('error', (error) => {
   fatal(error);
 });
 backend.once('listening', () => {
-  frontend.listen(frontendPort, host, () => console.log('Continuum: http://localhost:' + frontend.address().port + ' | API: http://localhost:' + backend.address().port));
+  frontend.listen(frontendPort, publicHost, () => console.log('Continuum: http://localhost:' + frontend.address().port + ' | API: http://localhost:' + backend.address().port));
 });
 backend.listen(requestedApiPort, host);
 

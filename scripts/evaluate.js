@@ -7,9 +7,11 @@ import { createHandler } from '../server/app.js';
 import { invoke } from './invoke.js';
 import { cases } from '../evaluation/cases.js';
 import { challengeCases } from '../evaluation/challenge.js';
+import { holdoutCases } from '../evaluation/holdout.js';
+import { validationCases } from '../evaluation/validation.js';
 
-export async function evaluate({ live = false, challenge = false, log = () => {} } = {}) {
-  const dataset = challenge ? challengeCases : cases;
+export async function evaluate({ live = false, challenge = false, holdout = false, validation = false, log = () => {} } = {}) {
+  const dataset = validation ? validationCases : holdout ? holdoutCases : challenge ? challengeCases : cases;
   if (live) process.loadEnvFile('.env');
   const run = randomUUID().slice(0, 8),
     directory = await mkdtemp(join(tmpdir(), 'continuum-evaluation-'));
@@ -34,7 +36,7 @@ export async function evaluate({ live = false, challenge = false, log = () => {}
   const report = {
     run,
     startedAt: new Date().toISOString(),
-    dataset: challenge ? 'synthetic challenge v1' : 'synthetic regression v1',
+    dataset: validation ? 'synthetic validation v1' : holdout ? 'synthetic held-out v1' : challenge ? 'synthetic challenge v1' : 'synthetic regression v1',
     datasetSha256: createHash('sha256').update(JSON.stringify(dataset)).digest('hex'),
     plannedCases: dataset.length,
     plannedPositiveQuestions: dataset.reduce((n, c) => n + c.queries.length, 0),
@@ -212,7 +214,7 @@ export async function evaluate({ live = false, challenge = false, log = () => {}
 }
 
 if (process.argv[1]?.endsWith('/evaluate.js')) {
-  const report = await evaluate({ live: process.argv.includes('--live'), challenge: process.argv.includes('--challenge'), log: console.log });
+  const report = await evaluate({ live: process.argv.includes('--live'), challenge: process.argv.includes('--challenge'), holdout: process.argv.includes('--holdout'), validation: process.argv.includes('--validation'), log: console.log });
   await mkdir('data', { recursive: true });
   const file = 'data/evaluation-' + report.run + '.json';
   await writeFile(file, JSON.stringify(report, null, 2), { mode: 0o600 });

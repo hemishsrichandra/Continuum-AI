@@ -9,14 +9,14 @@ export function extractFacts(message) {
   for (const raw of sentences) {
     const sentence = raw.trim();
     const preferenceQuestion = /^(?:how|what|which|when|where|who|why|do i|did i|have i|is (?:there|my)|are (?:there|my)|(?:can|could|would) you (?:tell|remind|check|show))\b/i.test(sentence);
+    // A contact preference is an instruction about HOW to reach the customer: a preference word
+    // followed by a contact channel, or an explicit "contact/email/call … me". A technical sentence
+    // that merely mentions email ("the email never refreshes") is not a preference.
+    const channel = /\b(?:call|phone|email|text|sms|contact|notify|notification|reach|language|speak|screen reader|large text)\b/i;
     const contact =
       !preferenceQuestion &&
-      /\b(?:prefer|please|always|remember|rather|instead|do not|don.t|never|contact me|reach me|notify me|send me|email me|call me|text me)\b/i.test(
-        sentence,
-      ) &&
-      /\b(?:call|phone|email|text|sms|contact|notify|notification|reach|language|speak|screen reader|large text)\b/i.test(
-        sentence,
-      );
+      (/\b(?:prefer\w*|please|always|remember|rather|instead|do not|don.t|never)\b[^.!?]*\b(?:call|phone|email|text|sms|contact|notify|notification|reach|language|speak|screen reader|large text)\b/i.test(sentence) ||
+        (/\b(?:contact|reach|notify|send|email|call|text) me\b/i.test(sentence) && channel.test(sentence)));
     const category = /screen reader|large text/i.test(sentence)
       ? 'accessibility'
       : /language|speak/i.test(sentence)

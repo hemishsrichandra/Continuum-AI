@@ -78,8 +78,21 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     // Marking a learned attempt and recording reuse are completed together below in processFeedback.
     return result;
   }
+  const envMention=/\b(?:model|firmware|windows|macos|ubuntu|android|ios|version)\s+[\w.-]+/i;
+  const savedContext=(p,t)=>{const row=sql.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(...args(p,t));return row?JSON.parse(row.context):{};};
+  /** The earlier stated environment, if this message names a genuinely different device or version. */
+  function environmentConflict(earlier,message,inputContext) {
+    if(!earlier || !envMention.test(message) || (typeof inputContext?.environment==='string' && inputContext.environment.trim())) return null;
+    const before=customerFacts(earlier), now=customerFacts(message);
+    return Object.keys(now).some(k=>before[k]?.values.length && now[k].values.length &&
+      !now[k].values.some(v=>before[k].values.some(o=>o===v||o.startsWith(v+'.')||v.startsWith(o+'.')))) ? earlier : null;
+  }
+  const conflictResponse=(b,earlier,response)=>{
+    const field=b.diagnosticSchema.find(f=>f.key==='environment')||{key:'environment',label:'your device model and operating-system version'};
+    return response('Earlier you mentioned “'+earlier.slice(0,120)+'”, but this message mentions a different device or version. Which one should I troubleshoot? Please confirm the correct details.',{workflow:{stage:'context_conflict',missing:['environment'],fields:[field]}});
+  };
   // Next eligible company-memory suggestion for this ticket (none once three were tried).
-  async function nextSuggestion(p,t,context,message='') {
+  async function nextSuggestion(p,t,context,message='',{messageOnly=false}={}) {
     const rows=attempts(p,t),learnedRows=rows.filter(a=>a.source==='learned');
     if(learnedRows.length>=THRESHOLDS.maxSuggestions) return {eligible:[],withheld:[],backend:'none'};
     const failedBefore=failedResolutions(store,p.companyId,p.provider,p.id,botId(p));
@@ -89,7 +102,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const stdFix=std?JSON.parse(std.snapshot):null;
     const stdSig=stdFix?.steps?[signatureOf([stdFix.steps])]:[];
     const query=[t.title,t.issue,message,...Object.values(context)].join('\n');
-    return memoryPool.retrieve({companyId:p.companyId,chatbotId:botId(p),text:query,fields:context,
+    return memoryPool.retrieve({companyId:p.companyId,chatbotId:botId(p),text:messageOnly&&message.trim()?message:query,factsText:query,fields:context,
       excludeIds:new Set([...triedIds,...failedBefore.ids]),excludeSignatures:new Set([...triedSig,...failedBefore.signatures,...stdSig]),
       allowedOrigins:['specialist_confirmed','company_db_sync','auto_published_overdue']});
   }
@@ -145,9 +158,22 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     if(t.status==='Resolved') return response('Your request is resolved. Create a new request for another issue.',{workflow:{stage:'resolved'}});
     if(hasTopic(message+'\n'+t.issue,b.escalationRules.immediateTopics))
       return response('This issue needs immediate specialist attention. '+b.escalationRules.supportRoute,{action:b.allowedActions.includes('handoff')?{kind:'handoff',ticketId:t.id,summary:message}:null,workflow:{stage:'handoff_prepared'}});
-    const pending=rows.find(a=>a.outcome==='pending');
+    let pending=rows.find(a=>a.outcome==='pending');
     const worked=/^(?:yes[, ]+)?(?:it worked|that worked|the fix worked|problem (?:is )?(?:solved|resolved)|that fixed it)[.!\s]*$/i.test(message);
     const failed=/^(?:still need help|it (?:did not|didn't) work|that (?:did not|didn't) work|the fix failed|still not working)[.!\s]*$/i.test(message);
+    // The customer explicitly corrects their device/version while a learned fix is pending: if that fix
+    // no longer applies it is withdrawn (not counted as a failure) and the next eligible suggestion is found.
+    const explicitEnv=typeof inputContext?.environment==='string' && inputContext.environment.trim();
+    if(pending?.source==='learned' && !(worked||failed) && !preview && explicitEnv && explicitEnv!==savedContext(p,t).environment) {
+      const row=memoryPool.get(p.companyId,botId(p),pending.memory_id||pending.fix_id);
+      const text=[t.title,t.issue,message,explicitEnv].join('\n');
+      const gate=row&&compatibilityGate({applicability:JSON.parse(row.applicability_json),safety:JSON.parse(row.safety_restrictions_json),facts:customerFacts(explicitEnv),text:explicitEnv,fields:{environment:explicitEnv}});
+      if(!gate||!gate.eligible) {
+        sql.prepare("UPDATE troubleshooting_attempts SET outcome='skipped',outcome_at=? WHERE id=? AND outcome='pending'").run(now(),pending.id);
+        ev(p,t,'suggestion_withdrawn',{sequence:pending.sequence,memoryId:pending.memory_id,reason:'the customer corrected their device or version'});
+        rows=attempts(p,t); pending=undefined; void text;
+      }
+    }
     if(pending && (worked||failed) && !preview) {
       await processFeedback(p,{attemptId:pending.id,worked,confirmed:true,memory:enabled});
       if(worked) return response('You confirmed that it worked. Your request is resolved.',{workflow:{stage:'resolved'}});
@@ -155,17 +181,22 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
       const opened=t.handoffs?.find(h=>!['Resolved','Closed'].includes(h.status));
       if(opened) return response('That did not work. Your case has been submitted to the company support team.',{decision:{mode:'waiting',action:null,handoffId:opened.id},workflow:{stage:'human',handoffId:opened.id}});
     } else if(pending) {
+      // A message naming a different device while a fix is pending asks which device is right.
+      {const conflict=environmentConflict(savedContext(p,t).environment,message,inputContext); if(conflict) return conflictResponse(b,conflict,response);}
       if(pending.source==='learned' && enabled) {
         authorize(p);
         const row=memoryPool.get(p.companyId,botId(p),pending.memory_id||pending.fix_id);
-        // Latest facts must still be compatible with the pending fix; a conflict withholds the steps.
+        // The pending fix is shown again only if the NEW message still retrieves it through the same
+        // hybrid scoring and compatibility gate (the ticket's own device facts apply, but the ticket text
+        // alone cannot make an unrelated message look relevant).
         const prior=sql.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(...args(p,t));
         const pctx=prior?JSON.parse(prior.context):{};
-        const text=[t.title,t.issue,message,...Object.values(pctx)].join('\n');
-        const gate=row&&compatibilityGate({applicability:JSON.parse(row.applicability_json),safety:JSON.parse(row.safety_restrictions_json),facts:customerFacts(text,pctx),text,fields:pctx});
-        if(row && row.status==='active' && gate.eligible && relevance(message,row.symptoms_text+' '+row.title)>=0.35) return response(customerAdvice(JSON.parse(row.steps_json).join(' ')),{attempt:pending,resolutionUse:reuse.current(privateScope(p),pending.use_id),
-          decision:{mode:'recommend',action:null},evidence:[evidenceFor(row,pending.score&&JSON.parse(pending.score))],
-          learnedSource:sourceInfo(row,pending.score&&JSON.parse(pending.score)),
+        const factsText=[t.title,t.issue,message,...Object.values(pctx)].join('\n');
+        const again=row&&row.status==='active'?await memoryPool.retrieve({companyId:p.companyId,chatbotId:botId(p),text:message,factsText,fields:pctx,allowedOrigins:['specialist_confirmed','company_db_sync','auto_published_overdue']}):null;
+        const hit=again?.eligible.find(x=>x.id===row.id);
+        if(hit) return response(customerAdvice(JSON.parse(row.steps_json).join(' ')),{attempt:pending,resolutionUse:reuse.current(privateScope(p),pending.use_id),
+          decision:{mode:'recommend',action:null},evidence:[evidenceFor(row,hit.breakdown)],
+          learnedSource:sourceInfo(row,hit.breakdown),
           trace:{knowledge:'Company memory',memory:'Operational workflow',recalled:1,learnedResolutions:1,elapsedMs:0},workflow:{stage:'learned_pending',sequence:pending.sequence}});
       }
       // Questions, reactions and preferences never finalize an outcome.
@@ -177,8 +208,16 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     if(inputContext && typeof inputContext==='object' && !Array.isArray(inputContext)) {
       for(const k of b.diagnosticSchema.map(f=>f.key)) if(typeof inputContext[k]==='string' && inputContext[k].trim() && inputContext[k].length<=1000) context[k]=inputContext[k].trim();
     }
-    if(!context.environment && /\b(?:model|firmware|windows|macos|ubuntu|android|ios|version)\s+[\w.-]+/i.test(t.title+' '+t.issue)) context.environment=t.title+' '+t.issue;
-    if(/\b(?:model|firmware|windows|macos|ubuntu|android|ios|version)\s+[\w.-]+/i.test(message)) context.environment=message;
+    if(!context.environment && envMention.test(t.title+' '+t.issue)) context.environment=t.title+' '+t.issue;
+    if(envMention.test(message)) {
+      // Never silently replace what the customer told us earlier. A genuinely different device or
+      // version asks which one is right; an explicit answer through the form replaces it.
+      const earlier=context.environment, explicit=typeof inputContext?.environment==='string' && inputContext.environment.trim();
+      if(earlier && !explicit) {
+        if(environmentConflict(earlier,message,inputContext)) return conflictResponse(b,earlier,response);
+        if(!earlier.includes(message)) context.environment=(earlier+'; '+message).slice(0,1000);
+      } else context.environment=message;
+    }
     for(const k of b.diagnosticSchema.map(f=>f.key)) {
       const match=message.match(new RegExp('(?:^|\\n)'+k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+':\\s*([^\\n]+)','i'));
       if(match) context[k]=match[1].slice(0,1000);
@@ -188,7 +227,11 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const missing=b.requiredContext.filter(k=>!context[k]);
     const unavailable=/\b(?:don.t know|do not know|not sure|no idea|(?:not able|unable|can.t|cannot)\s+(?:to\s+)?(?:confirm|find|identify|provide))\b/i.test(message);
     const related=[...tokens(message)].some(word=>tokens(t.title+' '+t.issue).has(word));
-    if(!(worked||failed) && !(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length)))
+    // A strong, compatible retrieval match on the customer's own wording also counts as in-scope:
+    // a service's topic word list can never be complete, but retrieval is gated by score and compatibility.
+    const outOfTopic=!(worked||failed) && !(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length));
+    const retrievable=outOfTopic && enabled && !missing.length && message.trim().length>=12 && (await nextSuggestion(p,t,context,message,{messageOnly:true})).eligible.length>0;
+    if(!retrievable && !(worked||failed) && !(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length)))
       return response(`${b.name} handles ${b.supportedTopics.join(', ')}. ${b.escalationRules.supportRoute}`,{action:b.allowedActions.includes('handoff')?{kind:'handoff',ticketId:t.id,summary:message}:null,workflow:{stage:'unsupported'}});
     if(missing.length) {
       if(unavailable) return response('That is okay. A specialist can help identify your device and check the problem. '+(b.allowedActions.includes('handoff')?'I have prepared a handoff; review it to send your case.':b.escalationRules.supportRoute),{
@@ -201,12 +244,15 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     }
     const standard=rows.find(a=>a.source==='standard');
     if(!standard) {
-      const candidates=b.playbooks.filter(f=>hasTopic(query,f.topics));
+      // Rank by how many of a playbook's topics the customer actually mentions (config order breaks ties)
+      // instead of taking the first topic match.
+      const topicScore=f=>f.topics.filter(topic=>hasTopic(query,[topic])).length;
+      const candidates=b.playbooks.map((f,i)=>({f,i,s:topicScore(f)})).filter(x=>x.s>0).sort((a,c)=>c.s-a.s||a.i-c.i).map(x=>x.f);
       const fix=candidates.find(f=>!f.environment || compatibility(f.environment,query).compatible);
       const unclear=!fix && candidates.find(f=>f.environment && compatibility(f.environment,query).missing.length && !compatibility(f.environment,query).conflicts.length);
       if(unclear) return response('Before suggesting the standard fix, please confirm this environment: '+unclear.environment,{workflow:{stage:'standard_context'}});
       const a=record('standard',fix||{id:'none',version:1,reason:'No applicable playbook'},context,fix?'pending':'skipped');
-      if(fix) return response(fix.steps,{attempt:a,workflow:{stage:'standard_pending'}});
+      if(fix) { if(!preview) ev(p,t,'suggestion_offered',{source:'standard',playbookId:fix.id,version:fix.version}); return response(fix.steps,{attempt:a,workflow:{stage:'standard_pending'}}); }
     }
     const learnedRows=rows.filter(a=>a.source==='learned');
     if(learnedRows.length>=THRESHOLDS.maxSuggestions) return escalated(escalate('Three company-memory suggestions were tried without resolving the issue.'));

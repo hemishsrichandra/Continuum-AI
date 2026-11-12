@@ -25,7 +25,7 @@ import { fault } from './providers.js';
 import { botId, getBot, normalizeBot } from './chatbots.js';
 import { insertPassport, computeInitialConfidence, normalizeSafety, stepsList } from './passports.js';
 import { tokens } from './context.js';
-import { localEmbedding, vectorToBlob } from './scoring.js';
+import { localEmbedding, vectorToBlob, LOCAL_EMBEDDING_MODEL } from './scoring.js';
 import { containsSecret, scrubPII, dangerousInstructions } from './privacy.js';
 import { customerFacts } from './applicability.js';
 import { field, json } from './requests.js';
@@ -360,7 +360,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
             JSON.stringify(evidence), JSON.stringify({ cInit: rec.cInit, redactions: rec.redactions, hazards: rec.hazards, importedBy: actor, resyncedAt: now() }), now(), latest.id, companyId);
         // Content changed: refresh search terms and the local embedding (FTS is maintained by trigger).
         sql.prepare('UPDATE memory_pool SET search_terms=?,embedding_blob=?,embedding_model=? WHERE id=? AND company_id=?')
-          .run([...tokens(`${p.title}\n${p.symptoms}`)].join(' '), vectorToBlob(localEmbedding(`${p.title}\n${p.symptoms}\n${stepsList(p.steps).join(' ')}`)), 'local-hashed-concepts-v1', latest.id, companyId);
+          .run([...tokens(`${p.title}\n${p.symptoms}`)].join(' '), vectorToBlob(localEmbedding(`${p.title}\n${p.symptoms}\n${stepsList(p.steps).join(' ')}`)), LOCAL_EMBEDDING_MODEL, latest.id, companyId);
         result.updated++;
         if (rec.hazards.length) result.flaggedForReview++;
       }

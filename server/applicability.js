@@ -7,6 +7,7 @@
 
 export const OS_FAMILIES = ['android', 'ios', 'windows', 'macos', 'ubuntu'];
 const NEGATION = /\b(?:not|no|isn'?t|is not|aren'?t|without|except|excluding|never|non|don'?t have|do not have|doesn'?t have|other than|instead of)\b/i;
+const HISTORICAL = /\b(?:previously|formerly|used to|upgraded from|replaced|no longer|old|former|previous|had an?|before I (?:got|bought))\b/i;
 const VALUE = '(\\d+(?:\\.\\d+)*)';
 const OP = '(>=|<=|>|<|=)?\\s*';
 const patterns = [
@@ -55,6 +56,8 @@ export function extractMentions(text) {
       const value = (key === 'model' ? m[1] : m[2]).toLowerCase().replace(/[.,;:]+$/, '');
       if (key === 'model' && ['number', 'name', 'unknown', 'is', 'the'].includes(value)) continue;
       const clause = clauseBefore(input, m.index);
+      // A device the customer HAD earlier is not their current environment.
+      if (HISTORICAL.test(clause)) continue;
       const negated = NEGATION.test(clause);
       let op = key === 'model' ? 'eq' : opNames[m[1]] || rangeBefore(clause) || 'eq';
       let max;

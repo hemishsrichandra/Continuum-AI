@@ -220,7 +220,7 @@ test('case timeline records every step from suggestion to resolution and is comp
   await w.ask(a, id, ISSUE);
   await w.ask(a, id, 'Still need help');
   const kinds = w.h.followThrough.timeline(w.company, w.botOf(w.company), id).map((e) => e.kind);
-  assert.deepEqual(kinds.slice(0, 3), ['suggestion_offered', 'suggestion_failed', 'escalated_to_specialist']);
+  assert.deepEqual(kinds.slice(0, 4), ['request_opened', 'suggestion_offered', 'suggestion_failed', 'escalated_to_specialist']);
   const op = (await w.owner.api('operator')).data;
   assert.equal(op.cases[0].timeline.length, kinds.length);
 });

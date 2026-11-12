@@ -28,10 +28,33 @@ Dates and counts below come from runs in the build environment (Node v22.23.4, n
 * `server/provider-actions.js` was **not** consolidated or reduced; hardcoded scheduling paths and the marketing booking feature were left intact (no regression risk taken).
 * Remote embeddings and the real overdue-email follow-up are implemented but were **not exercised against live services** here (mock-tested; email follow-up only when Resend is configured).
 * The PostgreSQL adapter was tested with a mock driver only; the `pg` package is not a dependency.
-* The local embedding is lexical-conceptual, not neural; paraphrases outside its concept list may need the remote embedding backend.
+* The local embedding is lexical-conceptual, not neural; paraphrases outside its concept list may need the remote embedding backend (never exercised against a live model here).
 * No load/performance testing beyond the test suite; demo sessions are in-memory (lost on restart) with a 500-session cap.
 * All data in tests, demos and screenshots is synthetic. Nothing here measures real customer or business impact.
 
 ## Run history
 * `npm test` (two consecutive full runs): **165 tests, 165 passed, 0 failed** (~67 s each). Baseline was 79; this work added regression, scoring, memory-pool, self-correcting, follow-through, data-source, migration-v5, intelligence and demo-isolation suites and replaced two obsolete Hindsight-recall tests.
 * `npm run demo`, `npm run demo:multi`, `npm run demo:learning`, `npm run test:http`: all pass.
+
+## RAG strengthening (follow-up run)
+Measured on synthetic data with a fresh `npm ci` environment (Node v22.23.4). Recall = the right reviewed fix recommended for a reworded problem; every set also checks 30 negative questions (wrong device, missing environment, unrelated), memory-off leakage and repeated failed fixes.
+
+| Set | Recall before | Recall after | Unsafe / wrong | Notes |
+| --- | --- | --- | --- | --- |
+| Regression (20 questions) | 20/20 | 20/20 | 0/30 | unchanged |
+| Challenge (30) | 22/30 | 30/30 | 0/30 | informed the synonym list |
+| Held-out (30) | 19/30 | 30/30 | 0/30 | diagnosed from its misses, so no longer clean |
+| **Validation (30)** | — | **26/30 first measurement, 27/30 final** | 0/30 | written after the changes; measured once before further generic fixes found by other probes |
+
+Honest reading: the independent number is about **87–90% recall with zero wrong or unsafe recommendations**, not 100%. 12 near-miss hard negatives (shared words, different need) produced 0 suggestions, with a positive control proving the check can fail. Remaining validation misses: three paraphrases that the concept map does not cover. All figures are synthetic and not customer-impact measurements.
+
+Changes: the pending-fix re-show now uses the hybrid retriever (it used a keyword check); a strong retrieval match can bypass the topic-word gate; a broader concept map and concept-weighted local embedding (v2); a sentence mentioning "email" is no longer misread as a contact preference; stop-word list extended.
+
+Full run at that point: 177 tests, 177 passed.
+
+## Flaw-register validation (latest run)
+Every item of the independent flaw report was checked against the code (see `FLAW-REGISTER-STATUS.md`). Reproductions of the report's own cases (negated model, Android 14 vs 15, stripped demo warning) were already fixed; the report was right about several things that were still open and are now fixed with tests: spaced/grouped phone numbers and street addresses not redacted (E17), prompt-injection text in imports (F05), a single failure able to flag a fix at `C_init` 0.75 (F08), silent embedding dimension mismatch (F16), device/version silently overwritten by a later message (E06), first-match playbook choice (E11), no view of requests before escalation (E16), editable case timeline (E40), localhost-only bind (E38), and no restore drill for the migration backup (F20). End-to-end browser testing also found and fixed a real UI bug (the device-confirmation form did not render for the conflict stage).
+
+Items deliberately **left open** (and why) are listed in `FLAW-REGISTER-STATUS.md`: JSON-collection storage (E21), bot-granular staff access (E28), scheduling/time zones (E29/E30), external-job reconciliation (E31), scheduled ingestion (E32), a central route registry and `app.js` layering (E33), UI componentisation (E34), cohort-specific reliability (F26), analytics scale (F36) and a retention policy (F37).
+
+Latest full run: `npm test` **193 tests, 193 passed, 0 failed** (~82 s). `demo`, `demo:multi`, `demo:learning`, `test:http` pass. Browser end-to-end (Chromium) re-run on a fresh database: demo (0 → 1 → User B → reset, tabs isolated, mobile layout), customer flows (learned-source banner, device-conflict form), owner console (dashboard, passport preview, open-requests table), data-source create → dry run → sync: no console errors and no server errors.

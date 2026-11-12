@@ -208,6 +208,11 @@ export class SqliteStore {
       this.db.prepare('INSERT INTO schema_migrations VALUES(4,?)').run(new Date().toISOString());
     }).immediate();
     this.migrateV5();
+    // Idempotent hardening: the case timeline is an audit trail and can only be appended to.
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS case_events_append_only_update BEFORE UPDATE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS case_events_append_only_delete BEFORE DELETE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
+    `);
   }
   // Migration 5: unified company memory (Resolution Passports), FTS5 index,
   // follow-through tasks, case timeline, company data sources and sequential

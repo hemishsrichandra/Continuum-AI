@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, copyFileSync, rmSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -128,4 +128,34 @@ test('unique stable source identity: the same source key and version cannot be i
   assert.throws(() => w.seed(w.company, { title: 'Y', symptoms: 'Display flickers after startup', steps: ['Open Display settings and restart.'], sourceKey: 'same' }), /UNIQUE/);
   // The same key in another company is a different record.
   w.seed(w.companyB, { title: 'X', symptoms: 'Display flickers after startup', steps: ['Open Display settings and restart.'], sourceKey: 'same' });
+});
+
+test('restore drill: the pre-upgrade backup restores a working v4 database that upgrades again without loss', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'continuum-restore-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'app.sqlite');
+  const w = await world(t, { file });
+  const a = await w.customer('alice');
+  const ticket = await w.ticket(a, ISSUE);
+  w.h.close();
+  downgradeToV4(file);
+  const upgraded = new Store(file);
+  const before = JSON.stringify(upgraded.data.repair.map((r) => r.ticket_id));
+  upgraded.db.prepare("INSERT INTO case_events(id,company_id,chatbot_id,ticket_id,kind,created_at) VALUES('e','legacy','legacy:repair','x','post_upgrade','t')").run();
+  upgraded.close();
+  assert.ok(existsSync(file + '.pre-v5.bak'));
+  // Operator restores the backup while the app is stopped (remove WAL side files, copy the backup back).
+  for (const suffix of ['', '-wal', '-shm']) rmSync(file + suffix, { force: true });
+  copyFileSync(file + '.pre-v5.bak', file);
+  const restored = new Database(file, { readonly: true });
+  assert.equal(restored.prepare('SELECT COUNT(*) n FROM schema_migrations WHERE version=5').get().n, 0, 'restored file is the v4 state');
+  assert.equal(restored.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='memory_pool'").get().n, 0);
+  restored.close();
+  const again = new Store(file);
+  t.after(() => again.close());
+  assert.equal(JSON.stringify(again.data.repair.map((r) => r.ticket_id)), before, 'the customer’s ticket survived restore and re-upgrade');
+  assert.ok(again.data.repair.some((r) => r.ticket_id === ticket));
+  assert.equal(again.db.prepare('SELECT COUNT(*) n FROM schema_migrations WHERE version=5').get().n, 1);
+  assert.equal(again.db.prepare("SELECT COUNT(*) n FROM case_events WHERE kind='post_upgrade'").get().n, 0, 'work done after the backup is not in the restored state');
+  assert.equal(again.db.pragma('integrity_check', { simple: true }), 'ok');
 });
