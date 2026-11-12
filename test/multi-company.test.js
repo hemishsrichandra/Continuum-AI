@@ -119,10 +119,12 @@ test('durable standard → confirmed shared fix → outcomes and company human q
   await f.b.api('troubleshooting/outcome',{attemptId:st.attempt.id,worked:false,confirmed:true});
   const failedLearned=(await ask(f.b,thirdId,'Continue troubleshooting')).data;
   const outcome=await f.b.api('troubleshooting/outcome',{attemptId:failedLearned.attempt.id,worked:false,confirmed:true});assert.equal(outcome.status,200);
+  // With no further eligible suggestion, the failure reaches the company queue immediately.
   assert.ok(outcome.data.handoffId);
   const duplicate=await f.b.api('handoff',{ticketId:thirdId,summary:'Need human help',confirmed:true});assert.equal(duplicate.data.id,outcome.data.handoffId);
-  const review=(await f.owner.api('operator')).data.resolutions.find(r=>r.id===resolution.id);assert.equal(review.reviewRequired,true);
-  await f.owner.api('operator/review-resolution',{id:review.id,reviewRevision:review.reviewRevision,decision:'keep',note:'Reviewed compatibility.',confirmed:true});
+  // One ordinary failure no longer locks the fix out globally or flags it for review.
+  const review=(await f.owner.api('operator')).data.resolutions.find(r=>r.id===resolution.id);assert.equal(review.reviewRequired,false);
+  assert.equal(f.h.store.db.prepare("SELECT status FROM memory_pool WHERE id=?").get(resolution.id).status,'active');
   const fourthId=await ticket(f.b);const fourth=(await ask(f.b,fourthId)).data;
   await f.b.api('troubleshooting/outcome',{attemptId:fourth.attempt.id,worked:false,confirmed:true});
   assert.equal((await ask(f.b,fourthId,'Continue troubleshooting')).data.workflow.stage,'human');

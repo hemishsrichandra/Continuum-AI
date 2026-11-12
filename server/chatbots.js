@@ -1,4 +1,5 @@
 import { fault } from './providers.js';
+import { syncPlaybooks } from './passports.js';
 
 export const defaultBotId = (companyId, adapter) => `${companyId}:${adapter}`;
 export const botId = (profile) => profile.chatbotId || defaultBotId(profile.companyId, profile.provider);
@@ -24,8 +25,10 @@ export function defaults(companyId, adapter) {
 export function ensureBots(sql, companyId) {
   for (const adapter of ['repair', 'it']) {
     const b = defaults(companyId, adapter);
-    sql.prepare('INSERT OR IGNORE INTO chatbots(id,company_id,adapter,config) VALUES(?,?,?,?)')
+    const inserted = sql.prepare('INSERT OR IGNORE INTO chatbots(id,company_id,adapter,config) VALUES(?,?,?,?)')
       .run(b.id, companyId, adapter, JSON.stringify(b));
+    // Standard playbooks also join the company's unified memory pool.
+    if (inserted.changes) syncPlaybooks(sql, b);
   }
 }
 export function getBot(sql, companyId, id) {

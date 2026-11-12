@@ -186,8 +186,9 @@ export async function evaluate({ live = false, challenge = false, log = () => {}
         const again = await b.api('chat', { ticketId: tb, message: c.queries[0], retain: false });
         result.failedRecovery =
           again.trace.learnedResolutions === 0 &&
-          again.decision.mode === 'waiting' &&
-          Boolean(again.decision.handoffId) &&
+          // A failed fix is never repeated; with no further eligible suggestion the
+          // case reaches a specialist (new case, or an already-open one).
+          (['human', 'handoff_prepared'].includes(again.workflow?.stage) || (again.decision.mode === 'waiting' && Boolean(again.decision.handoffId))) &&
           !again.reply.includes(c.solution);
         report.counts.failedFixRepeated += Number(!result.failedRecovery);
       }

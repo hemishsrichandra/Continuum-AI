@@ -18,6 +18,8 @@ import { createReuse, needsReview } from './reuse.js';
 import { decide } from './decisions.js';
 import { createProviderActions } from './provider-actions.js';
 import { requestReference } from './request-reference.js';
+import { createMemoryPool } from './memory-pool.js';
+import { createFollowThrough } from './follow-through.js';
 
 export function createHandler({ file, config = process.env, service } = {}) {
   config = { APP_URL: 'http://localhost:3000', ...config };
@@ -41,9 +43,13 @@ export function createHandler({ file, config = process.env, service } = {}) {
   if (config.ENABLE_OUTBOX_WORKER === 'true') delivery.start();
   const memory = service || createMemory(store, config);
   const providerActions = createProviderActions(store, delivery, config);
-  const reuse = createReuse(store, memory, providerActions);
-  const learning = createLearning(store, memory, companies, config, reuse, providerActions);
-  const troubleshooting = createTroubleshooting(store, learning, reuse, providerActions);
+  const memoryPool = createMemoryPool(store, config);
+  const followThrough = createFollowThrough(store, { delivery, config });
+  const reuse = createReuse(store, memory, providerActions, memoryPool);
+  const learning = createLearning(store, memory, companies, config, reuse, providerActions, { memoryPool, followThrough });
+  const troubleshooting = createTroubleshooting(store, learning, reuse, providerActions, { memoryPool, followThrough });
+  // Follow-through deadlines run on the integrations worker tick, not per web request.
+  delivery.register(() => followThrough.tick());
   if (config.ENABLE_OUTBOX_WORKER === 'true') providerActions.start();
   if (config.ENABLE_OUTBOX_WORKER === 'true') memory.start?.();
   const pending = new Map();
@@ -350,7 +356,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
               ...c,
               response: {
                 ...c.response,
-                ...(!c.response.human && c.response.evidence?.some(e=>e.kind==='verified_resolution') && {reply:customerAdvice(c.response.reply)}),
+                ...(!c.response.human && c.response.evidence?.some(e=>['verified_resolution','company_memory'].includes(e.kind)) && {reply:customerAdvice(c.response.reply)}),
                 ...(c.response.attempt && {attempt: troubleshooting.attempts(profile,{id:requested}).find(a=>a.id===c.response.attempt.id)}),
                 ...(c.response.resolutionUse && {
                   resolutionUse: reuse.current(db.scope, c.response.resolutionUse.id),
@@ -789,6 +795,9 @@ export function createHandler({ file, config = process.env, service } = {}) {
     }
   };
   handler.store = store;
+  handler.memoryPool = memoryPool;
+  handler.followThrough = followThrough;
+  handler.troubleshooting = troubleshooting;
   handler.delivery = delivery;
   handler.providerActions = providerActions;
   handler.close = () => {

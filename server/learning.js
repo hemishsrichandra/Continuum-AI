@@ -161,6 +161,7 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
             ...r,
             environment: r.environment,
             passport: row ? passportView(row) : null,
+            reviewRevision: row ? row.reuse_failure_count : r.reviewRevision,
             reviewRequired: row ? row.status === 'flagged_for_review' : needsReviewLegacy(r),
             reuse: reuse?.stats(companyId, provider, r.id) || { pending: 0, succeeded: 0, failed: 0 },
             sync: r.retiredAt

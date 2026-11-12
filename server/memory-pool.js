@@ -280,13 +280,14 @@ export function createMemoryPool(store, config = {}) {
     }).immediate();
   }
 
-  function review(staff, memoryId, { decision, note, confirmed }) {
+  function review(staff, memoryId, { decision, note, confirmed, reviewRevision }) {
     if (confirmed !== true || !['keep', 'retire'].includes(decision)) throw fault(400, 'Confirm the review decision.');
     if (typeof note !== 'string' || !note.trim() || note.length > 1000) throw fault(400, 'Explain the review decision.');
     return sql.transaction(() => {
       const r = scoped(staff.companyId, staff.chatbotId, memoryId);
       if (!r) throw fault(404, 'Resolution not found.');
-      if (!['active', 'flagged_for_review'].includes(r.status)) throw fault(409, 'This version is no longer current.');
+      if (r.status !== 'flagged_for_review') throw fault(409, 'This resolution no longer needs review.');
+      if (reviewRevision !== undefined && reviewRevision !== r.reuse_failure_count) throw fault(409, 'Another failure report arrived. Refresh before completing the review.');
       sql.prepare('UPDATE memory_pool SET status=?,consecutive_failures=CASE WHEN ?=\'keep\' THEN 0 ELSE consecutive_failures END,locally_reviewed=1,review_note=?,flagged_reason=CASE WHEN ?=\'keep\' THEN NULL ELSE flagged_reason END,updated_at=? WHERE id=? AND company_id=?')
         .run(decision === 'keep' ? 'active' : 'retired', decision, note.trim(), decision, now(), r.id, staff.companyId);
       sql.prepare("UPDATE follow_through_tasks SET status='completed',processed_at=?,outcome_json=? WHERE company_id=? AND memory_id=? AND task_type='failed_fix_review' AND status='pending'")

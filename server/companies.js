@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { field, json } from './requests.js';
 import { fault } from './providers.js';
 import { ensureBots, botId, getBot, validateBot } from './chatbots.js';
+import { syncPlaybooks } from './passports.js';
 
 export const tokenHash = (value) => createHash('sha256').update(value).digest('hex');
 const secret = () => randomBytes(24).toString('base64url');
@@ -80,6 +81,7 @@ export function createCompanies(store, config) {
       const b = validateBot({...body,id:previous?.id || randomUUID()},companyId,previous);
       sql.transaction(()=>{
         sql.prepare('INSERT INTO chatbots VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config').run(b.id,companyId,b.adapter,JSON.stringify(b));
+        syncPlaybooks(sql,b);
         store.update(data=>data.audit.push({id:randomUUID(),scope:`company:${companyId}`,kind:'chatbot_config',chatbotId:b.id,authorId:session.account_id,revision:b.revision,createdAt:new Date().toISOString()}));
       }).immediate();
       send(200,{chatbot:b}); return true;
