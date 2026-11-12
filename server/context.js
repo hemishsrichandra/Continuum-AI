@@ -1,4 +1,5 @@
 import { extractFacts } from './facts.js';
+import { extractMentions, conditionsFromText, customerFacts, evaluateConditions, stripMentions } from './applicability.js';
 
 // Conservative local language normalization supplements Hindsight's semantic recall.
 // Environment compatibility is enforced independently of relevance.
@@ -52,41 +53,28 @@ export function relevance(query, symptoms) {
   return common.length >= 2 ? common.length / Math.max(2, s.size) : 0;
 }
 export function constraints(text) {
+  // Positive explicit mentions only (negated mentions are not constraints the
+  // customer satisfies). Kept for backwards compatibility.
   const result = {};
-  const input = String(text).toLowerCase();
-  for (const [key, pattern] of [
-    ['model', /\bmodel\s+([a-z0-9][a-z0-9._-]*)/g],
-    ['firmware', /\bfirmware\s*(?:version\s*|v\s*)?(\d[\w.-]*)/g],
-    ['version', /\bversion\s*(\d[\w.-]*)/g],
-    ['windows', /\bwindows\s*(\d[\w.-]*)/g],
-    ['macos', /\bmacos\s*(\d[\w.-]*)/g],
-    ['ubuntu', /\bubuntu\s*(\d[\w.-]*)/g],
-  ]) {
-    const values = [...input.matchAll(pattern)].map((m) => m[1].replace(/[.,;:]+$/, ''));
-    if (values.length) result[key] = [...new Set(values)];
+  for (const m of extractMentions(text).mentions) {
+    if (m.negated) continue;
+    result[m.key] ||= [];
+    if (!result[m.key].includes(m.value)) result[m.key].push(m.value);
   }
   return result;
 }
-export function compatibility(environment, query) {
-  const expected = constraints(environment),
-    actual = constraints(query);
-  const missing = [],
-    conflicts = [];
-  for (const [key, values] of Object.entries(expected)) {
-    if (!actual[key]) missing.push(`${key}: ${values.join(' or ')}`);
-    else if (actual[key].some((value) => !values.includes(value))) conflicts.push(key);
-  }
+export function compatibility(environment, query, fields = {}) {
+  const evaluation = evaluateConditions(conditionsFromText(environment), customerFacts(query, fields));
+  const missing = [...evaluation.missing],
+    conflicts = [...evaluation.conflicts];
   // Unstructured restrictions must also be explicitly established before steps are exposed.
-  let remaining = String(environment).toLowerCase();
-  for (const pattern of [
-    /\bmodel\s+[a-z0-9._-]+/g,
-    /\b(?:firmware|version|windows|macos|ubuntu)\s*(?:version\s*|v\s*)?\d[\w.-]*/g,
-  ])
-    remaining = remaining.replace(pattern, ' ');
+  const remaining = stripMentions(String(environment).toLowerCase())
+    .replace(/\b(?:or|and)\s+(?:later|newer|above|higher|earlier|older|below|lower|up)\b/g, ' ')
+    .replace(/\b(?:not|except|excluding|without|other than|at least|up to|minimum|maximum)\b/g, ' ');
   const extra = [...tokens(remaining)].filter(
-    (w) => !['all', 'any', 'supported', 'environment', 'environments', 'only'].includes(w),
+    (w) => !['all', 'any', 'supported', 'environment', 'environments', 'only', 'later', 'newer', 'earlier', 'older', 'above', 'below'].includes(w),
   );
-  const queryWords = tokens(query);
+  const queryWords = tokens(query + ' ' + Object.values(fields || {}).join(' '));
   for (const word of extra) if (!queryWords.has(word)) missing.push(word);
   return { compatible: !missing.length && !conflicts.length, missing, conflicts };
 }

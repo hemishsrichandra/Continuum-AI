@@ -830,3 +830,25 @@ input[type=checkbox] { min-width: 24px; min-height: 24px; }
   .support-shell .composer textarea { font-size: 16px; }
   .support-shell .conversation-header { padding: 16px; }
 }
+
+/* Resolution Passport provenance, context form and staff dashboard */
+.pill.warn { background: #fff3e0; color: #8a4b00; border: 1px solid #f0d3a8; }
+.source-banner { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.privacy-pill { align-self: center; }
+.context-form { display: grid; gap: 10px; margin-top: 10px; max-width: 420px; }
+.context-form label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.context-form input, .context-form select { border: 1px solid #dedfe4; border-radius: 6px; padding: 10px 12px; min-height: 44px; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-block: 16px; }
+.dash-stat { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; background: white; }
+.dash-stat b { display: block; font-family: Manrope, sans-serif; font-size: 28px; letter-spacing: -.03em; }
+.dash-stat small { display: block; }
+.dash-stat.warn { border-color: #f0d3a8; background: #fffaf0; }
+.dash-stat.ok { border-color: #cfe4d3; background: #f6fbf7; }
+.passport-meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; font-size: 13px; margin: 8px 0; }
+.passport-meta dt { font-weight: 600; } .passport-meta dd { margin: 0; overflow-wrap: anywhere; }
+.timeline-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 4px; font-size: 13px; }
+.timeline-list time { color: var(--muted); margin-right: 8px; }
+.table-scroll { overflow-x: auto; }
+.mapping-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+
+#app section.wrap > h2 { font-size: 28px; margin-top: 32px; letter-spacing: -.03em; }

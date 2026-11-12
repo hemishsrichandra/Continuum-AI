@@ -2,11 +2,14 @@ import { botId, defaultBotId, knowledgeScope, privateScope } from './chatbots.js
 import { randomUUID } from 'node:crypto';
 import { fault } from './providers.js';
 import { field } from './requests.js';
-import { compatibility, resolutionSignature } from './context.js';
-import { rankRelevance } from './relevance.js';
-import { needsReview, failedResolutions } from './reuse.js';
+import { customerFacts } from './applicability.js';
+import { containsSecret, scrubPII } from './privacy.js';
+import { computeInitialConfidence, insertPassport, normalizeApplicability, normalizeSafety, passportFromResolution } from './passports.js';
+import { passportView } from './memory-pool.js';
 
-export function createLearning(store, memory, companies, config = {}, reuse, providerActions) {
+const needsReviewLegacy = (r) => Boolean(r.reviewRequestedAt && (r.reviewRevision || 0) > (r.reviewedRevision || 0));
+
+export function createLearning(store, memory, companies, config = {}, reuse, providerActions, { memoryPool, followThrough } = {}) {
   const scope = (companyId, provider, chatbotId = defaultBotId(companyId,provider)) => knowledgeScope(companyId,chatbotId);
   function caseFor(data, staff, id, revision) {
     const h = data.handoffs.find(
@@ -83,86 +86,83 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
     });
     return sync;
   }
+  function caseFacts(h) {
+    const row = store.db.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(h.companyId, h.chatbotId, h.customerId, h.ticketId);
+    const context = row ? JSON.parse(row.context) : {};
+    const t = h.context?.ticket || {};
+    return customerFacts([t.title, t.issue, h.summary, ...Object.values(context)].join('\n'), context);
+  }
+  function draftPassport(staff, body) {
+    const title = field(body.title, 'title', 100),
+      symptoms = field(body.symptoms, 'symptoms', 1000),
+      environment = field(body.environment, 'product and versions', 500),
+      solution = field(body.solution, 'solution steps', 2000);
+    const safetyText = typeof body.safety === 'string' ? body.safety.slice(0, 1000) : '';
+    if (body.riskLevel !== undefined && !['standard', 'high'].includes(body.riskLevel)) throw fault(400, 'Choose a valid risk level.');
+    const all = [title, symptoms, environment, solution, safetyText].join('\n');
+    if (containsSecret(all)) throw fault(400, 'Remove identifying information and credentials from shared knowledge.');
+    const h = store.data.handoffs.find((x) => x.id === body.handoffId && x.companyId === staff.companyId && x.chatbotId === botId(staff));
+    const customer = h && store.db.prepare('SELECT name,email FROM accounts WHERE id=?').get(h.customerId);
+    const names = customer ? [customer.name, customer.email] : [];
+    const clean = (t) => scrubPII(t, { names }).text;
+    const redactions = scrubPII(all, { names }).count;
+    const safety = normalizeSafety(safetyText);
+    if (safety.noneIdentified) safety.reviewed = body.safetyReviewed === true;
+    const applicability = normalizeApplicability({ ...(body.applicability || {}), environmentText: clean(environment) });
+    const passport = { title: clean(title), symptoms: clean(symptoms), applicability, safety, steps: [clean(solution)] };
+    const cInit = computeInitialConfidence(passport, {
+      facts: h ? caseFacts(h) : null,
+      author: { kind: 'staff', ...(memoryPool ? memoryPool.specialistHistory(staff.companyId, staff.id) : {}) },
+    });
+    return { passport, cInit, redactions, riskLevel: body.riskLevel || 'standard' };
+  }
+  /** Explicit customer outcome on a proposal updates the unified pool. */
+  function publishToPool(r, h, accepted, now) {
+    const sql = store.db;
+    const existing = sql.prepare('SELECT * FROM memory_pool WHERE company_id=? AND source_key=? ORDER BY version_number DESC LIMIT 1').get(r.companyId, 'resolution:' + r.id);
+    if (existing) {
+      // An overdue auto-published version now receives an explicit customer answer.
+      if (accepted && r.allowMemoryPublication)
+        sql.prepare("UPDATE memory_pool SET origin_type='specialist_confirmed',customer_confirmed=1,verification_evidence_json=json_set(verification_evidence_json,'$.customerConfirmed',json('true'),'$.confirmedAt',?,'$.label','Confirmed by the original customer after auto-publication'),updated_at=? WHERE id=? AND company_id=?")
+          .run(now, now, existing.id, r.companyId);
+      else if (!accepted)
+        sql.prepare("UPDATE memory_pool SET status=CASE WHEN status='active' THEN 'flagged_for_review' ELSE status END,flagged_reason='The original customer reported this fix did not work',reuse_failure_count=reuse_failure_count+1,consecutive_failures=consecutive_failures+1,updated_at=? WHERE id=? AND company_id=?")
+          .run(now, existing.id, r.companyId);
+      return;
+    }
+    if (!accepted || !r.allowMemoryPublication) return;
+    const passport = r.passport || passportFromResolution(r);
+    const cInit = r.cInit || computeInitialConfidence(passport, { author: { kind: 'staff' } });
+    insertPassport(sql, {
+      id: r.id,
+      companyId: r.companyId,
+      chatbotId: r.chatbotId,
+      origin: 'specialist_confirmed',
+      sourceKey: 'resolution:' + r.id,
+      sourceTicketId: h.ticketId,
+      ...passport,
+      initialConfidence: cInit.score,
+      customerConfirmed: true,
+      highRisk: r.riskLevel === 'high',
+      evidence: { customerConfirmed: true, confirmedAt: now, proposalId: r.id, handoffId: h.id, label: 'Confirmed by the original customer' },
+      provenance: { cInit, redactions: r.redactions || 0, authorRole: 'specialist' },
+      now,
+    });
+  }
   return {
-    async recall(companyId, provider, message, ticket = {}, customerId, chatbotId = defaultBotId(companyId,provider)) {
-      const result = await memory.recall(scope(companyId, provider, chatbotId), 'knowledge', message);
-      const active = store.data.resolutions.filter(
-        (r) =>
-          r.companyId === companyId &&
-          r.provider === provider &&
-          r.chatbotId === chatbotId &&
-          !r.retiredAt &&
-          r.allowMemoryPublication !== false && (!r.status || r.status === 'published'),
-      );
-      const linked = result.facts
-        .map((f) => ({ f, r: active.find((r) => r.memoryId === f.id) }))
-        .filter((x) => x.r);
-      const fits = new Map(
-        linked.map(({ r }) => [
-          r.id,
-          compatibility(r.environment, message + '\n' + (ticket.title || '') + '\n' + (ticket.issue || '')),
-        ]),
-      );
-      const candidates = linked.filter(({ r }) => !fits.get(r.id).conflicts.length);
-      const scores = await rankRelevance(
-        candidates.map((x) => x.r),
-        message,
-        result.source,
-        config,
-      );
-      const matches = [],
-        clarification = [];
-      const failed = customerId
-        ? failedResolutions(store, companyId, provider, customerId, chatbotId)
-        : { ids: new Set(), signatures: new Set() };
-      let reviewRequired = false,
-        failedBefore = false;
-      for (const { f, r } of candidates) {
-        if (!scores.has(r.id)) continue;
-        const fit = fits.get(r.id);
-        if (!fit.compatible) {
-          clarification.push({ id: r.id, title: r.title, environment: r.environment, missing: fit.missing });
-          continue;
-        }
-        if (needsReview(r)) {
-          reviewRequired = true;
-          continue;
-        }
-        if (failed.ids.has(r.id) || failed.signatures.has(resolutionSignature(r))) {
-          failedBefore = true;
-          continue;
-        }
-        matches.push({
-          ...f,
-          kind: 'verified_resolution',
-          resolutionId: r.id,
-          score: scores.get(r.id),
-          environment: r.environment,
-          solution: r.solution,
-          title: r.title,
-        });
-      }
-      const selected = matches.sort((a, b) => b.score - a.score).slice(0, 3);
-      const conflicting = selected.length > 1 && new Set(selected.map((f) => f.text)).size > 1;
-      return {
-        source: result.source,
-        reviewRequired,
-        failedBefore,
-        facts: conflicting ? [] : selected,
-        clarification: conflicting
-          ? [{ environment: 'Multiple reviewed fixes match. Ask your service team which applies.' }]
-          : clarification.slice(0, 3),
-      };
-    },
     list(companyId, provider, chatbotId = defaultBotId(companyId,provider)) {
       const data = store.data;
       return data.resolutions
-        .filter((r) => r.companyId === companyId && r.provider === provider && r.chatbotId === chatbotId)
+        .filter((r) => r.companyId === companyId && r.chatbotId === chatbotId)
         .map(({ authorId, ...r }) => {
           const m = data.memories.find((m) => m.id === r.memoryId);
+          const row = memoryPool?.get(companyId, chatbotId, r.id);
           return {
             ...r,
-            reviewRequired: needsReview(r),
+            environment: r.environment,
+            passport: row ? passportView(row) : null,
+            reviewRevision: row ? row.reuse_failure_count : r.reviewRevision,
+            reviewRequired: row ? row.status === 'flagged_for_review' : needsReviewLegacy(r),
             reuse: reuse?.stats(companyId, provider, r.id) || { pending: 0, succeeded: 0, failed: 0 },
             sync: r.retiredAt
               ? m?.syncPending
@@ -252,20 +252,17 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
         return { success: true, revision: h.revision };
       });
     },
+    /** Build (but do not save) the scrubbed passport and its C_init for preview. */
+    preview(staff, body) {
+      return draftPassport(staff, body);
+    },
     async resolve(staff, body, operation) {
       if (body.confirmed !== true || body.reviewedForPrivacy !== true)
         throw fault(400, 'Confirm the solution and review reusable content for private data.');
-      const title = field(body.title, 'title', 100),
-        symptoms = field(body.symptoms, 'symptoms', 1000),
-        environment = field(body.environment, 'product and versions', 500),
-        solution = field(body.solution, 'solution steps', 2000);
-      if (
-        /[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b\d{10,}\b|\b(?:password|api[_ -]?key|access[_ -]?token)\s*[:=]/i.test(
-          [title, symptoms, environment, solution].join('\n'),
-        )
-      )
-        throw fault(400, 'Remove identifying information and credentials from shared knowledge.');
-      return change(staff, operation, (data) => {
+      const draft = draftPassport(staff, body);
+      let operationReplay = true;
+      const proposed = change(staff, operation, (data) => {
+        operationReplay = false;
         const h = caseFor(data, staff, field(body.handoffId, 'case ID', 100), body.revision);
         if (
           !h.assignedTo ||
@@ -279,12 +276,21 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
             companyId: staff.companyId,
             provider: staff.provider,
             chatbotId: botId(staff),
-            title,
-            symptoms,
-            environment,
-            solution,
+            title: draft.passport.title,
+            symptoms: draft.passport.symptoms,
+            environment: draft.passport.applicability.environmentText || '',
+            applicability: draft.passport.applicability,
+            safety: draft.passport.safety,
+            solution: draft.passport.steps[0],
+            passport: draft.passport,
+            riskLevel: draft.riskLevel,
+            reviewedForPrivacy: true,
+            redactions: draft.redactions,
+            cInit: draft.cInit,
             authorId: staff.id,
             handoffId: h.id,
+            handoffCustomerId: h.customerId,
+            ticketId: h.ticketId,
             createdAt: now,
             status: 'pending_confirmation',
             sync: 'awaiting customer',
@@ -292,19 +298,23 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
         r.memoryId = 'resolution-' + r.id;
         h.resolutionId = r.id;
         h.status = 'Awaiting confirmation';
+        h.followUpRequired = false;
         h.revision++;
         setStatus(rowFor(data, h, staff.provider), staff.provider, h.status, now);
         data.resolutions.push(r);
-        followup(data, h, solution, now, r.id);
-        event(
-          data,
-          h,
-          'solution_proposed',
-          'A specialist proposed a solution for customer confirmation.',
-          now,
-        );
+        followup(data, h, r.solution, now, r.id);
+        event(data, h, 'solution_proposed', 'A specialist proposed a solution for customer confirmation.', now);
         return { ...r };
       });
+      // Outside the record transaction: email queueing writes its own records.
+      const customer = store.db.prepare('SELECT email FROM accounts WHERE id=?').get(proposed.handoffCustomerId || '');
+      proposed.confirmationDeadline = followThrough?.scheduleConfirmation({
+        companyId: staff.companyId, chatbotId: botId(staff), ticketId: proposed.ticketId, customerId: proposed.handoffCustomerId,
+        handoffId: proposed.handoffId, proposalId: proposed.id, specialistId: staff.id, cInit: proposed.cInit.score, customerEmail: customer?.email,
+      });
+      if (proposed.confirmationDeadline && !operationReplay)
+        followThrough?.log({ companyId: staff.companyId, chatbotId: botId(staff), ticketId: proposed.ticketId, customerId: proposed.handoffCustomerId, kind: 'solution_proposed', detail: { proposalId: proposed.id, cInit: proposed.cInit.score, deadline: proposed.confirmationDeadline, redactions: proposed.redactions }, actor: staff.id });
+      return proposed;
     },
     async confirm(profile, body) {
       if (body.confirmed !== true || typeof body.accepted !== 'boolean')
@@ -324,12 +334,14 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
         }
         const now = new Date().toISOString();
         r.customerAccepted = body.accepted;
+        // Explicit API opt-out is still honoured; the customer UI no longer shows a toggle.
         r.allowMemoryPublication = body.memory !== false;
         r.confirmedAt = now;
         r.status = body.accepted ? r.allowMemoryPublication ? 'published' : 'confirmed_private' : 'rejected';
         r.publishedAt = body.accepted && r.allowMemoryPublication ? now : null;
         r.sync = body.accepted && r.allowMemoryPublication ? 'pending' : 'not published';
         h.status = body.accepted ? 'Resolved' : 'In progress';
+        h.followUpRequired = !body.accepted;
         h.revision++;
         setStatus(
           rowFor(data, h, profile.provider),
@@ -356,22 +368,29 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
           outcome: body.accepted ? 'resolved' : 'failed',
           note,
         });
+        if (memoryPool) publishToPool(r, h, body.accepted, now);
+        followThrough?.completeConfirmation(profile.companyId, r.id, { accepted: body.accepted, at: now });
+        followThrough?.log({ companyId: profile.companyId, chatbotId: r.chatbotId, ticketId: h.ticketId, customerId: profile.id, kind: body.accepted ? 'customer_confirmed' : 'customer_rejected', detail: { proposalId: r.id, published: r.status === 'published' }, actor: 'customer', at: now });
         return { ...r };
       });
       const sync = result.status === 'published' && result.allowMemoryPublication !== false && !result.retiredAt ? await publish(result) : result.sync;
       return { success: true, status: result.status, sync };
     },
     async retire(staff, body) {
-      const item = store.data.resolutions.find(
-        (r) => r.id === body.id && r.companyId === staff.companyId && r.provider === staff.provider && r.chatbotId === botId(staff),
-      );
-      if (!item) throw fault(404, 'Resolution not found.');
       if (body.confirmed !== true) throw fault(400, 'Confirm retiring this resolution.');
-      store.update((data) => {
-        data.resolutions.find((r) => r.id === item.id).retiredAt ||= new Date().toISOString();
-      });
-      if (store.data.memories.some((m) => m.id === item.memoryId))
-        await memory.invalidate(scope(staff.companyId, staff.provider, botId(staff)), 'knowledge', item.memoryId);
+      const row = memoryPool?.get(staff.companyId, botId(staff), body.id);
+      const item = store.data.resolutions.find(
+        (r) => r.id === body.id && r.companyId === staff.companyId && r.chatbotId === botId(staff),
+      );
+      if (!item && !row) throw fault(404, 'Resolution not found.');
+      if (row) store.db.prepare("UPDATE memory_pool SET status='retired',updated_at=? WHERE id=? AND company_id=? AND chatbot_id=? AND status IN ('active','flagged_for_review')").run(new Date().toISOString(), row.id, staff.companyId, botId(staff));
+      if (item) {
+        store.update((data) => {
+          data.resolutions.find((r) => r.id === item.id).retiredAt ||= new Date().toISOString();
+        });
+        if (store.data.memories.some((m) => m.id === item.memoryId))
+          await memory.invalidate(scope(staff.companyId, staff.provider, botId(staff)), 'knowledge', item.memoryId);
+      }
       return { success: true };
     },
   };

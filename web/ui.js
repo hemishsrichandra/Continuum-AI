@@ -43,7 +43,8 @@ const kinds = {
   preference: 'Preference',
   action: 'Action',
   resolved: 'Resolved',
-  verified_resolution: 'Human-verified resolution',
+  verified_resolution: 'Customer-confirmed resolution',
+  company_memory: 'Company knowledge',
 };
 const short = (id) => (id?.length > 16 ? id.slice(0, 12) + '…' : id);
 const ticket = () => state.workspace?.tickets.find((t) => t.id === state.ticketId);
@@ -205,7 +206,7 @@ function render() {
       .querySelector('.desk-center')
       .insertAdjacentHTML(
         'afterbegin',
-        '<section class="panel content-panel"><h2>Did the specialist solution work?</h2><p>Review the specialist message below. ' + (state.memory ? 'Successful fixes become reusable knowledge only after you confirm.' : 'Memory is off. Confirmation closes your case without publishing AI knowledge.') + '</p>' +
+        '<section class="panel content-panel"><h2>Did the specialist solution work?</h2><p>Review the specialist message below. ' + 'Your confirmation lets Continuum reuse a successful fix for others after personal details are removed. A failed fix is never treated as approval.' + '</p>' +
           pending
             .map(
               (h) =>
@@ -228,6 +229,22 @@ function render() {
 function evidence(entry) {
   const choices = (entry.requestChoices || []).map((t) => `<button class="button small" data-ticket="${q(t.id)}" ${disabled()}>Open ${q(t.title)}</button>`).join("");
   return `${choices ? `<div class="actions">${choices}</div>` : ""}<details class="response-details"><summary>Sources & response details</summary><div class="evidence">${(entry.evidence || []).map((fact) => `<div><span class="pill ${fact.type === 'provider' ? 'blue' : ''}">${fact.type === 'provider' ? 'Service record' : q(kinds[fact.kind] || 'Memory')}</span><p>${q(fact.text)}</p></div>`).join('')}</div><small>${entry.trace?.learnedResolutions ? entry.trace.learnedResolutions + ' verified resolutions · ' + q(entry.trace.knowledge) + ' · ' : ''}${q(entry.trace?.memory)} · ${entry.trace?.recalled || 0} recalled · ${q(entry.model)} · ${entry.trace?.elapsedMs || 0} ms</small></details>`;
+}
+// Where a learned suggestion came from, without exposing private customer details.
+function sourceBanner(response) {
+  const s = response.learnedSource;
+  if (!s) return '';
+  const unconfirmed = s.unconfirmed
+    ? '<span class="pill warn">UNCONFIRMED BY CUSTOMER</span> <small>A specialist proposed this and it was published after the confirmation deadline. No customer has verified it.</small>'
+    : s.customerConfirmed ? '<span class="pill green">✓ Confirmed by the original customer</span>' : '<span class="pill">Not customer-verified</span>';
+  const seq = response.attempt?.sequence ? ` · Suggestion ${response.attempt.sequence} of up to 3` : '';
+  return `<div class="source-banner"><span class="pill blue">${q(s.label)}</span> ${unconfirmed}<small>Version ${q(s.version)}${q(seq)}</small></div>`;
+}
+// Dynamic diagnostic fields from the service's schema (device, OS, firmware, tier, region …).
+function contextForm(response, latest) {
+  const fields = response.workflow?.stage === 'context' ? response.workflow.fields : null;
+  if (!fields?.length || !latest) return '';
+  return `<form class="context-form" data-context-form>${fields.map((f) => `<label>${q(f.label)}${f.options?.length ? `<select name="${q(f.key)}" required><option value="">Choose…</option>${f.options.map((o) => `<option>${q(o)}</option>`).join('')}</select>` : `<input name="${q(f.key)}" required maxlength="1000" placeholder="${q((f.help || '').replace(/^For example:\s*/i, ''))}">`}</label>`).join('')}<button class="button small primary" ${disabled()}>Continue</button><small>Not sure? Say “I don’t know” in the message box and a specialist can help.</small></form>`;
 }
 function resolutionOutcome(response) {
   if(response.attempt) {
@@ -253,7 +270,7 @@ function resolutionOutcome(response) {
   );
 }
 function chat(p) {
-  return `<section class="panel conversation"><header class="conversation-header"><span class="assistant-mark" aria-hidden="true">∿</span><div><b>Continuum assistant</b><small>${q(p.chatbotName || p.label)} · <button class="text-button" data-prompt="I need human help">Human help</button></small></div><button class="memory-switch ${state.memory ? 'on' : ''}" data-action="toggle" role="switch" aria-checked="${state.memory}" ${disabled()}><span aria-hidden="true"></span>Memory ${state.memory ? 'on' : 'off'}</button></header><div class="thread" role="log" aria-label="Conversation" aria-live="off" tabindex="0">${state.messages.length ? state.messages.map((entry) => `<div class="message-pair">${entry.system ? '' : `<div class="bubble customer">${q(entry.message)}</div>`}<div class="assistant-response"><span class="assistant-mark" aria-hidden="true">∿</span><div class="answer-content">${entry.response.human ? '<span class="pill green">' + (entry.response.resolutionId ? 'Specialist solution' : 'Specialist update') + '</span>' : ''}<div class="bubble answer">${q(entry.response.reply)}</div>${resolutionOutcome(entry.response)}${evidence(entry.response)}<div class="response-controls"><small>${formatDate(entry.createdAt)}</small>${!entry.response.resolutionUse ? `<button class="text-button" data-rating="5" data-id="${q(entry.id)}" aria-label="Mark response helpful" aria-pressed="${entry.rating === 5}" ${disabled()}>Helpful</button><button class="text-button" data-rating="1" data-id="${q(entry.id)}" aria-label="Mark response needs improvement" aria-pressed="${entry.rating === 1}" ${disabled()}>Needs work</button>` : ''}</div>${entry.response.action?.completedAt ? '<span class="pill green">Action confirmed</span>' : entry.response.action ? `<button class="button small" data-proposal="${q(entry.id)}" ${disabled()}>Review ${q(names[entry.response.action.kind].toLowerCase())} →</button>` : ''}</div></div></div>`).join('') : `<div class="welcome"><span class="assistant-mark large" aria-hidden="true">∿</span><h2>Good to see you, ${q(p.name.split(' ')[0])}.</h2><p>Ask a question. We’ll check the latest status<br>and pick up the relevant context.</p><button class="suggestion" data-prompt="${q(suggestedQuestion(p))}" ${disabled()}>${q(suggestedQuestion(p))} <span>↗</span></button><button class="suggestion" data-prompt="Please schedule an appointment for a visit" ${disabled()}>Find a time to visit <span>↗</span></button></div>`}${state.pendingMessage ? `<div class="bubble customer">${q(state.pendingMessage)}</div><div class="thinking" role="status"><span class="status-dot"></span>Checking your request…</div>` : ''}${state.pendingChat && !state.busy ? `<div class="notice error">Your message wasn’t confirmed. <button class="text-button" data-action="retry-chat">Retry safely →</button></div>` : ''}</div><form id="chat-form" class="composer"><label class="sr-only" for="message">Your message</label><textarea id="message" name="message" rows="1" required maxlength="1400" placeholder="Ask about your request…" ${disabled()}>${q(state.draft)}</textarea><button class="button primary" type="submit" ${disabled()} aria-label="Send message">${state.busy ? 'Sending…' : 'Send ↑'}</button></form><div class="composer-footer"><span>Conversation saved · ${state.memory ? 'Relevant context remembered' : 'Long-term memory paused; operational case records still saved'}</span>${state.messages.length ? `<button class="text-button" data-action="archive" ${disabled()}>New conversation</button>` : ''}</div></section>`;
+  return `<section class="panel conversation"><header class="conversation-header"><span class="assistant-mark" aria-hidden="true">∿</span><div><b>Continuum assistant</b><small>${q(p.chatbotName || p.label)} · <button class="text-button" data-prompt="I need human help">Human help</button></small></div><span class="pill green privacy-pill" title="Personal details are removed and a specialist reviews wording before anything becomes reusable knowledge. You always choose whether a fix worked.">Privacy-protected learning</span></header><div class="thread" role="log" aria-label="Conversation" aria-live="off" tabindex="0">${state.messages.length ? state.messages.map((entry) => `<div class="message-pair">${entry.system ? '' : `<div class="bubble customer">${q(entry.message)}</div>`}<div class="assistant-response"><span class="assistant-mark" aria-hidden="true">∿</span><div class="answer-content">${entry.response.human ? '<span class="pill green">' + (entry.response.resolutionId ? 'Specialist solution' : 'Specialist update') + '</span>' : ''}<div class="bubble answer">${q(entry.response.reply)}</div>${sourceBanner(entry.response)}${contextForm(entry.response, entry === state.messages.at(-1))}${resolutionOutcome(entry.response)}${evidence(entry.response)}<div class="response-controls"><small>${formatDate(entry.createdAt)}</small>${!entry.response.resolutionUse ? `<button class="text-button" data-rating="5" data-id="${q(entry.id)}" aria-label="Mark response helpful" aria-pressed="${entry.rating === 5}" ${disabled()}>Helpful</button><button class="text-button" data-rating="1" data-id="${q(entry.id)}" aria-label="Mark response needs improvement" aria-pressed="${entry.rating === 1}" ${disabled()}>Needs work</button>` : ''}</div>${entry.response.action?.completedAt ? '<span class="pill green">Action confirmed</span>' : entry.response.action ? `<button class="button small" data-proposal="${q(entry.id)}" ${disabled()}>Review ${q(names[entry.response.action.kind].toLowerCase())} →</button>` : ''}</div></div></div>`).join('') : `<div class="welcome"><span class="assistant-mark large" aria-hidden="true">∿</span><h2>Good to see you, ${q(p.name.split(' ')[0])}.</h2><p>Ask a question. We’ll check the latest status<br>and pick up the relevant context.</p><button class="suggestion" data-prompt="${q(suggestedQuestion(p))}" ${disabled()}>${q(suggestedQuestion(p))} <span>↗</span></button><button class="suggestion" data-prompt="Please schedule an appointment for a visit" ${disabled()}>Find a time to visit <span>↗</span></button></div>`}${state.pendingMessage ? `<div class="bubble customer">${q(state.pendingMessage)}</div><div class="thinking" role="status"><span class="status-dot"></span>Checking your request…</div>` : ''}${state.pendingChat && !state.busy ? `<div class="notice error">Your message wasn’t confirmed. <button class="text-button" data-action="retry-chat">Retry safely →</button></div>` : ''}</div><form id="chat-form" class="composer"><label class="sr-only" for="message">Your message</label><textarea id="message" name="message" rows="1" required maxlength="1400" placeholder="Ask about your request…" ${disabled()}>${q(state.draft)}</textarea><button class="button primary" type="submit" ${disabled()} aria-label="Send message">${state.busy ? 'Sending…' : 'Send ↑'}</button></form><div class="composer-footer"><span>Conversation saved · Personal details are removed before anything is shared as reusable knowledge</span>${state.messages.length ? `<button class="text-button" data-action="archive" ${disabled()}>New conversation</button>` : ''}</div></section>`;
 }
 function appointments(t) {
   const visits = [...t.appointments].sort((a, b) => a.datetime.localeCompare(b.datetime));
@@ -300,7 +317,7 @@ function lab(p) {
       : '<div class="empty-state compact"><p>A useful detail can change the next step.</p></div>'
   }</section>`;
 }
-async function send(text, retry = false) {
+async function send(text, retry = false, context) {
   if (state.busy || !text.trim()) return;
   state.error = '';
   state.notice = '';
@@ -311,7 +328,7 @@ async function send(text, retry = false) {
   render();
   try {
     const result = await api('chat', {
-      body: { message: text, ticketId: state.ticketId, memory: state.memory },
+      body: { message: text, ticketId: state.ticketId, memory: state.memory, ...(context && { context }) },
       key,
     });
     state.draft = '';
@@ -576,6 +593,10 @@ app.addEventListener('click', async (event) => {
 app.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.target;
+  if (form.matches('[data-context-form]')) {
+    event.preventDefault();
+    return send('Here are my details.', false, Object.fromEntries(new FormData(form)));
+  }
   if (!['chat-form', 'compare-form', 'action-form'].includes(form.id)) return;
   if (state.busy) return;
   const body = Object.fromEntries(new FormData(form));

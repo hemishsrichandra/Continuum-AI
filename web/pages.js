@@ -1,6 +1,6 @@
 import { request, escapeHtml as q, calendarLink, formatDate, readSession, saveSession } from './client.js';
 
-const primaryLinks = [['/', 'Home'], ['/services', 'Product'], ['/about', 'Our approach'], ['/pricing', 'Pricing']];
+const primaryLinks = [['/', 'Home'], ['/services', 'Product'], ['/about', 'Our approach'], ['/demo', 'Learning demo'], ['/pricing', 'Pricing']];
 const allLinks = [...primaryLinks, ['/book-a-session', 'Book a session'], ['/style-guide', 'Style guide']];
 const button = (text, href = '/desk', primary = true) => `<a class="button ${primary ? 'primary' : ''}" href="${href}">${text}<span aria-hidden="true">↗</span></a>`;
 const heading = (label, title, copy) => `<section class="wrap page-hero"><span class="eyebrow">${label}</span><h1>${title}</h1><p class="lead">${copy}</p></section>`;

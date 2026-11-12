@@ -18,6 +18,11 @@ import { createReuse, needsReview } from './reuse.js';
 import { decide } from './decisions.js';
 import { createProviderActions } from './provider-actions.js';
 import { requestReference } from './request-reference.js';
+import { createMemoryPool } from './memory-pool.js';
+import { createFollowThrough } from './follow-through.js';
+import { intelligenceFor } from './intelligence.js';
+import { handleDemo, isDemoPath } from './demo-learning.js';
+import { createDataSources } from './data-sources.js';
 
 export function createHandler({ file, config = process.env, service } = {}) {
   config = { APP_URL: 'http://localhost:3000', ...config };
@@ -41,9 +46,14 @@ export function createHandler({ file, config = process.env, service } = {}) {
   if (config.ENABLE_OUTBOX_WORKER === 'true') delivery.start();
   const memory = service || createMemory(store, config);
   const providerActions = createProviderActions(store, delivery, config);
-  const reuse = createReuse(store, memory, providerActions);
-  const learning = createLearning(store, memory, companies, config, reuse, providerActions);
-  const troubleshooting = createTroubleshooting(store, learning, reuse, providerActions);
+  const memoryPool = createMemoryPool(store, config);
+  const dataSources = createDataSources(store, delivery, config);
+  const followThrough = createFollowThrough(store, { delivery, config });
+  const reuse = createReuse(store, memory, providerActions, memoryPool);
+  const learning = createLearning(store, memory, companies, config, reuse, providerActions, { memoryPool, followThrough });
+  const troubleshooting = createTroubleshooting(store, learning, reuse, providerActions, { memoryPool, followThrough });
+  // Follow-through deadlines run on the integrations worker tick, not per web request.
+  delivery.register(() => followThrough.tick());
   if (config.ENABLE_OUTBOX_WORKER === 'true') providerActions.start();
   if (config.ENABLE_OUTBOX_WORKER === 'true') memory.start?.();
   const pending = new Map();
@@ -98,6 +108,12 @@ export function createHandler({ file, config = process.env, service } = {}) {
           throw fault(403, 'Cross-site submissions are not allowed.');
         if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host)
           throw fault(403, 'Submit this request from the app.');
+      }
+      // The Interactive Learning Demo is fully isolated: it is answered before any session,
+      // company, database or integration code runs, and never receives the store.
+      if (isDemoPath(url.pathname)) {
+        await handleDemo(req, url, write);
+        return;
       }
       const session = auth.authenticate(req);
       auth.csrf(req, session);
@@ -203,7 +219,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
         '/api/workspace', '/api/status', '/api/analytics', '/api/conversation',
         '/api/conversation/archive', '/api/feedback', '/api/slots', '/api/memory',
         '/api/reflect', '/api/chat', '/api/request', '/api/requirement', '/api/book',
-        '/api/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
+        '/api/cancel', '/api/book/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
         '/api/resolutions/outcome', '/api/connector/sync', '/api/troubleshooting/outcome',
       ]);
       if (['owner', 'staff'].includes(profile.role) && customerRoutes.has(url.pathname))
@@ -212,8 +228,25 @@ export function createHandler({ file, config = process.env, service } = {}) {
         limit(session.token_hash + ':connector', 10);
         if (await connector.handle(req, endpoint, session, write)) return;
       }
+      if (endpoint.includes('/api/company/data-sources')) {
+        limit(session.token_hash + ':datasource', 30);
+        if (await dataSources.handle(req, endpoint, session, write)) return;
+      }
       if (await companies.handle(req, endpoint, session, write)) return;
       const staff = companies.staff(profile);
+      const intel = url.pathname.match(/^\/api\/companies\/([^/]+)\/intelligence$/);
+      if (intel) {
+        if (req.method !== 'GET') throw fault(405, 'Use GET.');
+        // The company is taken from the authenticated membership; the path value only has to agree with it.
+        if (!staff || decodeURIComponent(intel[1]) !== profile.companyId)
+          throw fault(403, 'Resolution Intelligence is available to staff of your own company.');
+        let scopeBot = url.searchParams.get('chatbotId') || (staff.role === 'owner' ? null : botId(profile));
+        if (scopeBot) {
+          const bot = getBot(store.db, profile.companyId, scopeBot);
+          if (staff.role !== 'owner' && bot.adapter !== staff.provider) throw fault(403, 'This service is not available to your membership.');
+        }
+        return write(200, intelligenceFor(store, profile.companyId, { slaHours: followThrough.slaHours, chatbotId: scopeBot }));
+      }
       if (url.pathname.startsWith('/api/operator')) {
         if (!staff) throw fault(403, 'This area requires explicitly provisioned support staff access.');
         const selectedProvider = url.searchParams.get('provider');
@@ -254,12 +287,26 @@ export function createHandler({ file, config = process.env, service } = {}) {
                   }).ticket(h.ticketId),
                 },
                 attempts: troubleshooting.attempts({...operator,id:h.customerId},{id:h.ticketId}),
+                timeline: followThrough.timeline(operator.companyId, operator.chatbotId, h.ticketId),
                 conversation: store.data.conversations
                   .filter((c) => c.scope === h.scope && c.ticketId === h.ticketId && !c.archivedAt)
                   .slice(-50),
               })),
             resolutions: learning.list(operator.companyId, operator.provider, operator.chatbotId),
+            passports: memoryPool.list(operator.companyId, operator.chatbotId),
+            followThrough: followThrough.queue(operator.companyId, [operator.chatbotId]),
           });
+        if (endpoint === 'POST /api/operator/preview-passport') {
+          // Server-side scrub + C_init preview; nothing is stored.
+          const body = await json(req);
+          return write(200, learning.preview(operator, body));
+        }
+        if (endpoint === 'POST /api/operator/revise') {
+          const body = await json(req);
+          const result = memoryPool.revise(operator, field(body.id, 'resolution ID', 100), body);
+          store.update((data) => data.audit.push({ id: randomUUID(), scope: `company:${operator.companyId}`, kind: 'resolution_revised', resolutionId: body.id, newVersionId: result.id, version: result.version, authorId: operator.id, createdAt: new Date().toISOString() }));
+          return write(201, result);
+        }
         if (
           ['POST /api/operator/resolve', 'POST /api/operator/assign', 'POST /api/operator/progress'].includes(
             endpoint,
@@ -350,7 +397,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
               ...c,
               response: {
                 ...c.response,
-                ...(!c.response.human && c.response.evidence?.some(e=>e.kind==='verified_resolution') && {reply:customerAdvice(c.response.reply)}),
+                ...(!c.response.human && c.response.evidence?.some(e=>['verified_resolution','company_memory'].includes(e.kind)) && {reply:customerAdvice(c.response.reply)}),
                 ...(c.response.attempt && {attempt: troubleshooting.attempts(profile,{id:requested}).find(a=>a.id===c.response.attempt.id)}),
                 ...(c.response.resolutionUse && {
                   resolutionUse: reuse.current(db.scope, c.response.resolutionUse.id),
@@ -789,6 +836,10 @@ export function createHandler({ file, config = process.env, service } = {}) {
     }
   };
   handler.store = store;
+  handler.memoryPool = memoryPool;
+  handler.dataSources = dataSources;
+  handler.followThrough = followThrough;
+  handler.troubleshooting = troubleshooting;
   handler.delivery = delivery;
   handler.providerActions = providerActions;
   handler.close = () => {

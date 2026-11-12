@@ -16,7 +16,8 @@
     "evaluate": "node scripts/evaluate.js",
     "evaluate:live": "node scripts/evaluate.js --live",
     "secrets:generate": "node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\"",
-    "db:backup": "node scripts/db-backup.js"
+    "db:backup": "node scripts/db-backup.js",
+    "demo:learning": "node scripts/demo-learning.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0"

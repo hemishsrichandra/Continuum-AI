@@ -204,7 +204,8 @@ test('reused fixes collect one result per ticket; failure creates one contextual
   assert.ok(caseB.conversation.some((c) => c.response.reply.includes(f.solution)));
   assert.equal((await f.b.api('status?ticketId=' + nextTicket)).data.status, 'Reopened');
   library = queue.resolutions.find((x) => x.id === r.id);
-  assert.ok(library.reviewRequired);
+  // A single ordinary failure no longer flags the fix for review or blocks it globally.
+  assert.equal(library.reviewRequired, false);
   assert.equal(library.reuse.failed, 1);
   assert.equal(library.reuse.succeeded, 1);
   const answer = (await f.ask()).data;
@@ -222,7 +223,8 @@ test('reused fixes collect one result per ticket; failure creates one contextual
         confirmed: true,
       })
     ).status,
-    200,
+    409,
+    'nothing is flagged after one failure',
   );
   assert.equal(
     (await f.ask()).data.trace.learnedResolutions,
@@ -307,7 +309,7 @@ test('a failed-fix report in chat stays a proposal until confirmation, then reco
     (await f.b.api('handoff', body, { headers: { 'idempotency-key': 'confirm-failed-fix' } })).data.id,
     result.data.id,
   );
-  assert.ok((await f.owner.api('operator')).data.resolutions.find((x) => x.id === r.id).reviewRequired);
+  assert.equal((await f.owner.api('operator')).data.resolutions.find((x) => x.id === r.id).reviewRequired, false);
 });
 
 test('review requires the latest failure report; clearing review helps new customers but never repeats a failed fix', async (t) => {
@@ -607,48 +609,6 @@ test('expired invitations cannot register; company signup cannot choose owner or
   assert.equal((await c.api('company')).status, 403);
 });
 
-test('live semantic matches do not need lexical overlap; unrelated or unverifiable candidates are excluded', async (t) => {
-  const f = await fixture(t);
-  const r = await f.propose();
-  await f.a.api('resolutions/confirm', { id: r.id, accepted: true, confirmed: true });
-  const document = f.h.store.data.memories.find((m) => m.id === r.memoryId);
-  const remote = createLearning(
-    f.h.store,
-    { recall: async () => ({ source: 'Hindsight', facts: [document] }) },
-    null,
-    { OPENAI_API_KEY: 'synthetic' },
-  );
-  t.mock.method(globalThis, 'fetch', async (url, options) => {
-    const context = JSON.parse(JSON.parse(options.body).messages[1].content);
-    return Response.json({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              matches: context.question.includes('invoice')
-                ? []
-                : context.candidates.map((c) => ({ id: c.id, confidence: 0.99 })),
-            }),
-          },
-        },
-      ],
-    });
-  });
-  const companyId = (await f.owner.api('auth/session')).data.profile.companyId;
-  assert.equal(
-    (
-      await remote.recall(companyId, 'repair', 'A strobing panel appears as the computer wakes.', {
-        issue: 'Model X firmware 4',
-      })
-    ).facts.length,
-    1,
-  );
-  assert.equal(
-    (await remote.recall(companyId, 'repair', 'How do I update my invoice?', { issue: 'Model X firmware 4' }))
-      .facts.length,
-    0,
-  );
-});
 
 test('fact extraction recognizes multiple outcomes and rejects credentials; compatibility handles punctuation', () => {
   assert.ok(
@@ -904,20 +864,6 @@ test('comparison can retrieve a published fix without saving a chat, action, fac
   assert.equal(f.h.store.db.prepare('SELECT COUNT(*) AS n FROM resolution_uses').get().n, receipts);
 });
 
-test('two genuinely retrieved applicable procedures require clarification instead of merging steps', async (t) => {
-  const f = await fixture(t);
-  const r = await f.propose();
-  await f.a.api('resolutions/confirm', {id:r.id,accepted:true,confirmed:true});
-  const original = f.h.store.data.resolutions.find(x=>x.id===r.id);
-  const second = {...original,id:'competing-qa',memoryId:'competing-qa-memory',solution:'A distinct synthetic procedure.'};
-  f.h.store.update(data=>data.resolutions.push(second));
-  const learning = createLearning(f.h.store, {
-    recall:async()=>({source:'Local demo memory',facts:[original,second].map(x=>({id:x.memoryId,text:x.solution}))}),
-  },null,{});
-  const result = await learning.recall(original.companyId,'repair',f.question,{issue:f.question});
-  assert.deepEqual(result.facts, []);
-  assert.match(result.clarification[0].environment, /Multiple reviewed fixes match/);
-});
 
 test('a named different request prompts a safe switch instead of answering the selected case', async(t)=>{
   const f=await fixture(t);

@@ -1,4 +1,4 @@
-import { ensureBots, defaultBotId, getBot } from './chatbots.js';
+import { ensureBots, defaultBotId, getBot, normalizeBot } from './chatbots.js';
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { fault, profiles } from './providers.js';
@@ -202,7 +202,7 @@ export function createAuth(store, config, delivery, companies) {
       if (!session?.account_id) throw fault(401, 'Sign in to select a workspace.');
       const memberships = sql.prepare("SELECT m.company_id AS companyId,c.name,m.role FROM company_memberships m JOIN companies c ON c.id=m.company_id WHERE account_id=? AND status='active'").all(session.account_id);
       send(200, { memberships, companyId: session.profile.companyId, chatbotId: session.profile.chatbotId,
-        chatbots: sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(session.profile.companyId).map(r=>JSON.parse(r.config)).filter(b=>b.active && (session.profile.role !== 'staff' || b.adapter === session.profile.provider)) });
+        chatbots: sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(session.profile.companyId).map(r=>normalizeBot(JSON.parse(r.config))).filter(b=>b.active && (session.profile.role !== 'staff' || b.adapter === session.profile.provider)) });
       return true;
     }
     if (endpoint === 'POST /api/auth/workspace') {

@@ -39,16 +39,13 @@ try {
   await one('resolutions/confirm',{id:proposed.id,accepted:true,confirmed:true});
   console.log('PASS Customer 1: standard failed → company specialist → customer-confirmed published solution.');
   const id2=await request(two),standard2=await ask(two,id2);assert.equal(standard2.attempt.source,'standard');await fail(two,standard2.attempt);
-  const learned=await ask(two,id2,'Continue troubleshooting');assert.equal(learned.attempt.source,'learned');assert.equal(learned.reply,'Select the verified Model X training network profile and reconnect.');
+  const learned=await ask(two,id2,'Continue troubleshooting');assert.equal(learned.attempt.source,'learned');assert.equal(learned.reply,'Fictional demo only: select the verified Model X training network profile and reconnect.');
   await two('troubleshooting/outcome',{attemptId:learned.attempt.id,worked:true,confirmed:true});
   console.log('PASS Customer 2: standard failed → compatible shared fix → confirmed reuse success.');
   const id3=await request(two),standard3=await ask(two,id3);await fail(two,standard3.attempt);
   const failedLearned=await ask(two,id3,'Continue troubleshooting');await fail(two,failedLearned.attempt);
   assert.ok((await owner('operator')).cases.some(c=>c.ticketId===id3));
-  console.log('PASS Learned fix failure: one case in Company A queue; reuse paused for review.');
-  // Restore reviewed availability so exclusion checks prove scope isolation, rather than review exclusion.
-  const review=(await owner('operator')).resolutions.find(r=>r.id===proposed.id);
-  await owner('operator/review-resolution',{id:review.id,reviewRevision:review.reviewRevision,decision:'keep',note:'Fictional demonstration review.',confirmed:true});
+  console.log('PASS Learned fix failure: one case in Company A queue; one ordinary failure does not lock the fix out.');
   await one('auth/workspace',{companyId:a.profile.companyId,chatbotId:a.profile.companyId+':it'});
   const itId=await request(one),itStandard=await ask(one,itId);await fail(one,itStandard.attempt);
   assert.equal((await ask(one,itId,'Continue troubleshooting')).trace.learnedResolutions,0);
