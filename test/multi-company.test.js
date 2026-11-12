@@ -262,7 +262,7 @@ test('charging: unknown device details offer human help, and confirmed specialis
   assert.equal((await ask(f.b,second,issue)).data.attempt.source,'standard');
   await f.b.api('troubleshooting/outcome',{attemptId:standard.attempt.id,worked:false,confirmed:true});
   const learned=(await ask(f.b,second,'Continue troubleshooting')).data;
-  assert.equal(learned.attempt.source,'learned');assert.equal(learned.reply,'Select the approved training battery profile and test charging again.');assert.equal(learned.trace.learnedResolutions,1);
+  assert.equal(learned.attempt.source,'learned');assert.equal(learned.reply,'Fictional ChargeDemo test solution: select the approved training battery profile and test charging again.');assert.equal(learned.trace.learnedResolutions,1);
   assert.ok(learned.evidence.some(e=>e.text.includes(solution)),'The original reviewed source remains available in evidence.');
   assert.equal(f.h.store.data.resolutions.find(x=>x.id===r.id).solution,solution,'Customer wording does not rewrite the approved source.');
   const history=(await f.b.api('conversation?ticketId='+second)).data.messages;

@@ -203,7 +203,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
         '/api/workspace', '/api/status', '/api/analytics', '/api/conversation',
         '/api/conversation/archive', '/api/feedback', '/api/slots', '/api/memory',
         '/api/reflect', '/api/chat', '/api/request', '/api/requirement', '/api/book',
-        '/api/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
+        '/api/cancel', '/api/book/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
         '/api/resolutions/outcome', '/api/connector/sync', '/api/troubleshooting/outcome',
       ]);
       if (['owner', 'staff'].includes(profile.role) && customerRoutes.has(url.pathname))
