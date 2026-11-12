@@ -6,7 +6,10 @@
 // are satisfied by facts the customer actually stated.
 
 export const OS_FAMILIES = ['android', 'ios', 'windows', 'macos', 'ubuntu'];
-const NEGATION = /\b(?:not|no|isn'?t|is not|aren'?t|without|except|excluding|never|non|don'?t have|do not have|doesn'?t have|other than|instead of)\b/i;
+// A negation only counts when it directly governs the mention: the negative word followed by at most
+// a few filler words ("not a Model X", "do not have a Model X", "isn't the Model X"). A negative word that
+// merely appears earlier in the clause ("the inbox never updates, Model Y firmware 9") does not negate it.
+const NEGATION_BEFORE = /\b(?:not|no|isn'?t|aren'?t|wasn'?t|never|without|except|excluding|other than|instead of|(?:do not|don'?t|doesn'?t|does not) (?:have|own|use|run))\s+(?:(?:a|an|the|my|this|that|is|am|are|it|it's|its|really|actually|just|have|has|own|use|using|on|any)\s+){0,3}$/i;
 const HISTORICAL = /\b(?:previously|formerly|used to|upgraded from|replaced|no longer|old|former|previous|had an?|before I (?:got|bought))\b/i;
 const VALUE = '(\\d+(?:\\.\\d+)*)';
 const OP = '(>=|<=|>|<|=)?\\s*';
@@ -58,7 +61,7 @@ export function extractMentions(text) {
       const clause = clauseBefore(input, m.index);
       // A device the customer HAD earlier is not their current environment.
       if (HISTORICAL.test(clause)) continue;
-      const negated = NEGATION.test(clause);
+      const negated = NEGATION_BEFORE.test(clause.trim() + ' ');
       let op = key === 'model' ? 'eq' : opNames[m[1]] || rangeBefore(clause) || 'eq';
       let max;
       let end = m.index + m[0].length;
@@ -70,10 +73,17 @@ export function extractMentions(text) {
           end += r.consumed || 0;
         }
       }
-      mentions.push({ key, value, op, ...(max && { max }), negated });
+      mentions.push({ key, value, op, ...(max && { max }), negated, start: m.index, end });
       spans.push([m.index, end]);
     }
   }
+  // "not Model X firmware 4": a mention directly adjacent to a negated one belongs to the same phrase.
+  const ordered = [...mentions].sort((a, b) => a.start - b.start);
+  for (let i = 1; i < ordered.length; i++) {
+    const previous = ordered[i - 1];
+    if (previous.negated && !ordered[i].negated && /^[\s,]{0,2}$/.test(input.slice(previous.end, ordered[i].start))) ordered[i].negated = true;
+  }
+  for (const m of mentions) { delete m.start; delete m.end; }
   return { mentions, spans };
 }
 

@@ -9,9 +9,11 @@ import { cases } from '../evaluation/cases.js';
 import { challengeCases } from '../evaluation/challenge.js';
 import { holdoutCases } from '../evaluation/holdout.js';
 import { validationCases } from '../evaluation/validation.js';
+import { informalCases } from '../evaluation/informal.js';
+import { informal2Cases } from '../evaluation/informal2.js';
 
-export async function evaluate({ live = false, challenge = false, holdout = false, validation = false, log = () => {} } = {}) {
-  const dataset = validation ? validationCases : holdout ? holdoutCases : challenge ? challengeCases : cases;
+export async function evaluate({ live = false, challenge = false, holdout = false, validation = false, informal = false, informal2 = false, log = () => {} } = {}) {
+  const dataset = informal2 ? informal2Cases : informal ? informalCases : validation ? validationCases : holdout ? holdoutCases : challenge ? challengeCases : cases;
   if (live) process.loadEnvFile('.env');
   const run = randomUUID().slice(0, 8),
     directory = await mkdtemp(join(tmpdir(), 'continuum-evaluation-'));
@@ -36,7 +38,7 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
   const report = {
     run,
     startedAt: new Date().toISOString(),
-    dataset: validation ? 'synthetic validation v1' : holdout ? 'synthetic held-out v1' : challenge ? 'synthetic challenge v1' : 'synthetic regression v1',
+    dataset: informal2 ? 'synthetic informal v2' : informal ? 'synthetic informal v1' : validation ? 'synthetic validation v1' : holdout ? 'synthetic held-out v1' : challenge ? 'synthetic challenge v1' : 'synthetic regression v1',
     datasetSha256: createHash('sha256').update(JSON.stringify(dataset)).digest('hex'),
     plannedCases: dataset.length,
     plannedPositiveQuestions: dataset.reduce((n, c) => n + c.queries.length, 0),

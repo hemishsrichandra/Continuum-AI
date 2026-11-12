@@ -4,7 +4,9 @@ import { evaluate } from '../scripts/evaluate.js';
 import { world } from './_helpers.js';
 import { cases } from '../evaluation/cases.js';
 import { hardNegatives } from '../evaluation/validation.js';
-import { tokens, conceptTokens } from '../server/context.js';
+import { readFileSync } from 'node:fs';
+import { tokens, conceptTokens, fuzzyConcept, editDistance } from '../server/context.js';
+import { extractMentions } from '../server/applicability.js';
 import { localEmbedding, cosine, LOCAL_EMBEDDING_MODEL } from '../server/scoring.js';
 import { extractFacts } from '../server/facts.js';
 
@@ -16,6 +18,9 @@ const SETS = [
   { name: 'challenge', options: { challenge: true }, minRecall: 28 },
   { name: 'holdout', options: { holdout: true }, minRecall: 28 },
   { name: 'validation', options: { validation: true }, minRecall: 24 },
+  // Typos/slang: `informal` informed the typo matcher; `informal2` was written afterwards and measured once.
+  { name: 'informal', options: { informal: true }, minRecall: 22 },
+  { name: 'informal2', options: { informal2: true }, minRecall: 23 },
 ];
 for (const { name, options, minRecall } of SETS)
   test(`RAG evaluation (${name}): recall floor ${minRecall}/${name === 'regression' ? 20 : 30}, zero unsafe recommendations, zero memory-off leaks, no repeated failed fix`, async () => {
@@ -123,4 +128,30 @@ test('technical sentences that merely mention email are not contact preferences'
   assert.equal(kinds('I prefer a phone call after 5 pm.'), 1);
   assert.equal(kinds('Do not call me, email me.'), 1);
   assert.equal(kinds('Please speak Spanish when you call.'), 1);
+});
+
+test('typo tolerance maps common misspellings but leaves real words alone', () => {
+  for (const [typo, concept] of [['disply', 'display'], ['flikers', 'flicker'], ['startp', 'startup'], ['wireles', 'network'], ['conection', 'network'], ['battry', 'battery'], ['speakrs', 'audio'], ['storge', 'storage'], ['mailbx', 'email'], ['aplication', 'application'], ['sofware', 'application'], ['refreshng', 'sync']])
+    assert.equal(fuzzyConcept(typo), concept, typo);
+  for (const real of ['internal', 'audit', 'block', 'defined', 'falling', 'printed', 'quit', 'stack', 'changing', 'settings', 'online', 'power', 'phone'])
+    assert.equal(fuzzyConcept(real), null, real + ' must not be “corrected”');
+  assert.equal(editDistance('network', 'netwrok'), 1, 'a transposition is one edit');
+  assert.equal(editDistance('internal', 'internet'), 2, 'two edits apart, so never mapped');
+});
+
+test('typo audit: no ordinary English word near the vocabulary is silently mapped to a support concept', () => {
+  const allowed = new Set(['appliaction', 'applications', 'connections', 'ewpty', 'parer']);
+  const words = readFileSync(new URL('./fixtures/fuzzy-neighbours.txt', import.meta.url), 'utf8').split('\n').filter(Boolean);
+  assert.ok(words.length > 200, 'the audit fixture is present');
+  const gained = words.filter((w) => [...conceptTokens(w)].some((c) => !conceptTokens(w, { fuzzy: false }).has(c)));
+  assert.deepEqual(gained.filter((w) => !allowed.has(w)), []);
+});
+
+test('negation applies only to the mention it directly governs (a stray “never” does not negate a later device)', () => {
+  const flags = (text) => extractMentions(text).mentions.map((m) => `${m.key}:${m.value}${m.negated ? ':neg' : ''}`);
+  assert.deepEqual(flags('the inbox never updates, Model WRONG firmware 99'), ['model:wrong', 'firmware:99']);
+  assert.deepEqual(flags('wifi never works on Model X firmware 4'), ['model:x', 'firmware:4']);
+  assert.deepEqual(flags('This is NOT Model X firmware 4'), ['model:x:neg', 'firmware:4:neg']);
+  assert.deepEqual(flags('I do not have a Model X. Firmware 4'), ['model:x:neg', 'firmware:4']);
+  assert.deepEqual(flags('not on Android 13'), ['android:13:neg']);
 });
