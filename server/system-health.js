@@ -17,7 +17,7 @@ export function reconcileJobs(store, companyId, { at = Date.now(), overdueMs = 1
   return { failed, overdue, abandoned, pending: row.pending || 0, oldestOverdueMinutes: row.oldest ? Math.round((at - row.oldest) / 60000) : null, needsAttention: failed + overdue + abandoned };
 }
 
-export function createSystemHealth({ store, vectorIndex, privacy, delivery }) {
+export function createSystemHealth({ store, vectorIndex, privacy, delivery, dataSources = null }) {
   return async function systemHealth(companyId) {
     const infra = await vectorIndex.health({ probe: true });
     const mine = vectorIndex.companyHealth(companyId);
@@ -29,11 +29,13 @@ export function createSystemHealth({ store, vectorIndex, privacy, delivery }) {
     const lanes = delivery.lanes();
     const stuck = lanes.filter((l) => l.lastError).length;
     const jobs = reconcileJobs(store, companyId);
+    const sources = dataSources?.health(companyId) || null;
     return {
       summary: {
+        ...(sources && { knowledgeSources: { state: sources.needsAttention ? 'attention' : 'ok', ...sources } }),
         search: { state: search, pending: mine.pending },
         waitingApproval,
-        tasks: { state: stuck || erasure.failed || mine.failed || jobs.needsAttention ? 'attention' : 'ok', count: stuck + erasure.failed + mine.failed + jobs.needsAttention },
+        tasks: { state: stuck || erasure.failed || mine.failed || jobs.needsAttention || sources?.failing ? 'attention' : 'ok', count: stuck + erasure.failed + mine.failed + jobs.needsAttention + (sources?.failing || 0) },
         syncedUpdates: { state: jobs.needsAttention ? 'attention' : 'ok', failed: jobs.failed, overdue: jobs.overdue + jobs.abandoned },
       },
       details: {

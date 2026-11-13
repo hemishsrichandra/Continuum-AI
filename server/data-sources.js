@@ -315,7 +315,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     const settings = Object.fromEntries(CONNECTION_KEYS[row.source_type].filter((k) => !SECRET_KEYS.has(k) && k !== 'path' && conn[k] !== undefined).map((k) => [k, conn[k]]));
     const secrets = Object.fromEntries(CONNECTION_KEYS[row.source_type].filter((k) => SECRET_KEYS.has(k)).map((k) => [k, Boolean(conn[k])]));
     const summary = {};
-    if (row.source_type === 'csv_sync') { summary.bytes = Buffer.byteLength(conn.csv || ''); summary.rows = Math.max(0, (conn.csv || '').split(/\r\n|\r|\n/).filter(Boolean).length - 1); }
+    if (row.source_type === 'csv_sync') { summary.bytes = Buffer.byteLength(conn.csv || ''); summary.rows = summary.bytes <= 2097152 ? Math.max(0, (conn.csv || '').split(/\r\n|\r|\n/).filter(Boolean).length - 1) : null; }
     if (row.source_type === 'csv_file' || row.source_type === 'sqlite') summary.file = conn.path ? basename(conn.path) : null;
     if (row.source_type === 'rest_api' && conn.url) { try { const u = new URL(conn.url); summary.endpoint = u.origin + u.pathname + (u.search ? '?…' : ''); } catch { summary.endpoint = null; } }
     if (['postgres', 'mysql', 'mssql'].includes(row.source_type) && conn.uri) {

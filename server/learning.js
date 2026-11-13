@@ -9,7 +9,7 @@ import { passportView } from './memory-pool.js';
 
 const needsReviewLegacy = (r) => Boolean(r.reviewRequestedAt && (r.reviewRevision || 0) > (r.reviewedRevision || 0));
 
-export function createLearning(store, memory, companies, config = {}, reuse, providerActions, { memoryPool, followThrough } = {}) {
+export function createLearning(store, memory, companies, config = {}, reuse, providerActions, { memoryPool, followThrough, shadow = null } = {}) {
   const scope = (companyId, provider, chatbotId = defaultBotId(companyId,provider)) => knowledgeScope(companyId,chatbotId);
   function caseFor(data, staff, id, revision) {
     const h = data.handoffs.find(
@@ -323,6 +323,8 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
         event(data, h, 'solution_proposed', 'A specialist proposed a solution for customer confirmation.', now);
         return { ...r };
       });
+      // Shadow mode (when the owner enabled it): note how closely the fixes ranked in the background resembled this real solution.
+      shadow?.compare({ companyId: staff.companyId, ticketId: proposed.ticketId, resolutionText: proposed.solution });
       // Outside the record transaction: email queueing writes its own records.
       const customer = store.db.prepare('SELECT email FROM accounts WHERE id=?').get(proposed.handoffCustomerId || '');
       proposed.confirmationDeadline = followThrough?.scheduleConfirmation({

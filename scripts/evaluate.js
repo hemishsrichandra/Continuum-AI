@@ -43,6 +43,8 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
     ...(live ? process.env : {}),
     APP_URL: 'http://localhost:3100',
     NODE_ENV: 'test',
+    // The harness measures what retrieval would put first, so it reads the recorded first suggestion. Product behaviour is explicit choice.
+    SUGGESTION_MODE: 'auto_first',
     ENABLE_OUTBOX_WORKER: 'false',
     REQUIRE_EMAIL_VERIFICATION: 'false',
     ENABLE_DEMO_MODE: 'false',
