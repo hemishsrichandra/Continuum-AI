@@ -852,3 +852,8 @@ input[type=checkbox] { min-width: 24px; min-height: 24px; }
 .mapping-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
 
 #app section.wrap > h2 { font-size: 28px; margin-top: 32px; letter-spacing: -.03em; }
+
+/* Plain status lists (owner console). */
+.plain-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.plain-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.plain-list small { flex-basis: 100%; color: var(--muted); }

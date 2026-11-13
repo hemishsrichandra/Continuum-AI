@@ -3,7 +3,7 @@ import { botId, privateScope, getBot } from './chatbots.js';
 import { fault, provider } from './providers.js';
 import {tokens,compatibility,relevance} from './context.js';
 import {failedResolutions} from './reuse.js';
-import {signatureOf} from './passports.js';
+import {signatureOf, verificationOf, SOURCE_LABELS} from './passports.js';
 import {passportView} from './memory-pool.js';
 import {THRESHOLDS,compatibilityGate} from './scoring.js';
 import {customerFacts} from './applicability.js';
@@ -17,7 +17,7 @@ const hasTopic = (text, topics) => {
 };
 // Customer-visible provenance without private customer details.
 const LABELS={specialist_confirmed:"Learned from a customer-confirmed specialist resolution",auto_published_overdue:"Specialist fix · UNCONFIRMED BY CUSTOMER",company_db_sync:"Imported from your company's support knowledge base",standard_playbook:"Standard playbook"};
-export const sourceInfo=(row,score)=>({id:row.id,origin:row.origin_type,label:LABELS[row.origin_type],version:row.version_number,customerConfirmed:Boolean(row.customer_confirmed),unconfirmed:row.origin_type==='auto_published_overdue'&&!row.customer_confirmed,title:row.title,...(score&&{score})});
+export const sourceInfo=(row,score)=>({id:row.id,origin:row.origin_type,verification:verificationOf(row),label:SOURCE_LABELS[verificationOf(row)]||LABELS[row.origin_type],version:row.version_number,customerConfirmed:Boolean(row.customer_confirmed),unconfirmed:row.origin_type==='auto_published_overdue'&&!row.customer_confirmed,title:row.title,...(score&&{score})});
 const evidenceFor=(row,score)=>({id:row.id,resolutionId:row.id,kind:row.customer_confirmed?'verified_resolution':'company_memory',origin:row.origin_type,version:row.version_number,text:JSON.parse(row.steps_json).join(' '),
   ...(score&&{score}),passport:passportView(row,{internal:false})});
 export function createTroubleshooting(store, learning, reuse, providerActions, {memoryPool, followThrough} = {}) {

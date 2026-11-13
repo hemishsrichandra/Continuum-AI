@@ -64,7 +64,7 @@ test('"Still need help" on a proposal is a failure, not approval, and never publ
   const { a, proposal } = await propose(w);
   assert.equal((await a.api('resolutions/confirm', { id: proposal.id, accepted: false, confirmed: true })).status, 200);
   assert.equal(pool(w, proposal.id), undefined);
-  assert.deepEqual(w.h.followThrough.tick(Date.now() + 48 * HOUR), []);
+  assert.deepEqual(w.h.followThrough.tick(Date.now() + 48 * HOUR).filter((r) => r.status !== 'sla_escalated'), [], 'nothing is published (the inactive specialist is escalated separately)');
   assert.equal(w.db().prepare('SELECT COUNT(*) n FROM memory_pool WHERE origin_type IN (\'auto_published_overdue\',\'specialist_confirmed\')').get().n, 0);
 });
 

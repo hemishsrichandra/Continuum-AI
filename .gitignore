@@ -8,3 +8,7 @@ data/
 /output/*
 !/output/CHALLENGE-RESULTS.md
 !/output/evaluation-results/
+
+# ChromaDB and Chroma data (the index is rebuildable)
+data/chroma/
+.chroma-venv/

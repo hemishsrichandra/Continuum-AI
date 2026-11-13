@@ -103,7 +103,7 @@ const attemptCard = (c) => {
     return `<div class="demo-card learned"><span class="pill blue">Specialist proposal</span><p class="steps">${q(c.proposal.steps)}</p><small>Nothing is learned until you confirm the outcome.</small><div class="demo-row"><button class="button primary small" data-act="confirm" data-case="${q(c.id)}" data-accepted="true" ${busy ? 'disabled' : ''}>It worked</button><button class="button small" data-act="confirm" data-case="${q(c.id)}" data-accepted="false" ${busy ? 'disabled' : ''}>Still need help</button></div></div>`;
   if (c.status === 'resolved') {
     const used = [...c.attempts].reverse().find((x) => x.outcome === 'succeeded');
-    return `<div class="demo-card resolved"><span class="pill green">Resolved · you confirmed it worked</span>${used?.source === 'learned' ? '<p>Resolved with the fix learned from User A.</p>' : c.proposal?.status === 'confirmed' ? '<p>Resolved with the specialist’s solution. Continuum learned it.</p>' : '<p>Resolved with the initial standard suggestion.</p>'}</div>`;
+    return `<div class="demo-card resolved"><span class="pill green">Resolved · you confirmed it worked</span>${used?.source === 'learned' ? '<p>Resolved with the fix ' + q((used.label || 'learned earlier').replace(/^Learned/, 'learned')) + '.</p>' : c.proposal?.status === 'confirmed' ? '<p>Resolved with the specialist’s solution. Continuum learned it.</p>' : '<p>Resolved with the initial standard suggestion.</p>'}</div>`;
   }
   return '';
 };
@@ -147,7 +147,7 @@ function beforeAfter() {
   const a = state.cases.find((c) => c.user === 'A');
   const b = state.cases.find((c) => c.user === 'B');
   if (!a?.attempts[0] || !b?.attempts[0]) return '';
-  const label = (t) => (t.source === 'learned' ? 'Learned from User A’s confirmed specialist resolution' : 'Initial standard suggestion');
+  const label = (t) => (t.source === 'learned' ? t.label || 'Learned from a confirmed specialist resolution' : 'Initial standard suggestion');
   return `<section aria-labelledby="ba"><h2 id="ba">Before and after</h2><div class="demo-before-after"><div><b>BEFORE LEARNING · USER A SAW</b>${q(label(a.attempts[0]))}: ${q(a.attempts[0].steps)}</div><div><b>AFTER LEARNING · USER B SAW</b>${q(label(b.attempts[0]))}: ${q(b.attempts[0].steps)}</div></div></section>`;
 }
 function timeline() {

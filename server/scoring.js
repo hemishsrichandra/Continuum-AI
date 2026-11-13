@@ -217,28 +217,42 @@ export function compatibilityGate({ applicability = {}, safety = {}, facts = {},
   return { eligible: true, status: 'compatible', compat: round(compat), reasons, evaluation };
 }
 
-/** Safety restrictions: conditions that must NOT hold, or hazard keywords the customer reported. */
+/**
+ * Safety restrictions: conditions that must NOT hold, or hazard keywords the customer reported. The restriction's
+ * own text is always consulted as well, so an empty `keywords` array (or a malformed restriction) cannot bypass it.
+ * A restriction that cannot be evaluated by machine blocks the fix until a specialist rewrites it.
+ */
 export function safetyConflicts(safety = {}, facts = {}, text = '') {
   const hits = [];
   const words = String(text).toLowerCase();
-  for (const r of safety.restrictions || []) {
-    const item = typeof r === 'string' ? { text: r } : r;
-    for (const k of item.keywords || []) {
+  const customer = tokens(words);
+  const restrictions = Array.isArray(safety.restrictions) ? safety.restrictions : [];
+  for (const r of restrictions) {
+    const item = typeof r === 'string' ? { text: r } : r && typeof r === 'object' ? r : { text: '' };
+    const label = item.text || 'safety restriction';
+    // Keywords supplied by the author, plus hazard words found in the restriction text itself.
+    const keywords = [...new Set([...(Array.isArray(item.keywords) ? item.keywords : []), ...hazardWords(item.text)])];
+    for (const k of keywords) {
       if (k && new RegExp('\\b' + String(k).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(words)) {
-        hits.push(`Safety restriction: ${item.text || k}`);
+        hits.push(`Safety restriction: ${label}`);
         break;
       }
     }
+    // Trigger clause ("... if the cable is frayed"): blocked when every content term of the clause was described.
+    const terms = Array.isArray(item.terms) ? item.terms : [];
+    if (terms.length && terms.every((t) => customer.has(t))) hits.push(`Safety restriction: ${label}`);
     if (Array.isArray(item.conditions) && item.conditions.length) {
       const e = evaluateConditions(item.conditions.map((c) => ({ ...c, required: true })), facts);
-      if (e.status === 'compatible') hits.push(`Safety restriction: ${item.text || item.conditions.map(describeCondition).join(', ')}`);
+      if (e.status === 'compatible') hits.push(`Safety restriction: ${label || item.conditions.map(describeCondition).join(', ')}`);
     }
+    if (item.unevaluable === true && safety.reviewed !== true) hits.push(`Safety restriction needs specialist review: ${label}`);
   }
   // Universal hazard words always route to a specialist, regardless of passport.
   if (/\b(?:smoke|smoking|burning|sparks?|swollen|swelling|bulging|electric shock|fire|melting|leaking battery)\b/.test(words))
     hits.push('Safety: reported hazard requires a specialist');
   return [...new Set(hits)];
 }
+const hazardWords = (text) => String(text || '').toLowerCase().match(/\b(?:swollen|swelling|hot|overheat\w*|smoke|smoking|burning|burnt|damaged|cracked|wet|water|liquid|damp|moist\w*|spill\w*|sparks?|leak\w*|bent|frayed|corrosion|corroded|exposed|melted|melting|sticky)\b/g) || [];
 
 /** Rank already-scored candidates deterministically and return at most N eligible. */
 export function rankCandidates(candidates, limit = THRESHOLDS.maxSuggestions) {

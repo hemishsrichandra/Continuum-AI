@@ -24,8 +24,11 @@ import {
   rankCandidates,
   needsReviewFlag,
 } from './scoring.js';
-import { insertPassport, ORIGINS, ORIGIN_LABELS, signatureOf, stepsList, computeInitialConfidence, normalizeApplicability, normalizeSafety } from './passports.js';
+import { insertPassport, ORIGINS, ORIGIN_LABELS, verificationOf, SOURCE_LABELS, signatureOf, stepsList, computeInitialConfidence, normalizeApplicability, normalizeSafety } from './passports.js';
 import { containsSecret, scrubPII } from './privacy.js';
+import { createEmbeddingService } from './embedding-service.js';
+import { createVectorStore } from './vector-store.js';
+import { documentText } from './vector-index.js';
 
 const now = () => new Date().toISOString();
 const parse = (v, fallback) => {
@@ -49,16 +52,10 @@ export function passportView(row, { internal = true } = {}) {
     safety: parse(row.safety_restrictions_json, {}),
     steps: parse(row.steps_json, []),
     origin: row.origin_type,
-    originLabel: ORIGIN_LABELS[row.origin_type],
-    verification: row.customer_confirmed
-      ? 'customer_confirmed'
-      : unconfirmed
-        ? 'unconfirmed_by_customer'
-        : row.origin_type === 'company_db_sync'
-          ? evidence.declaredVerified ? 'imported_declared_verified' : 'imported_unverified'
-          : row.origin_type === 'standard_playbook'
-            ? 'company_configured'
-            : 'not_customer_confirmed',
+    originLabel: row.origin_type === 'specialist_confirmed' && !row.customer_confirmed ? SOURCE_LABELS[verificationOf(row)] : ORIGIN_LABELS[row.origin_type],
+    verification: verificationOf(row),
+    revisedFrom: evidence.revisedFrom || null,
+    sourceStatus: row.source_status || 'present',
     customerConfirmed: Boolean(row.customer_confirmed),
     unconfirmed,
     version: row.version_number,
@@ -86,65 +83,85 @@ export function passportView(row, { internal = true } = {}) {
   };
 }
 
-export function createMemoryPool(store, config = {}) {
+export function createMemoryPool(store, config = {}, { embedding = createEmbeddingService(config), vectors = createVectorStore(config) } = {}) {
   const sql = store.db;
-  const remoteModel = config.EMBEDDING_MODEL && config.OPENAI_API_KEY ? config.EMBEDDING_MODEL : null;
-  const remoteCache = new Map();
-  let remoteDown = 0;
-
-  async function remoteEmbed(texts) {
-    if (!remoteModel || Date.now() < remoteDown) return null;
-    const missing = texts.filter((t) => !remoteCache.has(t));
-    try {
-      if (missing.length) {
-        const r = await fetch((config.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '') + '/embeddings', {
-          method: 'POST',
-          signal: AbortSignal.timeout(10000),
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + config.OPENAI_API_KEY },
-          body: JSON.stringify({ model: remoteModel, input: missing }),
-        });
-        if (!r.ok) throw new Error('Embedding HTTP ' + r.status);
-        const body = await r.json();
-        missing.forEach((t, i) => {
-          const v = body.data?.[i]?.embedding;
-          if (!Array.isArray(v)) throw new Error('Invalid embedding response');
-          if (remoteCache.size > 2000) remoteCache.clear();
-          remoteCache.set(t, Float32Array.from(v));
-        });
-      }
-      return texts.map((t) => remoteCache.get(t));
-    } catch (e) {
-      // Fall back to the offline representation for 5 minutes; never fail the request.
-      remoteDown = Date.now() + 300000;
-      console.warn('Embedding backend unavailable; using local fallback:', e.message);
-      return null;
-    }
-  }
-  const docText = (row) => `${row.title}\n${row.symptoms_text}\n${stepsList(parse(row.steps_json, [])).join(' ')}`;
+  const positive = (v, fallback) => (Number(v) > 0 ? Math.min(500, Math.floor(Number(v))) : fallback);
+  const lexicalTopK = positive(config.LEXICAL_TOP_K, 20);
+  const vectorTopK = positive(config.VECTOR_TOP_K, 20);
+  // Without a vector index, pools up to this size are compared in full (stored vectors, no re-embedding); larger
+  // pools are narrowed to the lexical candidates so a request never scans an unbounded table.
+  const scanLimit = positive(config.SQLITE_SCAN_LIMIT, 300);
+  // Upper bound when retrieval widens itself (see retrieve).
+  const candidateCap = Math.max(lexicalTopK, vectorTopK, positive(config.CANDIDATE_CAP, 400));
 
   function scoped(companyId, chatbotId, id) {
     return sql.prepare('SELECT * FROM memory_pool WHERE id=? AND company_id=? AND chatbot_id=?').get(id, companyId, chatbotId);
   }
 
+  /** Stored vectors for these rows under the current model; missing ones are embedded once and persisted. */
+  async function rowVectors(rows, modelId, { localOnly = false } = {}) {
+    const out = new Map();
+    const missing = [];
+    for (const r of rows) {
+      const stored = r.embedding_model === modelId && r.embedding_blob ? blobToVector(r.embedding_blob) : null;
+      // A stored vector of the wrong dimension is corrupt or from another model: never compare it.
+      if (stored && stored.length && (modelId !== LOCAL_EMBEDDING_MODEL || stored.length === EMBEDDING_DIMENSIONS)) out.set(r.id, stored);
+      else missing.push(r);
+    }
+    if (!missing.length) return out;
+    const persist = sql.prepare('UPDATE memory_pool SET embedding_blob=?,embedding_model=? WHERE id=? AND company_id=?');
+    if (localOnly || modelId === LOCAL_EMBEDDING_MODEL) {
+      for (const r of missing) {
+        const v = localEmbedding(documentText(r));
+        out.set(r.id, v);
+        persist.run(vectorToBlob(v), LOCAL_EMBEDDING_MODEL, r.id, r.company_id);
+      }
+      return out;
+    }
+    const { vectors: embedded, model } = await embedding.embedDocuments(missing.map(documentText));
+    missing.forEach((r, i) => {
+      out.set(r.id, embedded[i]);
+      persist.run(vectorToBlob(embedded[i]), model.replace(/^openai:/, ''), r.id, r.company_id);
+    });
+    return out;
+  }
+
   /**
-   * Hybrid retrieval for one company + chatbot. Returns at most three eligible,
-   * distinct suggestions plus withheld (unknown applicability) candidates and the
-   * internal evidence for each decision.
+   * Hybrid retrieval for one company + chatbot. Returns at most three eligible, distinct suggestions plus
+   * withheld (unknown applicability) candidates and the internal evidence for each decision.
+   *
+   * Candidates come from two bounded branches - SQLite FTS5 (top-K lexical) and the vector index (top-K semantic) -
+   * and are merged. Every candidate is then re-read from SQLite with the tenant, service, status and origin gates
+   * applied, so the vector index can never widen what is recommendable. Safety and compatibility gates run before
+   * ranking and cannot be overridden by similarity.
    */
-  async function retrieve({ companyId, chatbotId, text, factsText, fields = {}, excludeIds = new Set(), excludeSignatures = new Set(), allowedOrigins = ORIGINS, limit = THRESHOLDS.maxSuggestions }) {
+  async function retrieve(args) {
+    let result = await retrieveOnce(args, lexicalTopK, vectorTopK);
+    // Near-identical fixes that differ only by device or version are not separable by text similarity, so a fixed
+    // top-K can fill up with relevant-but-incompatible candidates. When that happens (and only then) look further.
+    let lk = lexicalTopK, vk = vectorTopK;
+    for (const factor of [4, 16]) {
+      if (!result.widen) break;
+      const nextL = Math.min(candidateCap, lexicalTopK * factor), nextV = Math.min(candidateCap, vectorTopK * factor);
+      if (nextL === lk && nextV === vk) break;
+      [lk, vk] = [nextL, nextV];
+      result = await retrieveOnce(args, lk, vk);
+      result.widened = { lexical: lk, semantic: vk };
+    }
+    delete result.widen;
+    return result;
+  }
+
+  async function retrieveOnce({ companyId, chatbotId, text, factsText, fields = {}, excludeIds = new Set(), excludeSignatures = new Set(), allowedOrigins = ORIGINS, limit = THRESHOLDS.maxSuggestions }, lexicalTopK, vectorTopK) {
     if (!companyId || !chatbotId) throw fault(403, 'A company and service scope is required.');
     const origins = allowedOrigins.filter((o) => ORIGINS.includes(o));
     if (!origins.length) return { eligible: [], withheld: [], rejected: [], backend: 'none' };
-    // 1. SQL prefilter (hard tenant, service, status and source gates).
-    const rows = sql
-      .prepare(
-        `SELECT * FROM memory_pool WHERE company_id=? AND chatbot_id=? AND status='active' AND origin_type IN (${origins.map(() => '?').join(',')})`,
-      )
-      .all(companyId, chatbotId, ...origins)
-      .filter((r) => !excludeIds.has(r.id) && !excludeSignatures.has(signatureOf(parse(r.steps_json, []))));
-    if (!rows.length) return { eligible: [], withheld: [], rejected: [], backend: LOCAL_EMBEDDING_MODEL };
+    const originSql = origins.map(() => '?').join(',');
+    const poolSize = sql.prepare(`SELECT COUNT(*) AS n FROM memory_pool WHERE company_id=? AND chatbot_id=? AND status='active' AND origin_type IN (${originSql})`).get(companyId, chatbotId, ...origins).n;
+    if (!poolSize) return { eligible: [], withheld: [], rejected: [], backend: embedding.model };
     const queryTokens = tokens(text);
-    // 2a. FTS5 BM25 lexical retrieval, joined back to the scoped table.
+
+    // Branch 1: SQLite FTS5 BM25, top-K, joined back to the scoped table.
     const raw = new Map();
     if (queryTokens.size) {
       const match = [...queryTokens].map((t) => '"' + t.replace(/"/g, '') + '"').join(' OR ');
@@ -152,43 +169,128 @@ export function createMemoryPool(store, config = {}) {
         .prepare(
           `SELECT f.memory_id AS id, bm25(memory_pool_fts, 0.0, 0.0, 2.0, 2.0, 0.5) AS score FROM memory_pool_fts f
            JOIN memory_pool m ON m.id=f.memory_id AND m.company_id=f.company_id
-           WHERE memory_pool_fts MATCH ? AND m.company_id=? AND m.chatbot_id=? AND m.status='active'`,
+           WHERE memory_pool_fts MATCH ? AND m.company_id=? AND m.chatbot_id=? AND m.status='active' AND m.origin_type IN (${originSql})
+           ORDER BY score LIMIT ?`,
         )
-        .all(match, companyId, chatbotId))
+        .all(match, companyId, chatbotId, ...origins, lexicalTopK))
         raw.set(r.id, -r.score);
     }
     const rawBest = Math.max(0, ...[...raw.values()]);
-    // 2b. Embeddings: configured remote backend where available, else local.
-    let backend = LOCAL_EMBEDDING_MODEL;
-    let qVec = localEmbedding(text);
-    // Rows embedded by an older local model version are re-embedded once and stored again.
-    const refresh = sql.prepare('UPDATE memory_pool SET embedding_blob=?,embedding_model=? WHERE id=? AND company_id=?');
-    let vectors = rows.map((r) => {
-      if (r.embedding_model === LOCAL_EMBEDDING_MODEL && r.embedding_blob) {
-        const stored = blobToVector(r.embedding_blob);
-        // A stored vector of the wrong dimension is corrupt or from another model: never compare it.
-        if (stored && stored.length === EMBEDDING_DIMENSIONS) return stored;
+
+    // Branch 2: semantic candidates from the vector index (when configured and reachable).
+    const query = await embedding.embedQuery(text);
+    const cosines = new Map();
+    let source = 'sqlite';
+    if (query && vectors.available()) {
+      const hits = await vectors.searchKnowledgeVectors({ modelId: query.model, vector: query.vector, companyId, chatbotId, limit: vectorTopK });
+      if (hits) {
+        source = 'chroma';
+        for (const h of hits) cosines.set(h.id, h.similarity);
       }
-      const v = localEmbedding(docText(r));
-      if (!r.embedding_model || r.embedding_model.startsWith('local-hashed-concepts')) refresh.run(vectorToBlob(v), LOCAL_EMBEDDING_MODEL, r.id, companyId);
-      return v;
-    });
-    const remote = await remoteEmbed([text, ...rows.map(docText)]);
-    if (remote) {
-      // A remote result is only usable if every vector has the same dimension as the query vector.
-      const dimension = remote[0]?.length;
-      if (dimension && remote.every((v) => v?.length === dimension)) {
-        backend = remoteModel;
-        [qVec, ...vectors] = remote;
-      } else console.warn('Embedding dimensions were inconsistent; using the local representation.');
     }
+
+    // Branch 3: fixes that name THIS device or version (indexed equality facets). Text similarity cannot separate fixes
+    // that differ only by model or firmware, so without this a pool full of near-duplicates hides the right one.
+    const gateFacts = customerFacts(factsText ?? text, fields);
+    const facetPairs = Object.entries(gateFacts).flatMap(([key, f]) => f.values.slice(0, 5).map((v) => [key, v]));
+    const facetHits = new Map();
+    if (facetPairs.length) {
+      const where = facetPairs.map(() => '(f.key=? AND f.value=?)').join(' OR ');
+      for (const r of sql
+        .prepare(
+          `SELECT f.memory_id AS id, COUNT(*) AS hits FROM passport_facets f JOIN memory_pool m ON m.id=f.memory_id
+           WHERE f.company_id=? AND f.chatbot_id=? AND m.status='active' AND m.origin_type IN (${originSql}) AND (${where})
+           GROUP BY f.memory_id ORDER BY hits DESC LIMIT ?`,
+        )
+        .all(companyId, chatbotId, ...origins, ...facetPairs.flat(), Math.max(lexicalTopK, 50)))
+        facetHits.set(r.id, r.hits);
+    }
+    // Candidate ids: union of the branches. Without the vector index a small pool is compared in full.
+    const ids = new Set([...raw.keys(), ...cosines.keys(), ...facetHits.keys()]);
+    // Knowledge the index has not caught up with yet (new, edited or re-queued) is still covered semantically from
+    // SQLite, so a lagging or rebuilding index never hides recent knowledge.
+    const unindexed = new Set();
+    if (source === 'chroma')
+      for (const r of sql
+        .prepare(`SELECT m.id FROM memory_pool m LEFT JOIN vector_index_state v ON v.memory_id=m.id WHERE m.company_id=? AND m.chatbot_id=? AND m.status='active' AND m.origin_type IN (${originSql}) AND (v.status IS NULL OR v.status<>'indexed') ORDER BY m.updated_at DESC LIMIT ?`)
+        .all(companyId, chatbotId, ...origins, scanLimit)) {
+        unindexed.add(r.id);
+        ids.add(r.id);
+      }
+    if (source === 'sqlite' && poolSize <= scanLimit)
+      for (const r of sql.prepare(`SELECT id FROM memory_pool WHERE company_id=? AND chatbot_id=? AND status='active' AND origin_type IN (${originSql})`).all(companyId, chatbotId, ...origins)) ids.add(r.id);
+
+    // Authoritative lookup: tenant, service, status and origin are enforced here, whatever the index returned.
+    const rows = [];
+    const wanted = [...ids];
+    for (let i = 0; i < wanted.length; i += 200) {
+      const chunk = wanted.slice(i, i + 200);
+      rows.push(...sql
+        .prepare(`SELECT * FROM memory_pool WHERE company_id=? AND chatbot_id=? AND status='active' AND origin_type IN (${originSql}) AND id IN (${chunk.map(() => '?').join(',')})`)
+        .all(companyId, chatbotId, ...origins, ...chunk)
+        .filter((r) => !excludeIds.has(r.id) && !excludeSignatures.has(signatureOf(parse(r.steps_json, [])))));
+    }
+    if (!rows.length) return { eligible: [], withheld: [], rejected: [], backend: embedding.model, source };
+
+    // Candidates found by device facets or by the vector index may not be in the keyword top-K. Give them their real
+    // keyword score (same query, same index) so they are compared fairly with the lexical hits.
+    const unscoredLexical = queryTokens.size ? rows.filter((r) => !raw.has(r.id)).map((r) => r.id) : [];
+    if (unscoredLexical.length) {
+      const match = [...queryTokens].map((t) => '"' + t.replace(/"/g, '') + '"').join(' OR ');
+      for (let i = 0; i < unscoredLexical.length; i += 200) {
+        const chunk = unscoredLexical.slice(i, i + 200);
+        for (const r of sql
+          .prepare(`SELECT memory_id AS id, bm25(memory_pool_fts, 0.0, 0.0, 2.0, 2.0, 0.5) AS score FROM memory_pool_fts WHERE memory_pool_fts MATCH ? AND memory_id IN (${chunk.map(() => '?').join(',')})`)
+          .all(match, ...chunk))
+          raw.set(r.id, -r.score);
+      }
+    }
+    const rawBestAll = Math.max(rawBest, 0, ...[...raw.values()]);
+
+    // Cosine for candidates the vector index did not score (lexical-only hits), within the same embedding space.
+    let backend = embedding.model;
+    if (source === 'chroma') {
+      const lagging = rows.filter((r) => unindexed.has(r.id));
+      if (lagging.length) {
+        try {
+          const own = await rowVectors(lagging, embedding.isRemote ? embedding.model : LOCAL_EMBEDDING_MODEL);
+          for (const r of lagging) if (own.get(r.id)?.length === query.vector.length) cosines.set(r.id, cosine(query.vector, own.get(r.id)));
+        } catch { /* the worker will index these; until then they rely on the lexical branch */ }
+      }
+      const unscored = rows.filter((r) => !cosines.has(r.id) && !unindexed.has(r.id)).map((r) => r.id);
+      if (unscored.length) {
+        const more = await vectors.searchKnowledgeVectors({ modelId: query.model, vector: query.vector, companyId, chatbotId, limit: unscored.length, ids: unscored });
+        if (more) for (const h of more) cosines.set(h.id, h.similarity);
+      }
+    } else {
+      // SQLite semantic fallback: stored vectors (embedded once, persisted), query embedded now.
+      let qVec = query?.vector;
+      let model = query ? embedding.modelId() : LOCAL_EMBEDDING_MODEL;
+      let stored;
+      try {
+        stored = query ? await rowVectors(rows, embedding.isRemote ? embedding.model : LOCAL_EMBEDDING_MODEL) : null;
+        // A remote result is only usable when every vector has the query's dimension.
+        if (stored && ![...stored.values()].every((v) => v?.length === qVec.length)) throw new Error('Embedding dimensions were inconsistent.');
+      } catch (e) {
+        console.warn('Embedding backend unavailable; using local fallback:', e.message);
+        stored = null;
+      }
+      if (!stored) {
+        qVec = localEmbedding(text);
+        model = LOCAL_EMBEDDING_MODEL;
+        stored = await rowVectors(rows, LOCAL_EMBEDDING_MODEL, { localOnly: true });
+      }
+      backend = model === LOCAL_EMBEDDING_MODEL ? LOCAL_EMBEDDING_MODEL : embedding.model;
+      for (const r of rows) cosines.set(r.id, cosine(qVec, stored.get(r.id)));
+    }
+
     // `text` drives similarity; `factsText` (default: text) drives compatibility and safety, so a
     // short follow-up message can be matched on its own while still honouring the ticket's device facts.
     const gateText = factsText ?? text;
     const facts = customerFacts(gateText, fields);
-    const scoredRows = rows.map((r, i) => {
-      const cos = cosine(qVec, vectors[i]);
-      const bm = normBm25({ raw: raw.has(r.id) ? raw.get(r.id) : null, rawBest, queryTokens, docTokens: tokens(r.title + ' ' + r.symptoms_text) });
+    const scoredRows = rows.map((r) => {
+      const cos = cosines.has(r.id) ? cosines.get(r.id) : null;
+      const bm = normBm25({ raw: raw.has(r.id) ? raw.get(r.id) : null, rawBest: rawBestAll, queryTokens, docTokens: tokens(r.title + ' ' + r.symptoms_text) });
       const hybrid = hybridScore(cos, bm);
       const gate = compatibilityGate({ applicability: parse(r.applicability_json, {}), safety: parse(r.safety_restrictions_json, {}), facts, text: gateText, fields });
       const w = reliability(r.initial_confidence_score, r.reuse_success_count, r.reuse_failure_count);
@@ -201,7 +303,7 @@ export function createMemoryPool(store, config = {}) {
         gate,
         hybrid,
         finalScore: final,
-        breakdown: { cosine: cos === null ? null : Math.round(cos * 10000) / 10000, normBm25: bm, S_hybrid: hybrid, S_compat: gate.compat, W_reliability: w, S_final: final, C_init: r.initial_confidence_score },
+        breakdown: { cosine: cos === null || cos === undefined ? null : Math.round(cos * 10000) / 10000, normBm25: bm, S_hybrid: hybrid, S_compat: gate.compat, W_reliability: w, S_final: final, C_init: r.initial_confidence_score },
       };
     });
     const eligible = rankCandidates(scoredRows, limit);
@@ -210,7 +312,11 @@ export function createMemoryPool(store, config = {}) {
       .filter((c) => c.gate.status === 'unknown' && finalScore(c.hybrid, 1, c.breakdown.W_reliability) >= THRESHOLDS.retrieval)
       .map((c) => ({ id: c.id, title: c.row.title, missing: c.gate.reasons }));
     const rejected = scoredRows.filter((c) => !eligible.includes(c)).map((c) => ({ id: c.id, status: c.gate.status, reasons: c.gate.reasons, S_final: c.finalScore }));
-    return { eligible, withheld, rejected, backend };
+    // Another, wider pass is worthwhile only if this one was full AND turned away relevant fixes on compatibility.
+    const saturated = raw.size >= lexicalTopK || facetHits.size >= Math.max(lexicalTopK, 50) || (source === 'chroma' && cosines.size >= vectorTopK);
+    const turnedAwayRelevant = scoredRows.some((c) => !c.eligible && ['conflict', 'unknown'].includes(c.gate.status) && finalScore(c.hybrid, 1, c.breakdown.W_reliability) >= THRESHOLDS.retrieval);
+    const widen = eligible.length === 0 && saturated && turnedAwayRelevant && rows.length < poolSize;
+    return { widen, eligible, withheld, rejected, backend, source, candidates: { lexical: raw.size, facets: facetHits.size, semantic: source === 'chroma' ? cosines.size : 0, unindexed: unindexed.size, merged: rows.length, poolSize } };
   }
 
   /** Record a reuse outcome; flags for review at 2 consecutive failures or W < 0.55. */
@@ -322,6 +428,8 @@ export function createMemoryPool(store, config = {}) {
   }
 
   return {
+    embedding,
+    vectors,
     retrieve,
     recordOutcome,
     revise,
@@ -331,9 +439,14 @@ export function createMemoryPool(store, config = {}) {
     get: (companyId, chatbotId, id) => scoped(companyId, chatbotId, id),
     list(companyId, chatbotId, { history = true } = {}) {
       return sql
-        .prepare(`SELECT * FROM memory_pool WHERE company_id=? AND chatbot_id=? ${history ? '' : "AND status IN ('active','flagged_for_review')"} ORDER BY lineage_id, version_number DESC`)
+        .prepare(`SELECT m.*, v.status AS index_state FROM memory_pool m LEFT JOIN vector_index_state v ON v.memory_id=m.id WHERE m.company_id=? AND m.chatbot_id=? ${history ? '' : "AND m.status IN ('active','flagged_for_review')"} ORDER BY m.lineage_id, m.version_number DESC`)
         .all(companyId, chatbotId)
-        .map((r) => passportView(r));
+        .map((r) => {
+          const view = passportView(r);
+          // Only meaningful for knowledge that is meant to be searchable and only when a vector index is in use.
+          if (vectors.enabled && r.status === 'active') view.searchStatus = r.index_state === 'indexed' ? 'ready' : r.index_state === 'failed' ? 'needs_attention' : 'updating';
+          return view;
+        });
     },
     insert: (p) => insertPassport(sql, p),
   };

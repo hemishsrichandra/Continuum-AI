@@ -19,16 +19,18 @@
 import { randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { isPrivateAddress, resolveAllowed, pinnedGet, resolvePostgresDestination } from './net-guard.js';
 import { resolve, sep } from 'node:path';
 import { realpathSync, existsSync } from 'node:fs';
 import { fault } from './providers.js';
 import { botId, getBot, normalizeBot } from './chatbots.js';
-import { insertPassport, computeInitialConfidence, normalizeSafety, stepsList } from './passports.js';
+import { insertPassport, computeInitialConfidence, normalizeSafety, stepsList, refreshFacets } from './passports.js';
 import { tokens } from './context.js';
 import { localEmbedding, vectorToBlob, LOCAL_EMBEDDING_MODEL } from './scoring.js';
 import { containsSecret, scrubPII, dangerousInstructions } from './privacy.js';
 import { customerFacts } from './applicability.js';
 import { field, json } from './requests.js';
+import { sanitizeDeep, isPersonalKey } from './privacy-sanitizer.js';
 
 export const SOURCE_TYPES = ['csv_sync', 'sqlite', 'rest_api', 'postgres'];
 export const MAX_RECORDS = 2000;
@@ -39,20 +41,7 @@ export const PASSPORT_FIELDS = ['externalId', 'title', 'symptoms', 'steps', 'app
 const REQUIRED_FIELDS = ['externalId', 'title', 'symptoms', 'steps'];
 
 // --------------------------------------------------------------------------- safety helpers
-export function isPrivateAddress(address) {
-  const v = isIP(address);
-  if (v === 4) {
-    const [a, b] = address.split('.').map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
-  }
-  if (v === 6) {
-    const x = address.toLowerCase();
-    if (x === '::1' || x === '::' || x.startsWith('fe80') || x.startsWith('fc') || x.startsWith('fd') || x.startsWith('ff')) return true;
-    const mapped = x.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    return mapped ? isPrivateAddress(mapped[1]) : false;
-  }
-  return true; // not an IP: unknown, treat as unsafe
-}
+export { isPrivateAddress };
 /** Throws unless the URL is an https (or explicitly allowed loopback) origin the server owner allowlisted and resolves publicly. */
 export async function assertSafeUrl(input, { allowedOrigins, allowLoopback = false, resolver = lookup } = {}) {
   let url;
@@ -67,22 +56,18 @@ export async function assertSafeUrl(input, { allowedOrigins, allowLoopback = fal
     throw fault(400, 'Only https URLs are allowed.');
   if (!allowedOrigins.has(url.origin))
     throw fault(400, 'The server owner must allow this origin in DATA_SOURCE_ALLOWED_ORIGINS before it can be used.');
-  if (loopback) {
-    if (!allowLoopback) throw fault(400, 'Private and loopback addresses are not allowed.');
-    return url;
-  }
-  if (isIP(url.hostname.replace(/^\[|\]$/g, ''))) {
-    if (isPrivateAddress(url.hostname.replace(/^\[|\]$/g, ''))) throw fault(400, 'Private and loopback addresses are not allowed.');
-    return url;
-  }
-  let addresses;
   try {
-    addresses = await resolver(url.hostname, { all: true });
-  } catch {
-    throw fault(400, 'The host could not be resolved.');
+    await resolveAllowed(url.hostname, { allowLoopback, resolver });
+  } catch (e) {
+    throw fault(e.status || 400, e.message);
   }
-  if (!addresses.length || addresses.some((a) => isPrivateAddress(a.address))) throw fault(400, 'Private and loopback addresses are not allowed.');
   return url;
+}
+/** Like assertSafeUrl, but also returns the validated address the connection must be pinned to. */
+export async function resolveDestination(input, options) {
+  const url = await assertSafeUrl(input, options);
+  const [first] = await resolveAllowed(url.hostname, { allowLoopback: options.allowLoopback, resolver: options.resolver });
+  return { url, address: first.address, family: first.family };
 }
 const dotted = (row, path) => String(path).split('.').reduce((v, k) => (v && typeof v === 'object' ? v[k] : undefined), row);
 const clip = (v, n) => (v === null || v === undefined ? '' : String(v)).trim().slice(0, n);
@@ -133,12 +118,19 @@ export function mapRecord(row, mapping, schema = [], { declaredVerified = false 
   const hazards = dangerousInstructions(raw.steps);
   const conditions = [];
   for (const [key, column] of Object.entries(mapping.diagnostics)) {
+    // A field that holds personal data (an email, phone, customer id ...) is never a compatibility condition.
+    if (isPersonalKey(key)) { issues.push(`diagnostic field “${key}” holds personal data and cannot be used`); continue; }
     const value = clip(get(column), 200);
     if (!value) continue;
     const required = schema.find((s) => s.key === key)?.required !== false;
     conditions.push({ key, op: 'in', values: value.split(/[|;]/).map((v) => v.trim().toLowerCase()).filter(Boolean).slice(0, 20), required });
   }
-  const applicability = { ...(redacted.applicability && { environmentText: redacted.applicability }), ...(conditions.length && { conditions }) };
+  let applicability = { ...(redacted.applicability && { environmentText: redacted.applicability }), ...(conditions.length && { conditions }) };
+  // Nested values (the diagnostic conditions) get the same inspection as free text.
+  const cleanedApplicability = sanitizeDeep(applicability);
+  applicability = cleanedApplicability.value;
+  redactions += cleanedApplicability.count;
+  if (cleanedApplicability.secret) issues.push('contains a credential or secret');
   if (!applicability.environmentText && !conditions.length) applicability.universal = false;
   const safety = redacted.safety ? normalizeSafety(redacted.safety) : { restrictions: [] };
   const passport = { title: redacted.title, symptoms: redacted.symptoms, applicability, safety, steps: [redacted.steps] };
@@ -184,13 +176,19 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
   const allowedOrigins = new Set((config.DATA_SOURCE_ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean));
   const sqliteDirs = (config.DATA_SOURCE_SQLITE_DIRS || '').split(',').map((s) => s.trim()).filter(Boolean).map((d) => { try { return realpathSync(resolve(d)); } catch { return null; } }).filter(Boolean);
   const allowLoopback = config.NODE_ENV !== 'production' && config.DATA_SOURCE_ALLOW_LOOPBACK === 'true';
+  const pgHosts = new Set((config.DATA_SOURCE_POSTGRES_HOSTS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const pgPorts = new Set((config.DATA_SOURCE_POSTGRES_PORTS || '5432').split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0 && n < 65536));
   const now = () => new Date().toISOString();
 
   const availability = {
     csv_sync: () => ({ available: true }),
     sqlite: () => (sqliteDirs.length ? { available: true } : { available: false, reason: 'configuration-required: the server owner must set DATA_SOURCE_SQLITE_DIRS to the directories that may be read.' }),
     rest_api: () => (allowedOrigins.size ? { available: true } : { available: false, reason: 'configuration-required: the server owner must set DATA_SOURCE_ALLOWED_ORIGINS.' }),
-    postgres: () => (drivers.postgres || config.DATA_SOURCE_POSTGRES_DRIVER === 'pg' ? { available: true, note: 'requires the optional “pg” package' } : { available: false, reason: 'unavailable: no PostgreSQL driver is installed (install the optional “pg” package and set DATA_SOURCE_POSTGRES_DRIVER=pg).' }),
+    postgres: () => {
+      if (!(drivers.postgres || config.DATA_SOURCE_POSTGRES_DRIVER === 'pg')) return { available: false, reason: 'unavailable: no PostgreSQL driver is installed (install the optional “pg” package and set DATA_SOURCE_POSTGRES_DRIVER=pg).' };
+      if (!pgHosts.size) return { available: false, reason: 'configuration-required: the server owner must set DATA_SOURCE_POSTGRES_HOSTS to the database hosts that may be read.' };
+      return { available: true, note: 'read-only, TLS required' };
+    },
   };
   const status = () => Object.fromEntries(SOURCE_TYPES.map((t) => [t, availability[t]()]));
 
@@ -231,23 +229,17 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
   }
   async function readRest(conn) {
     if (!availability.rest_api().available) throw fault(503, availability.rest_api().reason);
-    const url = await assertSafeUrl(conn.url, { allowedOrigins, allowLoopback, resolver });
+    // Resolve and validate ONCE, then connect to that exact address (no second DNS lookup can redirect the request).
+    const dest = await resolveDestination(conn.url, { allowedOrigins, allowLoopback, resolver });
     let response;
     try {
-      response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json', ...(conn.token && { Authorization: 'Bearer ' + conn.token }) } });
-    } catch {
-      throw fault(503, 'The REST source could not be reached.');
+      response = await pinnedGet({ url: dest.url, address: dest.address, family: dest.family, timeoutMs: 12000, maxBytes: MAX_BYTES * 4, headers: { Accept: 'application/json', ...(conn.token && { Authorization: 'Bearer ' + conn.token }) } });
+    } catch (e) {
+      throw fault(e.status === 413 ? 413 : 503, e.status ? e.message : 'The REST source could not be reached.');
     }
-    if (!response.ok) throw fault(503, 'The REST source returned HTTP ' + response.status + '.');
-    const chunks = [];
-    let size = 0;
-    for await (const chunk of response.body) {
-      size += chunk.length;
-      if (size > MAX_BYTES * 4) throw fault(413, 'The REST response is too large.');
-      chunks.push(chunk);
-    }
+    if (response.status < 200 || response.status >= 300) throw fault(503, 'The REST source returned HTTP ' + response.status + '.');
     let body;
-    try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { throw fault(502, 'The REST source did not return JSON.'); }
+    try { body = JSON.parse(response.body.toString()); } catch { throw fault(502, 'The REST source did not return JSON.'); }
     const list = conn.recordsPath ? dotted(body, conn.recordsPath) : body;
     if (!Array.isArray(list)) throw fault(502, 'The REST source must return an array of records (set “recordsPath” if they are nested).');
     return list.slice(0, MAX_RECORDS + 1);
@@ -261,8 +253,21 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     const pg = drivers.postgres || (await import('pg').catch(() => null));
     if (!pg) throw fault(503, 'unavailable: the “pg” package is not installed.');
     const Client = pg.Client || pg.default?.Client;
-    const client = new Client({ connectionString: conn.uri, statement_timeout: 12000, connectionTimeoutMillis: 8000 });
-    await client.connect();
+    const dest = await postgresDestination(conn.uri);
+    // Discrete settings, never the raw connection string: the validated address is pinned, TLS verifies the host name,
+    // the session is read-only, and every wait is bounded.
+    const client = new Client({
+      host: dest.address, port: dest.port, user: dest.user, password: dest.password, database: dest.database,
+      ssl: dest.tls ? { rejectUnauthorized: true, servername: dest.host } : false,
+      statement_timeout: 12000, query_timeout: 15000, connectionTimeoutMillis: 8000, application_name: 'continuum-import',
+      options: '-c default_transaction_read_only=on',
+    });
+    client.on?.('error', () => {});
+    try {
+      await client.connect();
+    } catch {
+      throw fault(503, 'The PostgreSQL source could not be reached.');
+    }
     try {
       const table = (conn.schema ? `"${conn.schema}".` : '') + `"${conn.table}"`;
       const result = await client.query(`SELECT ${columns.map((c) => `"${c}"`).join(',')} FROM ${table} LIMIT ${MAX_RECORDS + 1}`);
@@ -271,6 +276,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
       await client.end().catch(() => {});
     }
   }
+  const postgresDestination = (uri) => resolvePostgresDestination(uri, { allowedHosts: pgHosts, allowedPorts: pgPorts, allowLoopback, resolver }).catch((e) => { throw fault(e.status || 400, e.message); });
   const readers = { csv_sync: readCsv, sqlite: readSqlite, rest_api: readRest, postgres: readPostgres };
 
   const stored = (companyId, id) => {
@@ -285,7 +291,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     diagnosticSchema: JSON.parse(row.diagnostic_schema_json), declaredVerified: Boolean(row.declared_verified),
     status: row.status, lastSyncedAt: row.last_synced_at, lastSyncResult: row.last_sync_result_json ? JSON.parse(row.last_sync_result_json) : null,
     lastError: row.last_error, createdAt: row.created_at, availability: availability[row.source_type]?.(),
-    syncIntervalHours: row.sync_interval_hours ?? null, nextSyncAt: row.sync_interval_hours ? row.next_sync_at : null,
+    authoritativeSnapshot: Boolean(row.authoritative_snapshot), syncIntervalHours: row.sync_interval_hours ?? null, nextSyncAt: row.sync_interval_hours ? row.next_sync_at : null,
   });
 
   /** Read + map + validate without writing anything. */
@@ -326,16 +332,18 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     const seenKeys = new Set();
     sql.transaction(() => {
       for (const rec of report.records) {
+        // A record the source still has but that fails validation is NOT withdrawn: it must not be retired.
+        if (rec.externalId) seenKeys.add(`import:${id}:${rec.externalId}`);
         if (rec.issues.length) {
           if (rec.issues.includes('duplicate external id in this batch')) result.duplicates++;
           else result.invalid++;
           continue;
         }
         const sourceKey = `import:${id}:${rec.externalId}`;
-        seenKeys.add(sourceKey);
         const p = rec.passport;
         const contentHash = JSON.stringify([p.title, p.symptoms, p.applicability, p.safety, p.steps]);
         const latest = sql.prepare('SELECT * FROM memory_pool WHERE company_id=? AND source_key=? ORDER BY version_number DESC LIMIT 1').get(companyId, sourceKey);
+        const seenAt = now();
         const evidence = { type: 'company_database_import', sourceId: id, sourceType: row.source_type, externalRecordId: rec.externalId, declaredVerified: Boolean(row.declared_verified), importedAt: now(), customerConfirmed: false, ...(rec.updatedAt && { sourceUpdatedAt: rec.updatedAt }) };
         if (!latest) {
           insertPassport(sql, {
@@ -348,8 +356,20 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
           if (rec.hazards.length) result.flaggedForReview++;
           continue;
         }
+        sql.prepare("UPDATE memory_pool SET last_seen_at=?,source_version=? WHERE id=? AND company_id=?").run(seenAt, rec.updatedAt || null, latest.id, companyId);
+        // A record the source withdrew earlier and now lists again returns through the normal approval policy.
+        if (latest.status === 'retired' && latest.source_status === 'withdrawn' && latest.origin_type === 'company_db_sync') {
+          const hold = rec.hazards.length || !row.declared_verified;
+          sql.prepare("UPDATE memory_pool SET status=?,source_status='present',flagged_reason=?,updated_at=? WHERE id=? AND company_id=?")
+            .run(hold ? 'flagged_for_review' : 'active', rec.hazards.length ? 'Imported instructions need review: ' + rec.hazards.join(', ') : hold ? 'Imported from a company database and waiting for approval' : null, seenAt, latest.id, companyId);
+          result.reappeared = (result.reappeared || 0) + 1;
+          continue;
+        }
+        sql.prepare("UPDATE memory_pool SET source_status='present' WHERE id=? AND company_id=? AND source_status<>'present'").run(latest.id, companyId);
+        // An import still waiting for approval has no local decisions yet, so the source may keep correcting it.
+        const awaiting = latest.origin_type === 'company_db_sync' && latest.status === 'flagged_for_review' && !latest.locally_reviewed && latest.version_number === 1 && latest.reuse_failure_count === 0 && String(latest.flagged_reason || '').startsWith('Imported');
         // Never overwrite local decisions: review, revision lineage, flags or tracked failures.
-        const local = latest.locally_reviewed || latest.version_number > 1 || latest.parent_version_id || latest.status !== 'active' || latest.reuse_failure_count > 0 || latest.origin_type !== 'company_db_sync';
+        const local = latest.locally_reviewed || latest.version_number > 1 || latest.parent_version_id || (latest.status !== 'active' && !awaiting) || latest.reuse_failure_count > 0 || latest.origin_type !== 'company_db_sync';
         if (local) { result.skippedLocallyReviewed++; continue; }
         const next = { title: p.title, symptoms_text: p.symptoms, applicability_json: JSON.stringify(p.applicability), safety_restrictions_json: JSON.stringify(p.safety), steps_json: JSON.stringify(stepsList(p.steps)) };
         const same = latest.title === next.title && latest.symptoms_text === next.symptoms_text && latest.applicability_json === next.applicability_json && latest.safety_restrictions_json === next.safety_restrictions_json && latest.steps_json === next.steps_json;
@@ -357,19 +377,35 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
         sql.prepare(`UPDATE memory_pool SET title=?,symptoms_text=?,applicability_json=?,safety_restrictions_json=?,steps_json=?,initial_confidence_score=?,
           status=?,flagged_reason=?,risk_level=?,verification_evidence_json=?,provenance_json=?,updated_at=? WHERE id=? AND company_id=?`)
           .run(next.title, next.symptoms_text, next.applicability_json, next.safety_restrictions_json, next.steps_json, rec.cInit.score,
-            rec.hazards.length ? 'flagged_for_review' : 'active', rec.hazards.length ? 'Imported instructions need review: ' + rec.hazards.join(', ') : null, rec.hazards.length ? 'high' : 'standard',
+            rec.hazards.length || awaiting ? 'flagged_for_review' : 'active', rec.hazards.length ? 'Imported instructions need review: ' + rec.hazards.join(', ') : awaiting ? 'Imported from a company database and waiting for approval' : null, rec.hazards.length ? 'high' : 'standard',
             JSON.stringify(evidence), JSON.stringify({ cInit: rec.cInit, redactions: rec.redactions, hazards: rec.hazards, importedBy: actor, resyncedAt: now() }), now(), latest.id, companyId);
         // Content changed: refresh search terms and the local embedding (FTS is maintained by trigger).
         sql.prepare('UPDATE memory_pool SET search_terms=?,embedding_blob=?,embedding_model=? WHERE id=? AND company_id=?')
           .run([...tokens(`${p.title}\n${p.symptoms}`)].join(' '), vectorToBlob(localEmbedding(`${p.title}\n${p.symptoms}\n${stepsList(p.steps).join(' ')}`)), LOCAL_EMBEDDING_MODEL, latest.id, companyId);
+        refreshFacets(sql, sql.prepare('SELECT * FROM memory_pool WHERE id=?').get(latest.id));
         result.updated++;
         if (rec.hazards.length) result.flaggedForReview++;
       }
-      const existing = sql.prepare("SELECT source_key FROM memory_pool WHERE company_id=? AND source_id=? AND origin_type='company_db_sync' AND parent_version_id IS NULL AND status<>'retired'").all(companyId, id);
-      result.missingFromSource = existing.filter((e) => !seenKeys.has(e.source_key)).length;
+      // Reconciliation. Only a COMPLETE, owner-declared authoritative snapshot may retire records the source no longer
+      // lists. A partial, failed, empty or mostly-invalid read never does: absence from it proves nothing.
+      const current = sql.prepare("SELECT id,source_key FROM memory_pool WHERE company_id=? AND source_id=? AND origin_type='company_db_sync' AND status IN ('active','flagged_for_review')").all(companyId, id);
+      const absent = current.filter((e) => !seenKeys.has(e.source_key));
+      const complete = Boolean(row.authoritative_snapshot) && report.total > 0 && report.invalid / report.total <= 0.5;
+      result.snapshot = complete ? 'complete' : 'partial';
+      result.missingFromSource = absent.length;
+      if (absent.length && complete) {
+        const retire = sql.prepare("UPDATE memory_pool SET status='retired',source_status='withdrawn',flagged_reason='Withdrawn from the source database',provenance_json=json_set(provenance_json,'$.retiredBy','source'),updated_at=? WHERE id=? AND company_id=?");
+        for (const e of absent) retire.run(now(), e.id, companyId);
+        result.retiredFromSource = absent.length;
+      } else if (absent.length) {
+        const mark = sql.prepare("UPDATE memory_pool SET source_status='missing' WHERE id=? AND company_id=?");
+        for (const e of absent) mark.run(e.id, companyId);
+        if (!report.total) result.warning = 'The source returned no records, so nothing was retired.';
+        else if (!row.authoritative_snapshot) result.warning = 'Records missing from the source were left in place because this source is not marked as a complete snapshot.';
+      }
       result.finishedAt = now();
-      sql.prepare("UPDATE company_data_sources SET status='ok',last_error=NULL,last_synced_at=?,last_sync_result_json=?,updated_at=? WHERE id=? AND company_id=?")
-        .run(result.finishedAt, JSON.stringify(result), result.finishedAt, id, companyId);
+      sql.prepare("UPDATE company_data_sources SET status='ok',last_error=NULL,last_synced_at=?,last_complete_sync_at=CASE WHEN ? THEN ? ELSE last_complete_sync_at END,last_sync_result_json=?,updated_at=? WHERE id=? AND company_id=?")
+        .run(result.finishedAt, complete ? 1 : 0, result.finishedAt, JSON.stringify(result), result.finishedAt, id, companyId);
     }).immediate();
     return result;
   }
@@ -397,6 +433,8 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
       const schema = bot.diagnosticSchema || [];
       const mapping = validateMapping(body.fieldMapping, schema);
       if (body.declaredVerified !== undefined && typeof body.declaredVerified !== 'boolean') throw fault(400, 'declaredVerified must be true or false.');
+      if (body.authoritativeSnapshot !== undefined && typeof body.authoritativeSnapshot !== 'boolean') throw fault(400, 'authoritativeSnapshot must be true or false.');
+      const authoritative = body.authoritativeSnapshot === undefined ? Boolean(existing?.authoritative_snapshot) : body.authoritativeSnapshot;
       const id = existing?.id || randomUUID();
       // Optional scheduled sync: every N hours (1–720), or null for manual only.
       let interval = existing?.sync_interval_hours ?? null;
@@ -411,14 +449,15 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
         if (!body.connection || typeof body.connection !== 'object' || Array.isArray(body.connection)) throw fault(400, 'Send the connection details as an object.');
         const c = body.connection;
         if (body.sourceType === 'rest_api') await assertSafeUrl(c.url, { allowedOrigins, allowLoopback, resolver });
+        if (body.sourceType === 'postgres' && availability.postgres().available) await postgresDestination(c.uri);
         if (body.sourceType === 'sqlite') { if (availability.sqlite().available) safePath(c.path); if (!IDENT.test(c.table || '')) throw fault(400, 'Enter a plain table name.'); }
         encrypted = delivery.seal(Object.fromEntries(Object.entries(c).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, v.slice(0, MAX_BYTES)])), 'datasource:' + id);
       }
       if (!encrypted) throw fault(400, 'Provide the connection details.');
       const t = now();
-      sql.prepare(`INSERT INTO company_data_sources(id,company_id,chatbot_id,name,source_type,encrypted_connection_uri,field_mapping_json,diagnostic_schema_json,declared_verified,status,created_at,updated_at,sync_interval_hours,next_sync_at)
-        VALUES(?,?,?,?,?,?,?,?,?,'configured',?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,encrypted_connection_uri=excluded.encrypted_connection_uri,field_mapping_json=excluded.field_mapping_json,declared_verified=excluded.declared_verified,updated_at=excluded.updated_at,sync_interval_hours=excluded.sync_interval_hours,next_sync_at=excluded.next_sync_at WHERE company_data_sources.company_id=excluded.company_id`)
-        .run(id, companyId, bot.id, field(body.name, 'name', 100), body.sourceType, encrypted, JSON.stringify(mapping), JSON.stringify(schema), body.declaredVerified ? 1 : 0, t, t, interval, nextSync);
+      sql.prepare(`INSERT INTO company_data_sources(id,company_id,chatbot_id,name,source_type,encrypted_connection_uri,field_mapping_json,diagnostic_schema_json,declared_verified,status,created_at,updated_at,sync_interval_hours,next_sync_at,authoritative_snapshot)
+        VALUES(?,?,?,?,?,?,?,?,?,'configured',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,encrypted_connection_uri=excluded.encrypted_connection_uri,field_mapping_json=excluded.field_mapping_json,declared_verified=excluded.declared_verified,updated_at=excluded.updated_at,sync_interval_hours=excluded.sync_interval_hours,next_sync_at=excluded.next_sync_at,authoritative_snapshot=excluded.authoritative_snapshot WHERE company_data_sources.company_id=excluded.company_id`)
+        .run(id, companyId, bot.id, field(body.name, 'name', 100), body.sourceType, encrypted, JSON.stringify(mapping), JSON.stringify(schema), body.declaredVerified ? 1 : 0, t, t, interval, nextSync, authoritative ? 1 : 0);
       send(existing ? 200 : 201, { source: publicView(stored(companyId, id)) });
       return true;
     }

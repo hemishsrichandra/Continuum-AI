@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { ensureBots, defaultBotId, knowledgeScope } from './chatbots.js';
-import { SCHEMA_V5, backfillV5 } from './passports.js';
+import { SCHEMA_V5, backfillV5, refreshFacets } from './passports.js';
 
 const collections = [
   'repair',
@@ -210,11 +210,78 @@ export class SqliteStore {
     }).immediate();
     this.migrateV5();
     this.migrateV6();
+    this.migrateV7();
     // Idempotent hardening: the case timeline is an audit trail and can only be appended to.
     this.db.exec(`
       CREATE TRIGGER IF NOT EXISTS case_events_append_only_update BEFORE UPDATE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
       CREATE TRIGGER IF NOT EXISTS case_events_append_only_delete BEFORE DELETE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
     `);
+  }
+  // Migration 7: durable vector-index state (SQLite stays authoritative, ChromaDB is a rebuildable index),
+  // external-record tracking for imported knowledge, durable erasure tasks and SLA escalation history.
+  // Additive and idempotent: every statement can run on every start.
+  migrateV7() {
+    this.db.transaction(() => {
+      const has = (table, column) => this.db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS vector_index_state (
+          memory_id TEXT PRIMARY KEY, company_id TEXT NOT NULL, chatbot_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','processing','indexed','failed','absent')),
+          indexed_hash TEXT, indexed_model TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at INTEGER NOT NULL DEFAULT 0, lease_until INTEGER NOT NULL DEFAULT 0,
+          last_error TEXT, indexed_at TEXT, updated_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS vector_index_ready ON vector_index_state(status,next_attempt_at);
+        CREATE INDEX IF NOT EXISTS vector_index_company ON vector_index_state(company_id,status);
+        -- Any change that affects what is recommendable or what is embedded queues index work. The worker reads the
+        -- authoritative row, so these triggers only need to say "look at this memory again".
+        CREATE TRIGGER IF NOT EXISTS vector_state_insert AFTER INSERT ON memory_pool BEGIN
+          INSERT INTO vector_index_state(memory_id,company_id,chatbot_id,status,attempts,next_attempt_at,updated_at)
+          VALUES(NEW.id,NEW.company_id,NEW.chatbot_id,'pending',0,0,strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+          ON CONFLICT(memory_id) DO UPDATE SET status='pending',attempts=0,next_attempt_at=0,updated_at=excluded.updated_at;
+        END;
+        CREATE TRIGGER IF NOT EXISTS vector_state_update AFTER UPDATE OF status,title,symptoms_text,steps_json,search_terms,chatbot_id,company_id ON memory_pool
+        WHEN OLD.status IS NOT NEW.status OR OLD.title IS NOT NEW.title OR OLD.symptoms_text IS NOT NEW.symptoms_text OR OLD.steps_json IS NOT NEW.steps_json OR OLD.search_terms IS NOT NEW.search_terms OR OLD.chatbot_id IS NOT NEW.chatbot_id OR OLD.company_id IS NOT NEW.company_id BEGIN
+          INSERT INTO vector_index_state(memory_id,company_id,chatbot_id,status,attempts,next_attempt_at,updated_at)
+          VALUES(NEW.id,NEW.company_id,NEW.chatbot_id,'pending',0,0,strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+          ON CONFLICT(memory_id) DO UPDATE SET company_id=excluded.company_id,chatbot_id=excluded.chatbot_id,status='pending',attempts=0,next_attempt_at=0,last_error=NULL,updated_at=excluded.updated_at;
+        END;
+        CREATE TRIGGER IF NOT EXISTS vector_state_delete AFTER DELETE ON memory_pool BEGIN
+          INSERT INTO vector_index_state(memory_id,company_id,chatbot_id,status,attempts,next_attempt_at,updated_at)
+          VALUES(OLD.id,OLD.company_id,OLD.chatbot_id,'pending',0,0,strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+          ON CONFLICT(memory_id) DO UPDATE SET status='pending',attempts=0,next_attempt_at=0,updated_at=excluded.updated_at;
+        END;
+        INSERT OR IGNORE INTO vector_index_state(memory_id,company_id,chatbot_id,status,updated_at)
+          SELECT id,company_id,chatbot_id,'pending',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM memory_pool;
+
+        -- Durable, idempotent erasure work (remote memory service, vector index): visible, retryable, verifiable.
+        CREATE TABLE IF NOT EXISTS erasure_tasks (
+          id TEXT PRIMARY KEY, company_id TEXT NOT NULL, kind TEXT NOT NULL, target TEXT NOT NULL, payload_json TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','processing','done','failed')),
+          attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER NOT NULL DEFAULT 0, lease_until INTEGER NOT NULL DEFAULT 0,
+          last_error TEXT, verified_at TEXT, created_at TEXT NOT NULL, completed_at TEXT,
+          UNIQUE(company_id,kind,target));
+        CREATE INDEX IF NOT EXISTS erasure_ready ON erasure_tasks(status,next_attempt_at);
+
+        -- One row per (case, milestone): escalation and notification history that prevents repeated escalation.
+        CREATE TABLE IF NOT EXISTS sla_events (
+          id TEXT PRIMARY KEY, company_id TEXT NOT NULL, chatbot_id TEXT, handoff_id TEXT NOT NULL, ticket_id TEXT,
+          milestone TEXT NOT NULL, due_at TEXT, escalated_at TEXT NOT NULL, detail_json TEXT,
+          UNIQUE(company_id,handoff_id,milestone));
+      `);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS passport_facets (
+        memory_id TEXT NOT NULL, company_id TEXT NOT NULL, chatbot_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+        PRIMARY KEY(memory_id,key,value));
+        CREATE INDEX IF NOT EXISTS passport_facets_lookup ON passport_facets(company_id,chatbot_id,key,value);`);
+      if (!has('memory_pool', 'facets_at')) this.db.exec('ALTER TABLE memory_pool ADD COLUMN facets_at TEXT');
+      for (const row of this.db.prepare('SELECT * FROM memory_pool WHERE facets_at IS NULL').all()) refreshFacets(this.db, row);
+      // Imported-record tracking: lets a successful complete snapshot retire what the source withdrew.
+      if (!has('memory_pool', 'source_status')) this.db.exec("ALTER TABLE memory_pool ADD COLUMN source_status TEXT NOT NULL DEFAULT 'present'");
+      if (!has('memory_pool', 'last_seen_at')) this.db.exec('ALTER TABLE memory_pool ADD COLUMN last_seen_at TEXT');
+      if (!has('memory_pool', 'source_version')) this.db.exec('ALTER TABLE memory_pool ADD COLUMN source_version TEXT');
+      if (!has('company_data_sources', 'authoritative_snapshot')) this.db.exec('ALTER TABLE company_data_sources ADD COLUMN authoritative_snapshot INTEGER NOT NULL DEFAULT 0');
+      if (!has('company_data_sources', 'last_complete_sync_at')) this.db.exec('ALTER TABLE company_data_sources ADD COLUMN last_complete_sync_at TEXT');
+      this.db.prepare('INSERT OR IGNORE INTO schema_migrations VALUES(7,?)').run(new Date().toISOString());
+    }).immediate();
   }
   // Migration 6: per-service staff access, scheduled data-source sync columns and expression indexes for
   // the hot read paths. Additive and idempotent.

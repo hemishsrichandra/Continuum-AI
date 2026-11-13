@@ -24,8 +24,12 @@ import { intelligenceFor } from './intelligence.js';
 import { handleDemo, isDemoPath } from './demo-learning.js';
 import { createDataSources } from './data-sources.js';
 import { createPrivacyControls } from './privacy-controls.js';
+import { createEmbeddingService } from './embedding-service.js';
+import { createVectorStore } from './vector-store.js';
+import { createVectorIndex } from './vector-index.js';
+import { createSystemHealth } from './system-health.js';
 
-export function createHandler({ file, config = process.env, service } = {}) {
+export function createHandler({ file, config = process.env, service, vectorClient } = {}) {
   config = { APP_URL: 'http://localhost:3000', ...config };
   const appUrl = new URL(config.APP_URL);
   if (
@@ -47,17 +51,28 @@ export function createHandler({ file, config = process.env, service } = {}) {
   if (config.ENABLE_OUTBOX_WORKER === 'true') delivery.start();
   const memory = service || createMemory(store, config);
   const providerActions = createProviderActions(store, delivery, config);
-  const memoryPool = createMemoryPool(store, config);
+  const embedding = createEmbeddingService(config);
+  const vectors = createVectorStore(config, { client: vectorClient });
+  const memoryPool = createMemoryPool(store, config, { embedding, vectors });
+  const vectorIndex = createVectorIndex(store, { vectors, embedding });
   const dataSources = createDataSources(store, delivery, config);
   const followThrough = createFollowThrough(store, { delivery, config });
   const reuse = createReuse(store, memory, providerActions, memoryPool);
   const learning = createLearning(store, memory, companies, config, reuse, providerActions, { memoryPool, followThrough });
   const troubleshooting = createTroubleshooting(store, learning, reuse, providerActions, { memoryPool, followThrough });
   // Follow-through deadlines run on the integrations worker tick, not per web request.
-  delivery.register(() => followThrough.tick());
-  delivery.register(() => dataSources.runDue());
+  // Each task is an independent worker lane (own timeout, backoff and status): a slow database sync cannot block email, indexing or follow-through.
+  delivery.register(() => followThrough.tick(), { name: 'follow-through', timeoutMs: 30000 });
+  delivery.register(() => dataSources.runDue(), { name: 'data-sources', timeoutMs: 120000 });
+  let lastReconcile = 0;
+  delivery.register(async () => {
+    await vectorIndex.drain();
+    if (vectors.enabled && Date.now() - lastReconcile > 3600000) { lastReconcile = Date.now(); vectorIndex.markStale(); await vectorIndex.reconcileVectorIndex().catch(() => {}); }
+  }, { name: 'knowledge-indexing', timeoutMs: 60000 });
   const privacy = createPrivacyControls(store, memory, config);
-  delivery.register(() => privacy.sweep());
+  const systemHealth = createSystemHealth({ store, vectorIndex, privacy, delivery });
+  delivery.register(() => privacy.sweep(), { name: 'retention', timeoutMs: 30000 });
+  delivery.register(() => privacy.processTasks(), { name: 'erasure', timeoutMs: 60000 });
   if (config.ENABLE_OUTBOX_WORKER === 'true') providerActions.start();
   if (config.ENABLE_OUTBOX_WORKER === 'true') memory.start?.();
   const pending = new Map();
@@ -251,6 +266,15 @@ export function createHandler({ file, config = process.env, service } = {}) {
         }
         return write(200, intelligenceFor(store, profile.companyId, { slaHours: followThrough.slaHours, chatbotId: scopeBot }));
       }
+      if (url.pathname === '/api/company/system-health') {
+        if (!staff || staff.role !== 'owner') throw fault(403, 'System status is available to company owners.');
+        if (req.method === 'POST') {
+          limit(session.token_hash + ':health-retry', 6);
+          vectorIndex.retryFailed({ companyId: profile.companyId });
+          await vectorIndex.drain().catch(() => {});
+        } else if (req.method !== 'GET') throw fault(405, 'Use GET or POST.');
+        return write(200, await systemHealth(profile.companyId));
+      }
       if (url.pathname.startsWith('/api/operator')) {
         if (!staff) throw fault(403, 'This area requires explicitly provisioned support staff access.');
         const selectedProvider = url.searchParams.get('provider');
@@ -413,7 +437,7 @@ export function createHandler({ file, config = process.env, service } = {}) {
       if (endpoint === 'GET /api/privacy/export') return write(200, privacy.exportData(profile, db));
       if (endpoint === 'POST /api/privacy/erase') {
         const body = await json(req);
-        return write(200, await privacy.erase(profile, db, { ticketId: body.ticketId === undefined ? undefined : field(body.ticketId, 'request ID', 100), confirmed: body.confirmed }));
+        return write(200, await privacy.erase(profile, db, { ticketId: body.ticketId === undefined ? undefined : field(body.ticketId, 'request ID', 100), confirmed: body.confirmed, retireSharedKnowledge: body.retireSharedKnowledge === true }));
       }
       if (endpoint === 'GET /api/status') return write(200, { ...db.ticket(requested), ticketId: requested });
       if (endpoint === 'GET /api/analytics') return write(200, summary(store, db));
@@ -868,7 +892,11 @@ export function createHandler({ file, config = process.env, service } = {}) {
     }
   };
   handler.store = store;
+  handler.memory = memory;
   handler.memoryPool = memoryPool;
+  handler.vectorIndex = vectorIndex;
+  handler.vectors = vectors;
+  handler.embedding = embedding;
   handler.dataSources = dataSources;
   handler.privacy = privacy;
   handler.followThrough = followThrough;
