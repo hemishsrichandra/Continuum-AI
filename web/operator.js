@@ -12,18 +12,17 @@ const verification = (p) => p.verification === 'customer_confirmed' ? '<span cla
   : p.verification === 'company_configured' ? '<span class="pill blue">Company-configured standard playbook</span>' : '<span class="pill">Not customer-confirmed</span>';
 function dashboard(d) {
   if (!d) return '<p class="muted">Results are unavailable right now.</p>';
+  const sc = (value, label, cls = '', note = '') => `<div class="stat-card ${cls}"><b>${q(value)}</b><span>${q(label)}</span>${note ? `<small>${q(note)}</small>` : ''}</div>`;
   const t = (value, label, cls = '', note = '') => `<div class="dash-stat ${cls}"><b>${q(value)}</b>${q(label)}${note ? `<small>${q(note)}</small>` : ''}</div>`;
-  return `<section class="panel content-panel" aria-labelledby="intel"><h2 id="intel">How support is going</h2>${d.empty ? '<p class="muted">No activity yet. Figures appear after customers use this service.</p>' : ''}<div class="dash-grid">
-    ${t(d.knowledge.customerConfirmedFixes, 'Fixes customers confirmed', 'ok')}
+  return `<section class="panel content-panel" aria-labelledby="intel"><h2 id="intel">How support is going</h2>${d.empty ? '<p class="muted">No activity yet. Figures appear after customers use this service.</p>' : ''}<div class="stat-row three">${sc(d.knowledge.flaggedForReview, 'Paused for review', d.knowledge.flaggedForReview ? 'warn' : '', d.knowledge.flaggedForReview ? 'Needs a decision from you' : 'Nothing waiting')}${sc(d.followThrough.slaBreaches, 'Cases past deadline', d.followThrough.slaBreaches ? 'warn' : '', 'Picked up within ' + d.followThrough.slaHours + ' h')}${sc(d.knowledge.customerConfirmedFixes, 'Fixes customers confirmed', 'ok', 'Trusted company knowledge')}</div>
+    <details class="infra more-figures"><summary>More figures</summary><div class="dash-grid">
     ${t(d.knowledge.autoPublishedUnconfirmed, 'Fixes not yet confirmed', d.knowledge.autoPublishedUnconfirmed ? 'warn' : '', 'Never counted as confirmed')}
     ${t(d.knowledge.importedRecords, 'Imported fixes', '', 'Not counted as learned from customers')}
     ${t(d.reuse.memorySucceeded + ' / ' + d.reuse.memoryFailed, 'Reused fixes: worked / didn’t', '', d.reuse.memoryPending + ' awaiting feedback')}
-    ${t(d.knowledge.flaggedForReview, 'Paused for review', d.knowledge.flaggedForReview ? 'warn' : '')}
     ${t(d.followThrough.overdueConfirmations + ' / ' + d.followThrough.pendingConfirmations, 'Waiting on customers: overdue / pending')}
-    ${t(d.followThrough.slaBreaches, 'Cases past deadline (' + d.followThrough.slaHours + ' h)', d.followThrough.slaBreaches ? 'warn' : '')}
     ${t(minutes(d.responseTimes.meanFirstSpecialistResponseMs), 'Average first response', '', 'n=' + d.responseTimes.samples.firstResponse)}
     ${t(minutes(d.responseTimes.meanTimeToCustomerConfirmedResolutionMs), 'Average time to a confirmed fix', '', 'n=' + d.responseTimes.samples.confirmedResolution)}
-  </div><details><summary>How to read these numbers</summary><ul>${d.notes.map((n) => `<li>${q(n)}</li>`).join('')}</ul></details></section>`;
+  </div></details><details><summary>How to read these numbers</summary><ul>${d.notes.map((n) => `<li>${q(n)}</li>`).join('')}</ul></details></section>`;
 }
 function queue(ft, bots) {
   const open = (ft?.tasks || []).filter((t) => t.status === 'pending' || t.status === 'escalated' || t.status === 'auto_published');
@@ -55,7 +54,7 @@ function passportCard(p, chatbotId) {
     <dl class="passport-meta"><dt>Applies to</dt><dd>${q(p.applicability.environmentText || (p.applicability.conditions || []).map((c) => c.key + ': ' + (c.values || []).join(' or ')).join('; ') || 'Any device')}</dd>
     <dt>Steps</dt><dd>${q(steps)}</dd>${restrictions ? `<dt>Do not use if</dt><dd>${q(restrictions)}</dd>` : ''}</dl>
     <details><summary>More details</summary><dl class="passport-meta"><dt>Source</dt><dd>${q(p.originLabel)}</dd><dt>Safety</dt><dd>${q(restrictions || (p.safety.noneIdentified ? 'None identified' : 'None recorded'))}</dd><dt>Track record</dt><dd>${q(pct(p.reliability))} reliable · ${q(p.successes)} worked · ${q(p.failures)} did not${p.consecutiveFailures ? ' (' + q(p.consecutiveFailures) + ' in a row)' : ''}</dd>${p.sourceTicketId ? `<dt>From case</dt><dd>${q(p.sourceTicketId)}</dd>` : ''}${p.parentVersionId ? `<dt>Earlier version</dt><dd>This replaces ${q(p.parentVersionId)}. Its customer confirmation does not carry over.</dd>` : ''}</dl></details>
-    ${flagged ? `<p class="notice">${waiting ? 'Imported from your knowledge base. Customers will not see it until you approve it.' : 'Paused for review: ' + q(p.flaggedReason || 'flagged') + '.'}</p><form data-review="${q(p.id)}" data-review-revision="${q(p.failures)}"><label>${waiting ? 'Your decision' : 'Review decision'}<select name="decision"><option value="keep">${waiting ? 'Approve: customers can receive this fix' : 'Keep it'}</option><option value="retire">${waiting ? 'Do not use this fix' : 'Retire this fix'}</option></select></label><label>${waiting ? 'Short note' : 'Why is this decision appropriate?'}<textarea name="note" required maxlength="1000"></textarea></label><button class="button small">Save</button><p role="alert" hidden></p></form>` : ''}
+    ${flagged ? `<p class="notice">${waiting ? 'Imported from your knowledge base. Customers will not see it until you approve it.' : 'Paused for review: ' + q(p.flaggedReason || 'flagged') + '.'}</p><form data-review="${q(p.id)}" data-review-revision="${q(p.failures)}"><label>${waiting ? 'Short note (kept with your decision)' : 'Why is this decision appropriate?'}<textarea name="note" required maxlength="1000"></textarea></label><div class="decision-row"><button class="button success" name="decision" value="keep">${waiting ? 'Approve: customers can receive this fix' : 'Keep this fix'}</button><span class="decision-gap" aria-hidden="true"></span><button class="button danger-ghost" name="decision" value="retire">${waiting ? 'Do not use this fix' : 'Retire this fix'}</button></div><p role="alert" hidden></p></form>` : ''}
     ${current && p.origin !== 'standard_playbook' ? `<details><summary>Publish a revised version</summary><form data-revise="${q(p.id)}" data-version="${q(p.version)}"><label>Title<input name="title" required maxlength="100" value="${q(p.title)}"></label><label>Matching symptoms<textarea name="symptoms" required maxlength="1000">${q(p.symptoms)}</textarea></label><label>Applies to<input name="environment" required maxlength="500" value="${q(p.applicability.environmentText || '')}"></label><label>Steps<textarea name="solution" required maxlength="2000">${q(steps)}</textarea></label><label>Safety restrictions<input name="safety" maxlength="1000" value="${q(restrictions)}" placeholder="None identified"></label><label>What changed?<input name="note" maxlength="500"></label><label class="privacy-check"><input type="checkbox" name="reviewedForPrivacy" required> I tested these steps and removed personal information and secrets.</label><button class="button small primary">Publish version ${q(p.version + 1)}</button><p role="alert" hidden></p></form>${p.status === 'active' ? `<button class="button small" data-retire="${q(p.id)}">Retire</button>` : ''}</details>` : ''}</article>`;
 }
 export async function mountOperator() {
@@ -85,7 +84,7 @@ export async function mountOperator() {
                   )
                   .join(
                     '',
-                  )}</select></label><button class="button small">${h.assignedTo ? 'Update assignment' : 'Claim / assign case'}</button>${error}</form>`
+                  )}</select></label><button class="button small ${h.assignedTo ? '' : 'primary'}">${h.assignedTo ? 'Update assignment' : data.role === 'owner' ? 'Assign case' : 'Take this case'}</button>${error}</form>`
               : ''
           }${editable && h.assignedTo && h.status !== 'Awaiting confirmation' ? `<details><summary>Update progress</summary>${formStart(h, 'progress')}<label>Status<select name="status"><option>In progress</option><option>Waiting for parts</option><option>Awaiting customer</option></select></label><label>Expected completion<input name="eta" type="date" value="${q(h.context?.ticket?.eta || '')}"></label><label>Priority<select name="priority"><option>Normal</option><option>High</option><option>Urgent</option></select></label><label>Customer-visible update<textarea name="note" required maxlength="2000"></textarea></label><label>Troubleshooting step (optional)<textarea name="step" maxlength="1000"></textarea></label><label>Step outcome<select name="stepOutcome"><option value="attempted">Attempted</option><option value="failed">Failed</option><option value="succeeded">Succeeded</option></select></label><button class="button">Save progress</button>${error}</form></details>${!current || current.status === 'rejected' ? `<details><summary>Propose a verified solution</summary>${formStart(h, 'resolve')}<label>Reusable title<input name="title" required maxlength="100"></label><label>Matching symptoms<textarea name="symptoms" required maxlength="1000"></textarea></label><label>Applicable product and versions<input name="environment" required maxlength="500"></label><label>Verified solution steps<textarea name="solution" required maxlength="2000"></textarea></label><label>Safety restrictions (or “None identified”)<input name="safety" maxlength="1000" placeholder="None identified"></label><label class="privacy-check"><input type="checkbox" name="safetyReviewed"> I reviewed safety: any restriction above is complete (needed for “None identified” to count).</label><label>Risk level<select name="riskLevel"><option value="standard">Standard</option><option value="high">High risk: never auto-published</option></select></label><label class="privacy-check"><input type="checkbox" name="reviewedForPrivacy" required> I tested these steps and removed personal information and secrets.</label><div class="actions"><button type="button" class="button small" data-preview>Preview scrubbed passport</button><button class="button primary">Send solution for customer confirmation</button></div><div data-preview-result role="status"></div>${error}</form></details>` : ''}` : ''}</article>`;
         })
@@ -111,12 +110,12 @@ export async function mountOperator() {
     app.querySelectorAll('form[data-review]').forEach((form) =>
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const button = form.querySelector('button');
-        button.disabled = true;
+        const buttons = [...form.querySelectorAll('button')];
+        buttons.forEach((b) => { b.disabled = true; });
         try {
           await request('operator/review-resolution?chatbotId=' + encodeURIComponent(data.chatbot.id), {
             body: {
-              ...Object.fromEntries(new FormData(form)),
+              ...Object.fromEntries(new FormData(form, event.submitter)),
               id: form.dataset.review,
               reviewRevision: Number(form.dataset.reviewRevision),
               confirmed: true,
@@ -127,7 +126,7 @@ export async function mountOperator() {
           const alert = form.querySelector('[role=alert]');
           alert.hidden = false;
           alert.textContent = e.message;
-          button.disabled = false;
+          buttons.forEach((b) => { b.disabled = false; });
         }
       }),
     );
