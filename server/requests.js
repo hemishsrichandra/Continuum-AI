@@ -8,13 +8,13 @@ export function field(value, name, max = 1000) {
 export function flags(body, names = ['memory', 'retain', 'confirmed']) {
   for (const name of names) if (body[name] !== undefined && typeof body[name] !== 'boolean') throw fault(400, name + ' must be true or false.');
 }
-export async function json(req) {
+export async function json(req, maxBytes = 16384) {
   if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) throw fault(415, 'Send a JSON request.');
   const chunks = [];
   let length = 0;
   for await (const chunk of req) {
     length += chunk.length;
-    if (length > 16384) throw fault(413, 'Request is too large.');
+    if (length > maxBytes) throw fault(413, 'Request is too large.');
     chunks.push(chunk);
   }
   try {

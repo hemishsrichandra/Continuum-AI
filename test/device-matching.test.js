@@ -75,3 +75,14 @@ test('end to end: a strong generic match reaches the customer list with the advi
   assert.equal(mand.eligible.length, 0, 'unknown mandatory facts are never guessed');
   assert.ok(mand.withheld.some((x) => /display driver/i.test(x.title)), 'the customer is asked for the missing fact');
 });
+
+test('Linux is a family-level fact: Ubuntu implies it, other operating systems conflict with it, and a generic "Linux" does not contradict an Ubuntu fix', () => {
+  assert.deepEqual(customerFacts('I run Ubuntu 22.04 on this machine').linux.values, ['any']);
+  assert.deepEqual(customerFacts('it is a Linux box').linux.values, ['any']);
+  assert.equal(gate('Linux', 'Ubuntu 22.04 shows a black screen').status, 'compatible');
+  assert.equal(gate('Linux', 'Windows 11 shows a black screen').eligible, false, 'a different operating system conflicts');
+  const generic = gate('Ubuntu 22.04', 'My Linux machine shows a black screen');
+  assert.notEqual(generic.status, 'conflict', 'Linux does not contradict Ubuntu');
+  assert.equal(generic.eligible, false, 'but the version is still unknown, so it asks first');
+  assert.equal(gate('Ubuntu 22.04', 'Windows 11 black screen').status, 'conflict');
+});

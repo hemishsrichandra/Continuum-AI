@@ -46,7 +46,7 @@ const REQUIRED_FIELDS = ['externalId', 'title', 'symptoms', 'steps'];
 // --------------------------------------------------------------------------- safety helpers
 export { isPrivateAddress };
 /** Throws unless the URL is an https (or explicitly allowed loopback) origin the server owner allowlisted and resolves publicly. */
-export async function assertSafeUrl(input, { allowedOrigins, allowLoopback = false, resolver = lookup } = {}) {
+export async function assertSafeUrl(input, { allowedOrigins, allowLoopback = false, resolver = lookup, ownerOrigins = false } = {}) {
   let url;
   try {
     url = new URL(input);
@@ -58,7 +58,7 @@ export async function assertSafeUrl(input, { allowedOrigins, allowLoopback = fal
   if (!(url.protocol === 'https:' || (allowLoopback && loopback && url.protocol === 'http:')))
     throw fault(400, 'Only https URLs are allowed.');
   if (!allowedOrigins.has(url.origin))
-    throw fault(400, 'The server owner must allow this origin in DATA_SOURCE_ALLOWED_ORIGINS before it can be used.');
+    throw fault(400, ownerOrigins ? `Approve ${url.origin} under “Allowed websites” before connecting to it.` : 'The server owner must allow this origin in DATA_SOURCE_ALLOWED_ORIGINS before it can be used.');
   try {
     await resolveAllowed(url.hostname, { allowLoopback, resolver });
   } catch (e) {
@@ -145,7 +145,7 @@ export function mapRecord(row, mapping, schema = [], { declaredVerified = false 
 }
 
 // --------------------------------------------------------------------------- CSV
-export function parseCsv(textInput) {
+export function parseCsv(textInput, { maxRows = CSV_MAX_ROWS } = {}) {
   const textValue = String(textInput).replace(/^﻿/, '');
   const rows = [];
   let row = [], cell = '', quoted = false;
@@ -163,14 +163,16 @@ export function parseCsv(textInput) {
       if (row.some((x) => x !== '')) rows.push(row);
       row = [];
     } else cell += c;
-    if (rows.length > CSV_MAX_ROWS + 1) throw fault(400, `A pasted CSV can hold at most ${CSV_MAX_ROWS} rows. Use a SQLite or PostgreSQL source, or split the file.`);
+    if (rows.length > maxRows + 1) throw fault(400, `A CSV can hold at most ${maxRows} rows. Use a SQLite or PostgreSQL source, or split the file.`);
   }
   if (quoted) throw fault(400, 'The CSV has an unterminated quoted field.');
   row.push(cell);
   if (row.some((x) => x !== '')) rows.push(row);
   if (rows.length < 1) throw fault(400, 'The CSV is empty.');
-  const header = rows[0].map((h) => h.trim());
-  if (new Set(header).size !== header.length || header.some((h) => !IDENT.test(h))) throw fault(400, 'CSV column names must be unique plain identifiers.');
+  // Real exports have headers like "Ticket ID" or "Resolution (internal)". A header that is already a plain identifier is kept
+  // exactly (so saved mappings keep working); any other header becomes one: "Ticket ID" -> Ticket_ID.
+  const header = rows[0].map((h) => { const t = h.trim(); return IDENT.test(t) ? t : t.replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').replace(/^(?=\d)/, 'c_').slice(0, 64) || 'column'; });
+  if (new Set(header).size !== header.length) throw fault(400, 'CSV column names must be unique.');
   return rows.slice(1).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ''])));
 }
 
@@ -185,11 +187,17 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
   const intOr = (v, d, lo, hi) => { const n = Number(v); return Number.isInteger(n) && n >= lo && n <= hi ? n : d; };
   const batchSize = intOr(config.DATA_SOURCE_BATCH_SIZE, 500, 10, 5000); // rows fetched, mapped and written per step
   const maxRecords = intOr(config.DATA_SOURCE_MAX_RECORDS, 100000, 100, 5000000); // one sync run pauses here and can be resumed
+  // An uploaded CSV is stored sealed with the source, so it has its own size limit (default 10 MB, at most 50 MB).
+  const csvMaxBytes = intOr(config.DATA_SOURCE_CSV_MAX_BYTES, 10 * 1048576, 65536, 50 * 1048576);
+  // Owners may approve websites for REST sources in the app, unless the server operator turns that off. The network guard
+  // (public DNS only, pinned address, no redirects) applies to every origin either way.
+  const ownerOrigins = config.DATA_SOURCE_OWNER_ORIGINS !== 'false';
+  const originsFor = (companyId) => new Set([...allowedOrigins, ...(ownerOrigins && companyId ? sql.prepare('SELECT origin FROM company_source_origins WHERE company_id=?').all(companyId).map((r) => r.origin) : [])]);
 
   const availability = {
     csv_sync: () => ({ available: true }),
     sqlite: () => (sqliteDirs.length ? { available: true } : { available: false, reason: 'configuration-required: the server owner must set DATA_SOURCE_SQLITE_DIRS to the directories that may be read.' }),
-    rest_api: () => (allowedOrigins.size ? { available: true } : { available: false, reason: 'configuration-required: the server owner must set DATA_SOURCE_ALLOWED_ORIGINS.' }),
+    rest_api: () => (allowedOrigins.size || ownerOrigins ? { available: true, ...(ownerOrigins && { note: 'Approve the website under “Allowed websites” first.' }) } : { available: false, reason: 'configuration-required: the server owner must set DATA_SOURCE_ALLOWED_ORIGINS.' }),
     postgres: () => {
       if (!(drivers.postgres || config.DATA_SOURCE_POSTGRES_DRIVER === 'pg')) return { available: false, reason: 'unavailable: no PostgreSQL driver is installed (install the optional “pg” package and set DATA_SOURCE_POSTGRES_DRIVER=pg).' };
       if (!pgHosts.size) return { available: false, reason: 'configuration-required: the server owner must set DATA_SOURCE_POSTGRES_HOSTS to the database hosts that may be read.' };
@@ -201,8 +209,8 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
   // ----- adapters: each returns an array of plain row objects (bounded)
   async function readCsv(conn) {
     if (typeof conn.csv !== 'string' || !conn.csv.trim()) throw fault(400, 'Paste or upload the CSV content.');
-    if (Buffer.byteLength(conn.csv) > MAX_BYTES) throw fault(413, 'The CSV is larger than 1 MB.');
-    return parseCsv(conn.csv);
+    if (Buffer.byteLength(conn.csv) > csvMaxBytes) throw fault(413, `The CSV is larger than ${Math.round(csvMaxBytes / 1048576)} MB. Split it, or use a SQLite or PostgreSQL source.`);
+    return parseCsv(conn.csv, { maxRows: Math.max(CSV_MAX_ROWS, Math.ceil(csvMaxBytes / 100)) });
   }
   function safePath(path) {
     if (typeof path !== 'string' || !path || path.includes('\0')) throw fault(400, 'Enter the database file path.');
@@ -234,13 +242,20 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
       db.close();
     }
   }
-  async function readRest(conn) {
+  async function readRest(conn, { page = null, companyId = null } = {}) {
     if (!availability.rest_api().available) throw fault(503, availability.rest_api().reason);
     // Resolve and validate ONCE, then connect to that exact address (no second DNS lookup can redirect the request).
-    const dest = await resolveDestination(conn.url, { allowedOrigins, allowLoopback, resolver });
+    const dest = await resolveDestination(conn.url, { allowedOrigins: originsFor(companyId), allowLoopback, resolver, ownerOrigins });
     let response;
     try {
-      response = await pinnedGet({ url: dest.url, address: dest.address, family: dest.family, timeoutMs: 12000, maxBytes: MAX_BYTES * 4, headers: { Accept: 'application/json', ...(conn.token && { Authorization: 'Bearer ' + conn.token }) } });
+      const target = new URL(String(dest.url));
+      if (page !== null) {
+        if (!IDENT.test(conn.pageParam || '')) throw fault(400, 'The page parameter must be a plain name such as page.');
+        target.searchParams.set(conn.pageParam, String(page));
+        const size = Number(conn.pageSize);
+        if (Number.isInteger(size) && size >= 10 && size <= 5000) target.searchParams.set(IDENT.test(conn.limitParam || '') ? conn.limitParam : 'limit', String(size));
+      }
+      response = await pinnedGet({ url: target, address: dest.address, family: dest.family, timeoutMs: 12000, maxBytes: MAX_BYTES * 4, headers: { Accept: 'application/json', ...(conn.token && { Authorization: 'Bearer ' + conn.token }) } });
     } catch (e) {
       throw fault(e.status === 413 ? 413 : 503, e.status ? e.message : 'The REST source could not be reached.');
     }
@@ -298,7 +313,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     diagnosticSchema: JSON.parse(row.diagnostic_schema_json), declaredVerified: Boolean(row.declared_verified),
     status: row.status, lastSyncedAt: row.last_synced_at, lastSyncResult: row.last_sync_result_json ? JSON.parse(row.last_sync_result_json) : null,
     lastError: row.last_error, createdAt: row.created_at, availability: availability[row.source_type]?.(),
-    resumable: row.status === 'deferred', authoritativeSnapshot: Boolean(row.authoritative_snapshot), syncIntervalHours: row.sync_interval_hours ?? null, nextSyncAt: row.sync_interval_hours ? row.next_sync_at : null,
+    resumable: row.status === 'deferred', paused: row.status === 'paused', authoritativeSnapshot: Boolean(row.authoritative_snapshot), syncIntervalHours: row.sync_interval_hours ?? null, nextSyncAt: row.sync_interval_hours ? row.next_sync_at : null,
   });
 
   /** Rows come in batches: sqlite and PostgreSQL are paged from the database; CSV and REST are one bounded read that is sliced. */
@@ -314,7 +329,21 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
         offset += rows.length;
       }
     }
-    const raw = await readers[type](conn, mapping);
+    if (type === 'rest_api' && conn.pageParam) {
+      // A REST API that pages by number is read one page at a time until it returns an empty page; resume counts records, so the
+      // page size must be known to resume part-way.
+      const size = Number(conn.pageSize);
+      if (startOffset && !(Number.isInteger(size) && size >= 10)) throw fault(400, 'Set a page size on this source to resume it part-way.');
+      const first = Number.isInteger(Number(conn.pageStart)) ? Number(conn.pageStart) : 1;
+      for (let page = first + (startOffset && size ? Math.floor(startOffset / size) : 0), seen = startOffset, pages = 0; pages < 10000; page++, pages++) {
+        const rows = await readRest(conn, { page, companyId: row.company_id });
+        if (!rows.length) return;
+        seen += rows.length;
+        yield { rows, nextOffset: seen, last: false };
+      }
+      throw fault(502, 'The REST source kept returning pages; stopped after 10,000 pages.');
+    }
+    const raw = type === 'rest_api' ? await readRest(conn, { companyId: row.company_id }) : await readers[type](conn, mapping);
     for (let i = startOffset; i < raw.length; i += batchSize) yield { rows: raw.slice(i, i + batchSize), nextOffset: Math.min(i + batchSize, raw.length), last: i + batchSize >= raw.length };
   }
   const mapBatch = (rows, row, mapping, schema, seenIds, base) => rows.map((r, i) => {
@@ -352,6 +381,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
    */
   async function sync(companyId, id, actor) {
     const row = stored(companyId, id);
+    if (row.status === 'paused') throw fault(409, 'This source is paused. Resume it before syncing.');
     if (row.status === 'syncing' && Date.now() - Date.parse(row.updated_at) < 10 * 60 * 1000) throw fault(409, 'A sync is already running for this source.');
     const mapping = JSON.parse(row.field_mapping_json), schema = JSON.parse(row.diagnostic_schema_json);
     const resuming = row.status === 'deferred' && Number.isInteger(row.sync_cursor) && row.sync_cursor > 0;
@@ -474,13 +504,15 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     if (endpoint === 'GET /api/company/data-sources') {
       send(200, {
         sources: sql.prepare('SELECT * FROM company_data_sources WHERE company_id=? ORDER BY created_at').all(companyId).map(publicView),
+        allowedWebsites: { ownerManaged: ownerOrigins, server: [...allowedOrigins], company: ownerOrigins ? sql.prepare('SELECT origin,added_at AS addedAt FROM company_source_origins WHERE company_id=? ORDER BY origin').all(companyId) : [] },
+        csvMaxBytes,
         availability: status(), sourceTypes: SOURCE_TYPES, passportFields: PASSPORT_FIELDS, requiredFields: REQUIRED_FIELDS,
         chatbots: sql.prepare('SELECT config FROM chatbots WHERE company_id=?').all(companyId).map((r) => normalizeBot(JSON.parse(r.config))).map((b) => ({ id: b.id, name: b.name, diagnosticSchema: b.diagnosticSchema || [] })),
       });
       return true;
     }
     if (endpoint === 'POST /api/company/data-sources') {
-      const body = await json(req);
+      const body = await json(req, csvMaxBytes + 65536);
       if (body.confirmed !== true) throw fault(400, 'Confirm saving this data source.');
       if (!SOURCE_TYPES.includes(body.sourceType)) throw fault(400, 'Choose a supported source type.');
       const bot = getBot(sql, companyId, field(body.chatbotId || botId(profile), 'service', 200));
@@ -504,10 +536,10 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
       if (body.connection !== undefined) {
         if (!body.connection || typeof body.connection !== 'object' || Array.isArray(body.connection)) throw fault(400, 'Send the connection details as an object.');
         const c = body.connection;
-        if (body.sourceType === 'rest_api') await assertSafeUrl(c.url, { allowedOrigins, allowLoopback, resolver });
+        if (body.sourceType === 'rest_api') await assertSafeUrl(c.url, { allowedOrigins: originsFor(companyId), allowLoopback, resolver, ownerOrigins });
         if (body.sourceType === 'postgres' && availability.postgres().available) await postgresDestination(c.uri);
         if (body.sourceType === 'sqlite') { if (availability.sqlite().available) safePath(c.path); if (!IDENT.test(c.table || '')) throw fault(400, 'Enter a plain table name.'); }
-        encrypted = delivery.seal(Object.fromEntries(Object.entries(c).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, v.slice(0, MAX_BYTES)])), 'datasource:' + id);
+        encrypted = delivery.seal(Object.fromEntries(Object.entries(c).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, v.slice(0, k === 'csv' ? csvMaxBytes : MAX_BYTES)])), 'datasource:' + id);
       }
       if (!encrypted) throw fault(400, 'Provide the connection details.');
       const t = now();
@@ -517,7 +549,27 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
       send(existing ? 200 : 201, { source: publicView(stored(companyId, id)) });
       return true;
     }
-    const match = endpoint.match(/^(POST|DELETE) \/api\/company\/data-sources\/([^/]+)(?:\/(preview|sync))?$/);
+    if (endpoint === 'POST /api/company/data-sources/origins' || endpoint === 'POST /api/company/data-sources/origins/remove') {
+      if (!ownerOrigins) throw fault(403, 'The server operator manages allowed websites for this installation.');
+      const body = await json(req);
+      if (body.confirmed !== true) throw fault(400, 'Confirm this change.');
+      let url;
+      try { url = new URL(String(body.origin || '')); } catch { throw fault(400, 'Enter a website such as https://support.example.com.'); }
+      if (endpoint.endsWith('/remove')) {
+        sql.prepare('DELETE FROM company_source_origins WHERE company_id=? AND origin=?').run(companyId, url.origin);
+      } else {
+        const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+        if (!(url.protocol === 'https:' || (allowLoopback && loopback && url.protocol === 'http:'))) throw fault(400, 'Only https websites can be approved.');
+        if (url.username || url.password || (url.pathname !== '/' && url.pathname !== '') || url.search || url.hash) throw fault(400, 'Enter only the website address (for example https://support.example.com), without a path.');
+        // Refuse private or internal addresses now, not only at sync time.
+        try { await resolveAllowed(url.hostname, { allowLoopback, resolver }); } catch (e) { throw fault(e.status || 400, e.message); }
+        if (sql.prepare('SELECT COUNT(*) n FROM company_source_origins WHERE company_id=?').get(companyId).n >= 25) throw fault(400, 'A company can approve at most 25 websites.');
+        sql.prepare('INSERT OR IGNORE INTO company_source_origins(company_id,origin,added_by,added_at) VALUES(?,?,?,?)').run(companyId, url.origin, profile.id, now());
+      }
+      send(200, { company: sql.prepare('SELECT origin,added_at AS addedAt FROM company_source_origins WHERE company_id=? ORDER BY origin').all(companyId) });
+      return true;
+    }
+    const match = endpoint.match(/^(POST|DELETE) \/api\/company\/data-sources\/([^/]+)(?:\/(preview|sync|test|pause|resume))?$/);
     if (match) {
       const [, method, id, action] = match;
       const row = stored(companyId, decodeURIComponent(id));
@@ -532,6 +584,31 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
         const report = await dryRun(row).catch((e) => { throw e.status ? e : fault(503, safeMessage(e)); });
         const { records, ...rest } = report;
         send(200, { dryRun: true, ...rest });
+        return true;
+      }
+      if (method === 'POST' && action === 'test') {
+        // Non-mutating: open the source, read one small batch, report what was found. Nothing is saved or counted, and the
+        // connection details are never echoed.
+        const started = performance.now();
+        let rows = 0, columns = [];
+        try {
+          for await (const batch of sourceBatches(row, JSON.parse(row.field_mapping_json))) { rows = batch.rows.length; columns = Object.keys(batch.rows[0] || {}).slice(0, 30); break; }
+        } catch (e) { throw e.status ? e : fault(503, safeMessage(e)); }
+        send(200, { ok: true, reachable: true, firstBatchRows: rows, columns, ms: Math.round(performance.now() - started), note: rows ? 'Connected and read the first batch. Nothing was saved.' : 'Connected, but the source returned no rows.' });
+        return true;
+      }
+      if (method === 'POST' && (action === 'pause' || action === 'resume')) {
+        const body = await json(req);
+        if (body.confirmed !== true) throw fault(400, 'Confirm this change.');
+        if (action === 'pause') {
+          if (row.status === 'syncing') throw fault(409, 'A sync is running. Pause the source after it finishes.');
+          sql.prepare("UPDATE company_data_sources SET status='paused',updated_at=? WHERE id=? AND company_id=?").run(now(), row.id, companyId);
+        } else {
+          if (row.status !== 'paused') throw fault(409, 'This source is not paused.');
+          const back = row.sync_cursor ? 'deferred' : row.last_synced_at ? 'ok' : 'configured';
+          sql.prepare('UPDATE company_data_sources SET status=?,updated_at=? WHERE id=? AND company_id=?').run(back, now(), row.id, companyId);
+        }
+        send(200, { source: publicView(stored(companyId, row.id)) });
         return true;
       }
       if (method === 'POST' && action === 'sync') {
@@ -549,7 +626,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
    * recorded on the source (status/last_error) and the next attempt waits for the next interval.
    */
   async function runDue(at = Date.now()) {
-    const due = sql.prepare('SELECT id,company_id,sync_interval_hours FROM company_data_sources WHERE sync_interval_hours IS NOT NULL AND next_sync_at<=? ORDER BY next_sync_at LIMIT 20').all(new Date(at).toISOString());
+    const due = sql.prepare('SELECT id,company_id,sync_interval_hours FROM company_data_sources WHERE sync_interval_hours IS NOT NULL AND status<>? AND next_sync_at<=? ORDER BY next_sync_at LIMIT 20').all('paused', new Date(at).toISOString());
     const results = [];
     for (const row of due) {
       const next = new Date(at + row.sync_interval_hours * 3600000).toISOString();

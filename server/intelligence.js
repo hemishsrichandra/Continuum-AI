@@ -69,6 +69,20 @@ export function intelligenceFor(store, companyId, { at = Date.now(), slaHours = 
     rejectedByCustomer: confirmed.filter((r) => r.customerAccepted === false).length,
     awaitingCustomer: confirmed.filter((r) => r.status === 'pending_confirmation').length,
   };
+  // Self-service: of the requests where the assistant suggested at least one fix, how many a customer confirmed solved
+  // without any specialist hand-off. Only an explicit "It worked" counts; silence is never success.
+  const tickets = sql.prepare(`SELECT ticket_id, MAX(outcome='succeeded') solved FROM troubleshooting_attempts WHERE company_id=? AND ${inBots} AND source IN ('standard','learned') GROUP BY ticket_id`).all(companyId, ...botList);
+  const handedOff = new Set(handoffs.map((h) => h.ticketId));
+  const solvedAlone = tickets.filter((t) => t.solved && !handedOff.has(t.ticket_id)).length;
+  const selfService = {
+    requestsWithSuggestions: tickets.length,
+    solvedWithoutSpecialist: solvedAlone,
+    solvedAfterSpecialist: tickets.filter((t) => handedOff.has(t.ticket_id)).length,
+    deflectionRate: tickets.length ? Math.round((solvedAlone / tickets.length) * 1000) / 1000 : null,
+  };
+  // The fixes that solved the most customer problems, with their failures shown beside them.
+  const topFixes = sql.prepare(`SELECT id,title,origin_type,customer_confirmed,reuse_success_count successes,reuse_failure_count failures FROM memory_pool WHERE company_id=? AND ${inBots} AND status='active' AND reuse_success_count>0 ORDER BY reuse_success_count DESC, reuse_failure_count ASC LIMIT 5`)
+    .all(companyId, ...botList).map((r) => ({ id: r.id, title: r.title, origin: r.origin_type, customerConfirmed: Boolean(r.customer_confirmed), successes: r.successes, failures: r.failures }));
   const empty = !Object.entries(knowledge).some(([k, v]) => k !== 'standardPlaybooks' && v) && !handoffs.length && !resolutions.proposed;
   return {
     companyId,
@@ -77,6 +91,8 @@ export function intelligenceFor(store, companyId, { at = Date.now(), slaHours = 
     knowledge,
     resolutions,
     reuse,
+    selfService,
+    topFixes,
     followThrough,
     responseTimes: {
       meanFirstSpecialistResponseMs: mean(firstResponse),
@@ -86,6 +102,7 @@ export function intelligenceFor(store, companyId, { at = Date.now(), slaHours = 
     notes: [
       'Standard playbooks and imported records are not counted as learned successes.',
       'Overdue auto-published fixes are UNCONFIRMED BY CUSTOMER and are reported separately.',
+      '“Solved without a specialist” counts requests where a customer said a suggested fix worked and no specialist was involved, out of the requests where a fix was suggested. Requests where the customer never answered are not counted as solved.',
       'Figures come from this company’s own records; synthetic tests do not represent real business impact.',
     ],
   };

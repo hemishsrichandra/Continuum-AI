@@ -83,3 +83,27 @@ test('review flags, pending deadlines and SLA breaches are reported', async (t) 
   assert.equal(later.followThrough.slaBreaches, 2, 'two cases queued past the 1h SLA');
   assert.equal(later.followThrough.openCases, 2);
 });
+
+test('self-service: only an explicit "It worked" without a specialist counts as solved; top fixes show their track record', async (t) => {
+  const w = await world(t);
+  const fix = w.seed(w.company, { title: FOUR[0][0], symptoms: FOUR[0][1], steps: [FOUR[0][2]] });
+  const [a, b, c] = [await w.customer('alice'), await w.customer('bob'), await w.customer('cara')];
+  const shown = {};
+  for (const [name, cust] of [['a', a], ['b', b], ['c', c]]) {
+    const id = await w.ticket(cust, ISSUE);
+    shown[name] = { id, attempt: (await w.ask(cust, id, ISSUE)).data.attempt };
+    assert.ok(shown[name].attempt, 'a fix was suggested');
+  }
+  await a.api('troubleshooting/outcome', { attemptId: shown.a.attempt.id, worked: true, confirmed: true });
+  await b.api('troubleshooting/outcome', { attemptId: shown.b.attempt.id, worked: false, confirmed: true });
+  await b.api('handoff', { ticketId: shown.b.id, summary: ISSUE, confirmed: true });
+  // cara never answers: silence is not success.
+  const r = (await get(w.owner, w.company)).data;
+  assert.deepEqual(r.selfService, { requestsWithSuggestions: 3, solvedWithoutSpecialist: 1, solvedAfterSpecialist: 1, deflectionRate: 0.333 });
+  assert.equal(shown.a.attempt.source, 'learned');
+  assert.equal(r.topFixes[0].id, fix.id);
+  assert.equal(r.topFixes[0].successes, 1);
+  const other = (await get(w.other, w.companyB)).data;
+  assert.equal(other.selfService.requestsWithSuggestions, 0, 'company-scoped');
+  assert.equal(other.selfService.deflectionRate, null);
+});

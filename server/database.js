@@ -215,6 +215,7 @@ export class SqliteStore {
     this.migrateV8();
     this.migrateV9();
     this.migrateV10();
+    this.migrateV11();
     // Idempotent hardening: the case timeline is an audit trail and can only be appended to.
     this.db.exec(`
       CREATE TRIGGER IF NOT EXISTS case_events_append_only_update BEFORE UPDATE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
@@ -292,6 +293,13 @@ export class SqliteStore {
   // applicability, safety restrictions, origin, version and verification flags (they previously missed applicability and safety).
   // Applicability changes also invalidate the device facets, which are rebuilt lazily.
   // Migration 10: why an attempt was skipped (not_applicable, unable_to_try, human_requested, set_aside). Additive and idempotent.
+  // Migration 11: websites an owner approved for REST knowledge sources, per company (in addition to the server-wide
+  // DATA_SOURCE_ALLOWED_ORIGINS). The network guard still refuses private, loopback and link-local addresses.
+  migrateV11() {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS company_source_origins (
+      company_id TEXT NOT NULL REFERENCES companies(id), origin TEXT NOT NULL, added_by TEXT NOT NULL, added_at TEXT NOT NULL,
+      PRIMARY KEY(company_id, origin))`);
+  }
   migrateV10() {
     const has = (table, column) => this.db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
     if (!has('troubleshooting_attempts', 'outcome_detail')) this.db.exec('ALTER TABLE troubleshooting_attempts ADD COLUMN outcome_detail TEXT');

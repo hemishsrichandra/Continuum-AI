@@ -24,8 +24,9 @@ const pool = (w, where = '1=1') => w.db().prepare(`SELECT * FROM memory_pool WHE
 test('CSV parser handles quotes, embedded commas/newlines, BOM and rejects malformed input', () => {
   assert.deepEqual(parseCsv('﻿a,b\r\n"x, y","line1\nline2"\n'), [{ a: 'x, y', b: 'line1\nline2' }]);
   assert.throws(() => parseCsv('a,b\n"open'), /unterminated/);
-  assert.throws(() => parseCsv('a,a\n1,2'), /unique plain identifiers/);
-  assert.throws(() => parseCsv('a;drop,b\n1,2'), /plain identifiers/);
+  assert.throws(() => parseCsv('a,a\n1,2'), /must be unique/);
+  // Odd headers from real exports are renamed to safe identifiers (CSV columns are only ever object keys, never SQL).
+  assert.deepEqual(Object.keys(parseCsv('a;drop,b\n1,2')[0]), ['a_drop', 'b']);
   assert.throws(() => parseCsv(''), /empty/);
 });
 

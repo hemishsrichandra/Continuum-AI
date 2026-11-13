@@ -92,3 +92,31 @@ test('an expired invitation can be resent', async (t) => {
   const reg = await client(() => w.h).api('auth/register', { invitation: fresh.data.url.split('invite=')[1], name: 'Finn', email: 'finn@example.test', password });
   assert.equal(reg.status, 201, JSON.stringify(reg.data));
 });
+
+test('invitation email is opt-in, only possible when the server has email set up, and queued without exposing anything else', async (t) => {
+  const plain = await world(t);
+  const refused = await plain.owner.api('company/invitations', { email: 'zed@example.test', role: 'customer', provider: 'repair', sendEmail: true });
+  assert.equal(refused.status, 400, 'asking for email on a server without it is refused, not silently ignored');
+  assert.equal((await plain.owner.api('company')).data.emailConfigured, false);
+  const ok = await plain.owner.api('company/invitations', { email: 'zed@example.test', role: 'customer', provider: 'repair' });
+  assert.equal(ok.data.emailed, false, 'nothing is emailed unless asked');
+
+  const w = await world(t, { config: { RESEND_API_KEY: 're_fictional_key', EMAIL_FROM: 'Continuum <no-reply@example.test>', DATA_ENCRYPTION_KEY: 'a'.repeat(64) } });
+  assert.equal((await w.owner.api('company')).data.emailConfigured, true);
+  const mails = () => w.db().prepare("SELECT COUNT(*) n FROM records WHERE collection='outbox'").get().n;
+  const base = mails();
+  const none = await w.owner.api('company/invitations', { email: 'amy@example.test', role: 'customer', provider: 'repair' });
+  assert.equal(none.data.emailed, false);
+  assert.equal(mails(), base, 'no email without the owner’s choice');
+  const sent = await w.owner.api('company/invitations', { email: 'ben@example.test', role: 'staff', provider: 'repair', sendEmail: true });
+  assert.equal(sent.status, 201, JSON.stringify(sent.data));
+  assert.equal(sent.data.emailed, true);
+  const mail = w.db().prepare("SELECT * FROM records WHERE collection='outbox'").all();
+  assert.equal(mails(), base + 1);
+  assert.ok(!JSON.stringify(mail[0]).includes('ben@example.test') && !/desk#invite=/.test(JSON.stringify(mail[0])), 'the recipient and the link are sealed at rest');
+  const again = await w.owner.api('company/invitations/resend', { email: 'ben@example.test', confirmed: true, sendEmail: true });
+  assert.equal(again.data.emailed, true);
+  assert.equal(mails(), base + 2);
+  const customer = await w.customer('carol');
+  assert.equal((await customer.api('company/invitations', { email: 'x@example.test', role: 'customer', provider: 'repair', sendEmail: true })).status, 403);
+});

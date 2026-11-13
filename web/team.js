@@ -3,6 +3,7 @@ import { request, escapeHtml as q, formatDate } from './client.js';
 import { mountConnector } from './connector-ui.js';
 import { mountChatbotConfig } from './chatbot-config.js';
 import { mountDataSources } from './data-sources-ui.js';
+import { mountKnowledgeImport } from './knowledge-import-ui.js';
 import { mountStaffAccess } from './staff-access-ui.js';
 import { confirmDialog, copyText } from './form-kit.js';
 
@@ -79,7 +80,7 @@ export async function mountTeam() {
           <label>Email<input name="email" type="email" required maxlength="254"></label>
           <label>Role<select name="role"><option value="staff">Specialist</option><option value="customer">Customer</option></select></label>
           <label>Type of support<select name="provider"><option value="repair">Device repair</option><option value="it">IT support</option></select></label>
-          <div class="form-end"><button class="button primary">Create private invitation</button></div></form>
+          ${data.emailConfigured ? '<label class="switch form-end"><input type="checkbox" name="sendEmail"> Also email this invitation to them</label>' : ''}<div class="form-end"><button class="button primary">Create private invitation</button></div></form>
           <div class="copy-row" id="invitation-row" hidden><input id="invitation-link" readonly aria-label="Invitation link"><button class="button small" data-copy="#invitation-link">Copy</button></div>
           <p class="muted small">Invitations expire after 48 hours and work only for the email address you enter.</p></div></div>
         <div class="hub-card"><div class="hub-section-head"><div><h2>Members</h2><p>${data.members.length} ${data.members.length === 1 ? 'person' : 'people'} in this company.</p></div></div>
@@ -105,10 +106,11 @@ export async function mountTeam() {
         const button = event.target.querySelector('button');
         button.disabled = true;
         try {
-          const result = await request('company/invitations', { body: Object.fromEntries(new FormData(event.target)) });
+          const fields = Object.fromEntries(new FormData(event.target));
+          const result = await request('company/invitations', { body: { ...fields, sendEmail: fields.sendEmail === 'on' } });
           host.querySelector('#invitation-row').hidden = false;
           host.querySelector('#invitation-link').value = result.url;
-          notice('Private invitation created. Share it with the person you invited.');
+          notice(result.emailed ? 'Private invitation created and emailed. You can also copy the link.' : 'Private invitation created. Share it with the person you invited.');
         } catch (e) { notice(e.message); } finally { button.disabled = false; }
       });
       const act = async (button, route, title, body, confirm, done) => {
@@ -127,10 +129,10 @@ export async function mountTeam() {
         catch (e) { notice(e.message); b.disabled = false; }
       }));
       host.querySelectorAll('[data-resend]').forEach((b) => b.addEventListener('click', async () => {
-        if (!(await confirmDialog({ title: 'Send a new invitation link?', body: 'The earlier link for ' + b.dataset.resend + ' stops working. The new one lasts 48 hours.', confirm: 'Send new link' }))) return;
+        if (!(await confirmDialog({ title: 'Send a new invitation link?', body: 'The earlier link for ' + b.dataset.resend + ' stops working. The new one lasts 48 hours.' + (data.emailConfigured ? ' It will also be emailed to them.' : ''), confirm: 'Send new link' }))) return;
         b.disabled = true;
         try {
-          const r = await request('company/invitations/resend', { body: { email: b.dataset.resend, confirmed: true } });
+          const r = await request('company/invitations/resend', { body: { email: b.dataset.resend, confirmed: true, sendEmail: Boolean(data.emailConfigured) } });
           host.querySelector('#resend-row').hidden = false;
           host.querySelector('#resend-link').value = r.url;
           notice('New invitation link created for ' + b.dataset.resend + '. Copy it and share it with them.');
@@ -140,7 +142,7 @@ export async function mountTeam() {
     },
 
     services: (host) => mountChatbotConfig(host),
-    knowledge: (host) => mountDataSources(host),
+    knowledge: async (host) => { await mountKnowledgeImport(host); await mountDataSources(host); },
     connections: (host) => mountConnector(host, customers),
   };
 

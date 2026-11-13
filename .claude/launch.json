@@ -1,0 +1,22 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "continuum",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "start"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "continuum-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/demo-multi-company.js",
+        "--serve"
+      ],
+      "port": 3211
+    }
+  ]
+}

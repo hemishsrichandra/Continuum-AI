@@ -24,6 +24,7 @@ const routes = {
   '/staff-account.js': ['staff-account.js', 'text/javascript; charset=utf-8'],
   '/staff-access-ui.js': ['staff-access-ui.js', 'text/javascript; charset=utf-8'],
   '/data-sources-ui.js': ['data-sources-ui.js', 'text/javascript; charset=utf-8'],
+  '/knowledge-import-ui.js': ['knowledge-import-ui.js', 'text/javascript; charset=utf-8'],
   '/connector-ui.js': ['connector-ui.js', 'text/javascript; charset=utf-8'],
   '/operator': ['index.html', 'text/html; charset=utf-8'],
   '/operator.js': ['operator.js', 'text/javascript; charset=utf-8'],
@@ -45,7 +46,43 @@ const routes = {
   '/chatbot-config.js': ['chatbot-config.js', 'text/javascript; charset=utf-8'],
   '/ui.js': ['ui.js', 'text/javascript; charset=utf-8'],
   '/form-kit.js': ['form-kit.js', 'text/javascript; charset=utf-8'],
+  '/site.css': ['site.css', 'text/css; charset=utf-8'],
+  '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
+  '/og-image.png': ['og-image.png', 'image/png'],
+  '/privacy': ['index.html', 'text/html; charset=utf-8'],
+  '/terms': ['index.html', 'text/html; charset=utf-8'],
+  '/security': ['index.html', 'text/html; charset=utf-8'],
 };
+// The style guide is a design reference for the team, not a public page.
+if (process.env.NODE_ENV === 'production') delete routes['/style-guide'];
+// Per-page title and description, written into the HTML so search engines and link previews see them without JavaScript.
+const pageMeta = {
+  '/': ['Continuum — Support that remembers what works', 'Fixes your customers confirm and your team reviews become trusted answers for the next customer. Company-private, clearly labelled and safe by default.'],
+  '/services': ['Product — Continuum', 'One calm workspace for every support request: the conversation, the customer’s context and every answer labelled with where it came from.'],
+  '/about': ['How it works — Continuum', 'A customer reports a problem, a specialist solves it, the customer confirms, and the next customer with the same problem gets the verified fix.'],
+  '/pricing': ['Early access pricing — Continuum', 'Simple per-seat plans for support teams. Continuum is in early access: request access and we will set up your workspace with you.'],
+  '/book-a-session': ['Book a call — Continuum', 'Choose a time for a 30-minute walkthrough of Continuum with your own support scenarios.'],
+  '/demo': ['Interactive demo — Continuum', 'A fictional, fully isolated demonstration: one customer teaches Continuum through a confirmed specialist fix, and the next customer benefits.'],
+  '/privacy': ['Privacy — Continuum', 'What Continuum stores, why, how personal details are removed before anything is reused, and how to ask for your data.'],
+  '/terms': ['Terms — Continuum', 'The terms that apply to using Continuum during early access.'],
+  '/security': ['Security — Continuum', 'How Continuum keeps each company’s knowledge separate, protects accounts and handles secrets.'],
+};
+const privatePaths = new Set(['/desk', '/team', '/operator', '/style-guide']);
+const escapeAttr = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const siteOrigin = () => (process.env.APP_URL || '').replace(/\/+$/, '');
+function withMeta(html, path) {
+  const origin = siteOrigin();
+  const [title, description] = pageMeta[path] || ['Your workspace — Continuum', 'Sign in to your Continuum support workspace.'];
+  const out = html.replaceAll('%TITLE%', escapeAttr(title)).replaceAll('%DESCRIPTION%', escapeAttr(description))
+    .replaceAll('%URL%', escapeAttr(origin + path)).replaceAll('%ORIGIN%', escapeAttr(origin));
+  return privatePaths.has(path) || !pageMeta[path] ? out.replace('</head>', '  <meta name="robots" content="noindex">\n</head>') : out;
+}
+function textFile(path) {
+  const origin = siteOrigin();
+  if (path === '/robots.txt') return [['User-agent: *', 'Disallow: /desk', 'Disallow: /team', 'Disallow: /operator', 'Disallow: /api/', 'Sitemap: ' + origin + '/sitemap.xml', ''].join('\n'), 'text/plain; charset=utf-8'];
+  if (path === '/sitemap.xml') return [['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">', ...Object.keys(pageMeta).map((p) => '  <url><loc>' + escapeAttr(origin + p) + '</loc></url>'), '</urlset>', ''].join('\n'), 'application/xml; charset=utf-8'];
+  return null;
+}
 process.env.APP_URL ||= 'http://localhost:' + frontendPort;
 process.env.ENABLE_OUTBOX_WORKER ||= 'true';
 const auditEnabled = process.env.A11Y_AUDIT === 'true' && process.env.NODE_ENV !== 'production';
@@ -76,8 +113,14 @@ const frontend = createServer(async (req, res) => {
   if (!['GET', 'HEAD'].includes(req.method)) {
     res.writeHead(405, { Allow: 'GET, HEAD' }); res.end('Method not allowed'); return;
   }
+  const generated = textFile(path);
+  if (generated) {
+    res.writeHead(200, { 'Content-Type': generated[1], 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'public, max-age=3600' });
+    res.end(req.method === 'HEAD' ? undefined : generated[0]); return;
+  }
   try {
     let body = await readFile(new URL('../web/' + route[0], import.meta.url));
+    if (/\.html$/.test(route[0])) body = Buffer.from(withMeta(body.toString(), routes[path] ? path : ''));
     if (auditEnabled && route[0] === 'index.html') body = Buffer.from(body.toString().replace('</head>', '<script type="module" src="/audit.js"></script></head>'));
     res.writeHead(routes[path] ? 200 : 404, {
       'Content-Type': route[1],

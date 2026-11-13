@@ -15,7 +15,8 @@ function dashboard(d) {
   if (!d) return '<p class="muted">Results are unavailable right now.</p>';
   const sc = (value, label, cls = '', note = '') => `<div class="stat-card ${cls}"><b>${q(value)}</b><span>${q(label)}</span>${note ? `<small>${q(note)}</small>` : ''}</div>`;
   const t = (value, label, cls = '', note = '') => `<div class="dash-stat ${cls}"><b>${q(value)}</b>${q(label)}${note ? `<small>${q(note)}</small>` : ''}</div>`;
-  return `<section class="panel content-panel" aria-labelledby="intel"><h2 id="intel">How support is going</h2>${d.empty ? '<p class="muted">No activity yet. Figures appear after customers use this service.</p>' : ''}<div class="stat-row three">${sc(d.knowledge.flaggedForReview, 'Paused for review', d.knowledge.flaggedForReview ? 'warn' : '', d.knowledge.flaggedForReview ? 'Needs a decision from you' : 'Nothing waiting')}${sc(d.followThrough.slaBreaches, 'Cases past deadline', d.followThrough.slaBreaches ? 'warn' : '', 'Picked up within ' + d.followThrough.slaHours + ' h')}${sc(d.knowledge.customerConfirmedFixes, 'Fixes customers confirmed', 'ok', 'Trusted company knowledge')}</div>
+  return `<section class="panel content-panel" aria-labelledby="intel"><h2 id="intel">How support is going</h2>${d.empty ? '<p class="muted">No activity yet. Figures appear after customers use this service.</p>' : ''}<div class="stat-row">${selfServiceCard(d, sc)}${sc(d.knowledge.flaggedForReview, 'Paused for review', d.knowledge.flaggedForReview ? 'warn' : '', d.knowledge.flaggedForReview ? 'Needs a decision from you' : 'Nothing waiting')}${sc(d.followThrough.slaBreaches, 'Cases past deadline', d.followThrough.slaBreaches ? 'warn' : '', 'Picked up within ' + d.followThrough.slaHours + ' h')}${sc(d.knowledge.customerConfirmedFixes, 'Fixes customers confirmed', 'ok', 'Trusted company knowledge')}</div>
+    ${topFixes(d)}
     <details class="infra more-figures"><summary>More figures</summary><div class="dash-grid">
     ${t(d.knowledge.autoPublishedUnconfirmed, 'Fixes not yet confirmed', d.knowledge.autoPublishedUnconfirmed ? 'warn' : '', 'Never counted as confirmed')}
     ${t(d.knowledge.importedRecords, 'Imported fixes', '', 'Not counted as learned from customers')}
@@ -24,6 +25,15 @@ function dashboard(d) {
     ${t(minutes(d.responseTimes.meanFirstSpecialistResponseMs), 'Average first response', '', 'n=' + d.responseTimes.samples.firstResponse)}
     ${t(minutes(d.responseTimes.meanTimeToCustomerConfirmedResolutionMs), 'Average time to a confirmed fix', '', 'n=' + d.responseTimes.samples.confirmedResolution)}
   </div></details><details><summary>How to read these numbers</summary><ul>${d.notes.map((n) => `<li>${q(n)}</li>`).join('')}</ul></details></section>`;
+}
+function selfServiceCard(d, sc) {
+  const s = d.selfService;
+  if (!s || !s.requestsWithSuggestions) return sc('—', 'Solved without a specialist', '', 'Appears once customers try suggested fixes');
+  return sc(Math.round(s.deflectionRate * 100) + '%', 'Solved without a specialist', s.deflectionRate >= 0.3 ? 'ok' : '', s.solvedWithoutSpecialist + ' of ' + s.requestsWithSuggestions + ' requests with a suggested fix');
+}
+function topFixes(d) {
+  if (!d.topFixes?.length) return '';
+  return `<div><h3>Fixes that solved the most problems</h3><ol class="top-fixes">${d.topFixes.map((f) => `<li><b>${q(f.title)}</b> · solved ${q(f.successes)} ${f.successes === 1 ? 'problem' : 'problems'}${f.failures ? ` · did not work ${q(f.failures)} ${f.failures === 1 ? 'time' : 'times'}` : ''}</li>`).join('')}</ol></div>`;
 }
 function queue(ft, bots) {
   const open = (ft?.tasks || []).filter((t) => t.status === 'pending' || t.status === 'escalated' || t.status === 'auto_published');
@@ -51,7 +61,7 @@ function passportCard(p, chatbotId) {
   const state = STATUS_PILL[p.status];
   const search = SEARCH_PILL[p.searchStatus];
   const restrictions = (p.safety.restrictions || []).map((r) => r.text).join('; ');
-  return `<article class="card" data-passport="${q(p.id)}" data-state="${flagged ? 'needs' : p.status === 'active' ? 'use' : 'older'}">${verification(p)} <span class="pill">Version ${q(p.version)}</span>${state ? ` <span class="pill ${state[0]}">${state[1]}</span>` : ''}${search ? ` <span class="pill ${search[0]}">${search[1]}</span>` : ''}<h3>${q(p.title)}</h3><p>${q(p.symptoms)}</p>
+  return `<article class="card" data-passport="${q(p.id)}" data-state="${flagged ? 'needs' : p.status === 'active' ? 'use' : 'older'}">${verification(p)} <span class="pill">Version ${q(p.version)}</span>${state ? ` <span class="pill ${state[0]}">${state[1]}</span>` : ''}${search ? ` <span class="pill ${search[0]}">${search[1]}</span>` : ''}${p.successes ? ` <span class="pill green">Solved ${q(p.successes)} ${p.successes === 1 ? 'problem' : 'problems'}</span>` : ''}<h3>${q(p.title)}</h3><p>${q(p.symptoms)}</p>
     <dl class="passport-meta"><dt>Applies to</dt><dd>${q(p.applicability.environmentText || (p.applicability.conditions || []).map((c) => c.key + ': ' + (c.values || []).join(' or ')).join('; ') || 'Any device')}</dd>
     <dt>Steps</dt><dd>${q(steps)}</dd>${restrictions ? `<dt>Do not use if</dt><dd>${q(restrictions)}</dd>` : ''}</dl>
     <details><summary>More details</summary><dl class="passport-meta"><dt>Source</dt><dd>${q(p.originLabel)}</dd><dt>Safety</dt><dd>${q(restrictions || (p.safety.noneIdentified ? 'None identified' : 'None recorded'))}</dd><dt>Track record</dt><dd>${q(pct(p.reliability))} reliable · ${q(p.successes)} worked · ${q(p.failures)} did not${p.consecutiveFailures ? ' (' + q(p.consecutiveFailures) + ' in a row)' : ''}</dd>${p.sourceTicketId ? `<dt>From case</dt><dd>${q(p.sourceTicketId)}</dd>` : ''}${p.parentVersionId ? `<dt>Earlier version</dt><dd>This replaces ${q(p.parentVersionId)}. Its customer confirmation does not carry over.</dd>` : ''}</dl></details>
@@ -160,12 +170,15 @@ export async function mountOperator() {
     app.querySelectorAll('form[data-review]').forEach((form) =>
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
+        // Read the form BEFORE disabling the buttons: a disabled submitter is left out of FormData, which used to drop the
+        // decision (keep / retire) so every review was refused with "Confirm the review decision."
+        const fields = Object.fromEntries(new FormData(form, event.submitter));
         const buttons = [...form.querySelectorAll('button')];
         buttons.forEach((b) => { b.disabled = true; });
         try {
           await request('operator/review-resolution?chatbotId=' + encodeURIComponent(data.chatbot.id), {
             body: {
-              ...Object.fromEntries(new FormData(form, event.submitter)),
+              ...fields,
               id: form.dataset.review,
               reviewRevision: Number(form.dataset.reviewRevision),
               confirmed: true,

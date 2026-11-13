@@ -10,7 +10,10 @@ export function initTheme() {
   button.type = 'button';
   const sync = () => {
     const light = document.documentElement.dataset.theme === 'light';
-    button.textContent = light ? '☾' : '☀';
+    // One SVG icon set across the site, so the toggle looks the same on every device and font.
+    button.innerHTML = light
+      ? '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>'
+      : '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
     button.setAttribute('aria-label', light ? 'Switch to dark theme' : 'Switch to light theme');
     button.title = button.getAttribute('aria-label');
     document.querySelector('meta[name=theme-color]')?.setAttribute('content', light ? '#f3e9dc' : '#150a0f');
@@ -40,8 +43,21 @@ export function initReveal(root = document) {
   const items = [...root.querySelectorAll('.reveal:not(.in)')];
   if (!items.length) return;
   if (reduce || !('IntersectionObserver' in window)) { items.forEach((el) => el.classList.add('in')); return; }
-  const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: 0.12 });
+  // An observer alone can miss an element that enters and leaves between two frames (a fast scroll or a jump link),
+  // leaving it invisible for good. So anything whose top has reached the viewport, or already scrolled past it, is shown.
+  const pending = new Set(items);
+  let frame = 0;
+  const show = (el) => { el.classList.add('in'); pending.delete(el); io.unobserve(el); };
+  const sweep = () => {
+    frame = 0;
+    pending.forEach((el) => { if (el.getBoundingClientRect().top < innerHeight * 0.92) show(el); });
+    if (!pending.size) removeEventListener('scroll', onScroll);
+  };
+  const onScroll = () => { if (!frame) frame = requestAnimationFrame(sweep); };
+  const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) show(e.target); }), { threshold: 0 });
   items.forEach((el) => io.observe(el));
+  addEventListener('scroll', onScroll, { passive: true });
+  sweep();
 }
 
 export function initTilt(root = document) {
@@ -67,7 +83,7 @@ export function initStory() {
   if (!story || reduce) return;
   const steps = [...story.querySelectorAll('.story-step')], cards = [...story.querySelectorAll('.story-card')];
   const render = () => {
-    if (innerWidth <= 900) { steps.forEach((s) => s.classList.add('on')); cards.forEach((c) => { c.style.transform = ''; c.style.opacity = ''; }); return; }
+    if (innerWidth <= 900) { steps.forEach((s) => s.classList.add('on')); cards.forEach((c) => { c.style.transform = ''; c.style.opacity = ''; c.style.removeProperty('--c'); }); return; }
     const r = story.getBoundingClientRect();
     const p = Math.min(1, Math.max(0, -r.top / (story.offsetHeight - innerHeight)));
     const s = p * (cards.length - 1);
@@ -75,8 +91,12 @@ export function initStory() {
     cards.forEach((c, i) => {
       const d = i - s, a = Math.abs(d);
       c.style.transform = `translate3d(${d * 14}%, ${d * -5}%, ${-a * 130}px) rotateY(${d * -16}deg) rotateX(${a * 3}deg)`;
-      c.style.opacity = Math.max(0, 1 - a * 1.3);
-      c.style.zIndex = 10 - Math.round(a * 3);
+      // The front card is opaque and on top, and only its words are shown: the cards behind keep the stack's depth,
+      // but two cards' text never shows through each other mid-transition.
+      const front = i === Math.round(s);
+      c.style.opacity = front ? 1 : Math.min(1, Math.max(0, 1.2 - a * 1.4));
+      c.style.setProperty('--c', front ? 1 : 0);
+      c.style.zIndex = front ? 20 : 10 - Math.round(a * 3);
     });
   };
   addEventListener('scroll', render, { passive: true });
@@ -88,7 +108,11 @@ export function initStory() {
 export function initScene() {
   const canvas = document.querySelector('#scene');
   if (!canvas) return;
-  const start = () => import('/scene.js').then((m) => m.mountScene(canvas, { reduce })).catch(() => canvas.remove());
+  // Phones and data-saver connections skip the 3D scene entirely (it is decoration, and Three.js is the heaviest file on
+  // the page). Elsewhere it loads after first paint, when the browser is idle, so the headline is never kept waiting.
+  if (innerWidth < 760 || navigator.connection?.saveData) { canvas.remove(); return; }
+  const load = () => import('/scene.js').then((m) => m.mountScene(canvas, { reduce })).catch(() => canvas.remove());
+  const start = () => ('requestIdleCallback' in window ? requestIdleCallback(load, { timeout: 2500 }) : setTimeout(load, 600));
   if (!('IntersectionObserver' in window)) return start();
   const io = new IntersectionObserver((e) => { if (e[0].isIntersecting) { io.disconnect(); start(); } }, { rootMargin: '200px' });
   io.observe(canvas);
