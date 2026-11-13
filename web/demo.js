@@ -161,7 +161,6 @@ function render() {
   app.innerHTML = `<div class="wrap">
     <div class="demo-hero"><span class="eyebrow">INTERACTIVE LEARNING DEMO</span><h1>One customer teaches. The next one benefits.</h1>
       <p class="lead">Follow User A’s problem to a specialist, watch the confirmed fix become verified demo memory, then see User B receive it. This session is empty, private to this tab and resettable.</p>
-      <p class="demo-disclaimer" role="note"><b>Fictional demonstration.</b> Continuum retrieves and reuses approved knowledge; it does not train or change model weights. This demo reads and writes none of a real company’s tickets, memory, databases, connectors or analytics, and calls no external services.</p>
       <div class="demo-actions"><button class="button primary" data-act="guided" ${busy || guided ? 'disabled' : ''}>Run guided scenario</button><button class="button" data-act="reset" ${busy || guided ? 'disabled' : ''}>Reset demo</button><small>Reset clears everything learned in this session, so User B can no longer receive A’s fix.</small></div></div>
     ${error ? `<p class="demo-error" role="alert">${q(error)}</p>` : ''}
     ${meter()}

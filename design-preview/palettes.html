@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en" data-p="d" data-m="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Continuum palette previews</title>
+<style>
+/* ---- three palettes, each with a dark and a paper (light) mode. Two colours do the work; one odd colour gets about 10%. ---- */
+:root{--r:18px;--font:'Space Grotesk','Segoe UI Variable Display','Segoe UI',system-ui,-apple-system,sans-serif;--body:'DM Sans','Segoe UI',system-ui,sans-serif}
+/* A: Forest & Cream + vermilion */
+[data-m]{--haze:transparent}
+[data-p=a][data-m=dark]{--bg:#0A1E17;--s1:#112F25;--s2:#19402F;--line:rgba(244,239,223,.16);--text:#F4EFDF;--text2:rgba(244,239,223,.74);--accent:#FF5A36;--on:#1A0803;--atext:#FF7A5C;--ok:#86D7A8;--warn:#F2C14E;--bad:#FF9C8A;--node:#F4EFDF}
+[data-p=a][data-m=light]{--bg:#F4EFDF;--s1:#FBF8EE;--s2:#E9E2CB;--line:rgba(15,42,34,.18);--text:#0F2A22;--text2:rgba(15,42,34,.74);--accent:#FF5A36;--on:#1A0803;--atext:#C2330F;--ok:#1B6A44;--warn:#8A6400;--bad:#A8341F;--node:#0F2A22}
+/* B: Ink & Bone + saffron */
+[data-p=b][data-m=dark]{--bg:#0E0D0B;--s1:#191714;--s2:#25221D;--line:rgba(242,237,228,.16);--text:#F2EDE4;--text2:rgba(242,237,228,.74);--accent:#FFB800;--on:#1A1200;--atext:#FFC933;--ok:#9BD8A8;--warn:#FFB800;--bad:#FF9C8A;--node:#F2EDE4}
+[data-p=b][data-m=light]{--bg:#F2EDE4;--s1:#FBF8F2;--s2:#E5DED0;--line:rgba(14,13,11,.18);--text:#0E0D0B;--text2:rgba(14,13,11,.74);--accent:#FFB800;--on:#1A1200;--atext:#7A5200;--ok:#1B6A44;--warn:#7A5200;--bad:#A8341F;--node:#0E0D0B}
+/* C: Oxblood & Parchment + pale mint */
+[data-p=c][data-m=dark]{--haze:rgba(122,30,51,.40);--bg:#1C0A10;--s1:#2B0F18;--s2:#3B1824;--line:rgba(243,233,220,.16);--text:#F3E9DC;--text2:rgba(243,233,220,.74);--accent:#B8F2D0;--on:#0B2A1A;--atext:#B8F2D0;--ok:#B8F2D0;--warn:#F2C14E;--bad:#FF9C8A;--node:#F3E9DC}
+/* C-A "Hint": near-neutral warm charcoal, wine only as a faint haze and in accents */
+[data-p=d][data-m=dark]{--haze:rgba(122,30,51,.12);--bg:#0D0809;--s1:#251B1E;--s2:#3A2E33;--line:rgba(243,233,220,.22);--text:#F5ECDF;--text2:rgba(245,236,223,.82);--accent:#B8F2D0;--on:#0B2A1A;--atext:#B8F2D0;--ok:#B8F2D0;--warn:#F2C14E;--bad:#FF9C8A;--node:#F3E9DC}
+/* C-B "Medium": deep plum-brown surfaces and a soft wine glow, warmer than C-A */
+[data-p=e][data-m=dark]{--haze:rgba(122,30,51,.26);--bg:#150A0F;--s1:#2C1620;--s2:#42242F;--line:rgba(243,233,220,.20);--text:#F5ECDF;--text2:rgba(245,236,223,.80);--accent:#B8F2D0;--on:#0B2A1A;--atext:#B8F2D0;--ok:#B8F2D0;--warn:#F2C14E;--bad:#FF9C8A;--node:#F3E9DC}
+[data-p=c][data-m=light],[data-p=d][data-m=light],[data-p=e][data-m=light]{--haze:rgba(122,30,51,.10);--bg:#F3E9DC;--s1:#FBF4EA;--s2:#E8DACA;--line:rgba(43,15,22,.18);--text:#2B0F16;--text2:rgba(43,15,22,.74);--accent:#2B0F16;--on:#B8F2D0;--atext:#7A1E33;--ok:#1B6A44;--warn:#7A5200;--bad:#A8341F;--node:#2B0F16}
+
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(900px 520px at 10% -6%,var(--haze),transparent 60%)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;overflow-x:hidden;background:var(--bg);color:var(--text);font:400 16px/1.55 var(--body);transition:background .3s,color .3s}
+h1,h2,h3{font-family:var(--font);letter-spacing:-.035em;margin:0;line-height:1.05}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.switch{position:sticky;top:0;z-index:50;background:var(--s1);border-bottom:1px solid var(--line);padding:10px 24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.switch b{font:700 13px var(--font);letter-spacing:.08em;margin-right:6px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:99px;padding:3px;gap:2px}
+.seg button{border:0;background:none;color:var(--text2);font:600 14px var(--body);padding:8px 16px;border-radius:99px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--text);color:var(--bg)}
+.sw{display:inline-flex;gap:4px;margin-left:6px}.sw i{width:16px;height:16px;border-radius:50%;border:1px solid var(--line)}
+.eyebrow{font:700 12px var(--font);letter-spacing:.18em;text-transform:uppercase;color:var(--text2)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:14px 24px;border-radius:14px;border:1px solid var(--line);background:var(--s1);color:var(--text);font:700 15px var(--body);cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--on);border-color:transparent;box-shadow:0 10px 30px -10px var(--accent)}
+.btn.sm{padding:9px 16px;font-size:14px;border-radius:11px}.btn.ghost{background:transparent;color:var(--text2)}
+.pill{display:inline-flex;gap:6px;align-items:center;padding:4px 11px;border-radius:99px;font:700 12px var(--body);border:1px solid var(--line);background:var(--s2);color:var(--text)}
+.pill.ok{color:var(--ok);border-color:currentColor;background:transparent}.pill.warn{color:var(--warn);border-color:currentColor;background:transparent}.pill.bad{color:var(--bad);border-color:currentColor;background:transparent}
+nav{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+.logo{display:flex;align-items:center;gap:10px;font:700 22px var(--font)}.logo i{width:32px;height:32px;border-radius:10px;background:var(--accent);color:var(--on);display:grid;place-items:center;font-style:normal;font-size:18px}
+nav .links{display:flex;gap:26px;color:var(--text2);font-weight:600}
+.hero{position:relative;min-height:560px;display:grid;align-items:center;padding:40px 0}
+.hero canvas{position:absolute;right:-4%;top:0;width:60%;height:100%}
+.hero .copy{position:relative;max-width:640px}
+.hero h1{font-size:clamp(52px,8vw,104px);margin:18px 0 22px}.hero h1 em{font-style:normal;color:var(--atext)}
+.lead{font-size:19px;color:var(--text2);max-width:560px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+section{padding:54px 0}.head{display:flex;justify-content:space-between;gap:30px;align-items:end;flex-wrap:wrap;margin-bottom:26px}.head h2{font-size:clamp(34px,5vw,56px)}.head p{max-width:420px;color:var(--text2);margin:0}
+.card{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:26px}
+.journey{padding:34px;display:grid;gap:26px}.path{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;position:relative}
+.path:before{content:"";position:absolute;left:12.5%;right:12.5%;top:30px;height:2px;background:var(--line)}
+.node{text-align:center;position:relative}.node i{width:60px;height:60px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;font-style:normal;font:700 20px var(--font);background:var(--s2);border:1px solid var(--line);color:var(--text2);transition:.5s}
+.node.on i{background:var(--text);color:var(--bg);border-color:transparent;transform:scale(1.1)}.node:nth-child(3).on i{background:var(--accent);color:var(--on)}
+.node small{color:var(--text2);display:block}
+.meter{display:flex;gap:24px;align-items:center}.count{font:700 72px var(--font);line-height:1;min-width:60px}.count.up{color:var(--atext)}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.grid2{display:grid;grid-template-columns:1.25fr 1fr;gap:16px}
+@media(max-width:900px){.grid3,.grid2,.path{grid-template-columns:1fr 1fr}.hero canvas{width:100%;opacity:.35}nav .links{display:none}nav>div:last-child{display:none}}
+.ws{display:grid;grid-template-columns:200px 1fr 220px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--s1)}
+.ws aside{padding:16px;background:var(--s2);display:grid;gap:8px;align-content:start}.ws aside.r{border-left:1px solid var(--line)}.ws aside:first-child{border-right:1px solid var(--line)}
+.req{padding:10px 12px;border-radius:12px;font-size:14px;color:var(--text2)}.req b{display:block;color:var(--text)}.req.on{background:var(--s1);border:1px solid var(--line);box-shadow:inset 3px 0 0 var(--accent)}
+.chat{padding:22px;display:grid;gap:12px;align-content:start}.bubble{padding:12px 16px;border-radius:16px 16px 16px 4px;background:var(--s2);border:1px solid var(--line);max-width:90%}
+.bubble.me{justify-self:end;border-radius:16px 16px 4px 16px;background:var(--text);color:var(--bg);border-color:transparent}
+.out{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+@media(max-width:800px){.ws{grid-template-columns:1fr}}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.kpi{padding:20px;border-radius:16px;background:var(--s1);border:1px solid var(--line)}.kpi b{display:block;font:700 40px var(--font)}.kpi span{color:var(--text2);font-size:14px}
+.kpi.hot{background:var(--text);color:var(--bg)}.kpi.hot span{color:inherit;opacity:.8}
+.case{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--s1)}
+.case+.case{margin-top:8px}.case small{color:var(--text2);display:block}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line)}th{color:var(--text2);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.contrast{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.cr{padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--s1);font-size:14px;display:flex;justify-content:space-between;gap:8px}.cr b{font-family:var(--font)}
+.cr.pass b{color:var(--ok)}.cr.fail b{color:var(--bad)}
+.band{background:var(--text);color:var(--bg);border-radius:28px;padding:64px 34px;text-align:center}.band h2{font-size:clamp(36px,6vw,64px);margin-bottom:14px}.band p{opacity:.8;margin:0 auto 26px;max-width:480px}
+.band .btn.primary{box-shadow:none}
+footer{padding:40px 0 70px;color:var(--text2);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.note{color:var(--text2);font-size:14px}
+.tabs{display:flex;gap:4px;padding:5px;border:1px solid var(--line);border-radius:16px;background:var(--s1);overflow-x:auto}
+.tabs button{border:0;background:none;color:var(--text2);padding:10px 18px;border-radius:11px;font:600 14px var(--body);cursor:pointer}
+.tabs button.on{background:var(--s2);color:var(--text);box-shadow:inset 0 -2px 0 var(--accent)}
+.form{display:grid;gap:12px}.form label{display:grid;gap:6px;font-size:13px;color:var(--text2)}
+.form input,.form select{padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--s2);color:var(--text);font:400 15px var(--body)}
+</style>
+</head>
+<body>
+<div class="switch" role="toolbar" aria-label="Preview controls">
+  <b>PALETTE</b>
+  <div class="seg" id="pal">
+    <button data-p="a">A · Forest &amp; Cream</button><button data-p="b">B · Ink &amp; Bone</button><button data-p="c">C · Current (too red?)</button><button data-p="d">C-A · Hint of wine</button><button data-p="e">C-B · Medium wine</button>
+  </div>
+  <div class="seg" id="mode"><button data-m="dark">Dark</button><button data-m="light">Light</button></div>
+  <span class="sw" id="swatches" aria-hidden="true"></span>
+  <span class="note" id="name"></span>
+</div>
+
+<main class="wrap">
+  <nav><div class="logo"><i>∿</i>Continuum.</div><div class="links"><span>Product</span><span>How it works</span><span>Pricing</span><span>Demo</span></div><div style="display:flex;gap:10px"><button class="btn sm">Sign in</button><button class="btn sm primary">Try the demo</button></div></nav>
+
+  <header class="hero">
+    <canvas id="scene" aria-hidden="true"></canvas>
+    <div class="copy">
+      <div class="eyebrow">Support that remembers what works</div>
+      <h1>Good support <em>remembers.</em></h1>
+      <p class="lead">Every fixed problem becomes a verified answer for the next customer. Confirmed by people, kept by your company, never shared with another.</p>
+      <div class="actions"><button class="btn primary">Try the demo →</button><button class="btn">See how it works</button></div>
+    </div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Watch a fix<br>teach the system.</h2><p>One problem, from the first report to the next customer’s answer.</p></div>
+    <div class="card journey">
+      <div class="path" id="path">
+        <div class="node"><i>1</i><b>Customer A</b><small>Reports it</small></div>
+        <div class="node"><i>2</i><b>Specialist</b><small>Writes the fix</small></div>
+        <div class="node"><i>✓</i><b>Confirmed</b><small>“It worked”</small></div>
+        <div class="node"><i>4</i><b>Customer B</b><small>Gets the fix</small></div>
+      </div>
+      <div class="meter"><div><div class="eyebrow">Learned memory</div><div class="count" id="count">0</div></div><p id="cap" style="margin:0;color:var(--text2)"></p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>One calm place<br>for every request.</h2><p>The conversation in the middle, your context on the right, every answer labelled with where it came from.</p></div>
+    <div class="ws">
+      <aside><div class="eyebrow">Requests</div><div class="req on"><b>MacBook Pro</b>Display flickers<br><span class="pill warn">Waiting for part</span></div><div class="req"><b>Wi-Fi keeps dropping</b>Resolved yesterday</div><div class="req"><b>Printer paper jam</b>New</div></aside>
+      <div class="chat">
+        <div class="bubble me">My display flickers after startup.</div>
+        <div class="bubble">Here’s a fix that worked for a customer with your model: <b>open Display settings, choose the Standard profile and restart.</b>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><span class="pill ok">✓ Confirmed by a customer</span><span class="pill">Model X · firmware 4</span></div>
+          <div class="out"><button class="btn primary sm">It worked</button><button class="btn sm">Still need help</button><button class="btn sm ghost">Talk to a person</button></div></div>
+      </div>
+      <aside class="r"><div class="eyebrow">Your context</div><div class="req on"><b>Call before paid repairs</b>Saved preference</div><div class="req"><b>Earlier restart didn’t help</b>Won’t be suggested again</div><div class="eyebrow" style="margin-top:10px">Next step</div><div class="req">Book a visit →</div></aside>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Specialist console.</h2><p>What needs attention comes first. One loud card, the rest quiet.</p></div>
+    <div class="kpis"><div class="kpi hot"><b>3</b><span>Cases need you</span></div><div class="kpi"><b>24</b><span>Fixes customers confirmed</span></div><div class="kpi"><b>87%</b><span>Solved without a handover</span></div></div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card"><div class="eyebrow" style="margin-bottom:12px">Cases</div>
+        <div class="case"><div><b>Model X network</b><small>Unassigned · 2 h ago</small></div><span><span class="pill bad">Urgent</span> <span class="pill warn">Owner review</span></span></div>
+        <div class="case"><div><b>Battery drains fast</b><small>Sam Specialist</small></div><span class="pill">In progress</span></div>
+        <div class="case"><div><b>VPN timeouts</b><small>Alex Owner</small></div><span class="pill ok">Resolved</span></div>
+        <div class="actions"><button class="btn primary sm">Take this case</button><button class="btn sm">Assign…</button><button class="btn sm ghost">Request owner review</button></div></div>
+      <div class="card"><div class="eyebrow" style="margin-bottom:12px">Members</div><table><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody><tr><td>Alex Owner</td><td>Owner</td><td><span class="pill ok">Active</span></td></tr><tr><td>Sam Specialist</td><td>Specialist</td><td><span class="pill ok">Active</span></td></tr><tr><td>Priya N.</td><td>Customer</td><td><span class="pill bad">Revoked</span></td></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Company workspace.</h2><p>Where the dark mode felt too red: tabs, stat cards, forms and a members table.</p></div>
+    <div class="tabs"><button class="on">Overview</button><button>Team &amp; access</button><button>AI services</button><button>Knowledge</button><button>Connections</button></div>
+    <div class="kpis" style="margin-top:14px"><div class="kpi hot"><b>2</b><span>Cases need you</span></div><div class="kpi"><b>4</b><span>Active specialists</span></div><div class="kpi"><b>12</b><span>Knowledge sources</span></div></div>
+    <div class="grid2" style="margin-top:14px">
+      <div class="card"><div class="eyebrow" style="margin-bottom:12px">Invite a team member</div>
+        <div class="form"><label>Email<input value="newhire@example.com"></label><label>Role<select><option>Specialist</option></select></label><button class="btn primary sm">Create private invitation</button></div></div>
+      <div class="card"><div class="eyebrow" style="margin-bottom:12px">Members</div><table><thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead><tbody><tr><td>Alex Owner</td><td>Owner</td><td><span class="pill ok">Active</span></td></tr><tr><td>Sam Specialist</td><td>Specialist</td><td><span class="pill ok">Active</span></td></tr><tr><td>Priya N.</td><td>Customer</td><td><span class="pill bad">Revoked</span></td></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Contrast, measured.</h2><p>Computed live from this palette’s colours. 4.5 is the WCAG AA minimum for normal text.</p></div>
+    <div class="contrast" id="contrast"></div>
+  </section>
+
+  <section><div class="band"><h2>Less chasing.<br>More moving forward.</h2><p>Watch one customer’s fix help the next one.</p><button class="btn primary">Try the demo →</button></div></section>
+  <footer><span>© Continuum · Good support remembers.</span><span>Palette preview · nothing here is wired to the product</span></footer>
+</main>
+
+<script>
+const NAMES={a:'Forest & Cream, with a vermilion hit',b:'Ink & Bone, with a saffron hit',c:'Current oxblood (the version you flagged)',d:'Option A: near-neutral charcoal, wine only as a faint haze and accents',e:'Option B: plum-brown surfaces with a soft wine glow'};
+const root=document.documentElement;
+const q=new URLSearchParams(location.search);
+if(['a','b','c','d','e'].includes(q.get('p')))root.dataset.p=q.get('p');
+if(['dark','light'].includes(q.get('m')))root.dataset.m=q.get('m');
+const v=n=>getComputedStyle(root).getPropertyValue(n).trim();
+// contrast maths (WCAG 2.x)
+function rgb(c){c=c.trim();let m;if((m=c.match(/^#([0-9a-f]{6})$/i)))return[0,2,4].map(i=>parseInt(m[1].slice(i,i+2),16));if((m=c.match(/^rgba?\(([^)]+)\)/))){const p=m[1].split(',').map(Number);return[p[0],p[1],p[2],p[3]??1]}return[0,0,0]}
+function over(fg,bg){const a=fg[3]??1;return[0,1,2].map(i=>Math.round(fg[i]*a+bg[i]*(1-a)))}
+const lum=c=>{const f=x=>{x/=255;return x<=.03928?x/12.92:Math.pow((x+.055)/1.055,2.4)};return .2126*f(c[0])+.7152*f(c[1])+.0722*f(c[2])};
+const ratio=(a,b)=>{const x=lum(a),y=lum(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
+function paintContrast(){
+  const bg=rgb(v('--bg')),s1=rgb(v('--s1')),acc=rgb(v('--accent')),on=rgb(v('--on')),text=rgb(v('--text')),t2=over(rgb(v('--text2')),bg),at=rgb(v('--atext')),ok=rgb(v('--ok')),bad=rgb(v('--bad')),warn=rgb(v('--warn'));
+  const rows=[['Body text on page',ratio(text,bg)],['Secondary text on page',ratio(t2,bg)],['Button label on accent',ratio(on,acc)],['Accent as text on page',ratio(at,bg)],['Accent fill against page',ratio(acc,bg),3,'non-text'],['Body text on card',ratio(text,s1)],['Card against page (layer step, aim 1.15+)',ratio(s1,bg),1.15,'layers'],['Raised against card (aim 1.15+)',ratio(rgb(v('--s2')),s1),1.15,'layers'],['“Confirmed” on page',ratio(ok,bg)],['“Urgent” on page',ratio(bad,bg)],['“Warning” on page',ratio(warn,bg)]];
+  document.getElementById('contrast').innerHTML=rows.map(([n,r,min=4.5,k])=>`<div class="cr ${r>=min?'pass':'fail'}"><span>${n}${k?` <small>(needs ${min})</small>`:''}</span><b>${r.toFixed(1)} : 1 ${r>=min?'✓':'✗'}</b></div>`).join('');
+  document.getElementById('swatches').innerHTML=['--bg','--s1','--text','--accent'].map(n=>`<i style="background:${v(n)}"></i>`).join('');
+  document.getElementById('name').textContent=NAMES[root.dataset.p]+' · '+(root.dataset.m==='dark'?'dark':'light');
+}
+function sync(){document.querySelectorAll('#pal button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===root.dataset.p));document.querySelectorAll('#mode button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===root.dataset.m));paintContrast();try{history.replaceState(null,'','?p='+root.dataset.p+'&m='+root.dataset.m)}catch{}}
+document.getElementById('pal').onclick=e=>{const b=e.target.closest('button');if(b){root.dataset.p=b.dataset.p;sync()}};
+document.getElementById('mode').onclick=e=>{const b=e.target.closest('button');if(b){root.dataset.m=b.dataset.m;sync()}};
+sync();
+
+// looping journey
+const nodes=[...document.querySelectorAll('.node')],count=document.getElementById('count'),cap=document.getElementById('cap');
+const words=['Customer A reports a flickering screen.','The standard suggestion fails, so a specialist writes a fix.','Customer A confirms it worked. Memory goes from 0 to 1.','Customer B reports a similar problem and receives A’s verified fix.'];
+let step=-1;function tick(){step=step>=3?-1:step+1;nodes.forEach((n,i)=>n.classList.toggle('on',i<=step));count.textContent=step>=2?'1':'0';count.classList.toggle('up',step>=2);cap.textContent=words[Math.max(step,0)];setTimeout(tick,step===3?3000:step===-1?700:1600)}tick();
+
+// constellation in this palette's colours
+const cv=document.getElementById('scene'),cx=cv.getContext('2d');let W,H,D;
+const N=78,pts=Array.from({length:N},()=>{const u=Math.random()*2-1,t=Math.random()*6.283,r=Math.sqrt(1-u*u),k=.62+Math.random()*.38;return{x:r*Math.cos(t)*k,y:u*k,z:r*Math.sin(t)*k,ph:Math.random()*6.28}});
+const edges=[];for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){if(Math.hypot(pts[i].x-pts[j].x,pts[i].y-pts[j].y,pts[i].z-pts[j].z)<.5)edges.push([i,j])}
+const sparks=Array.from({length:6},()=>({e:Math.random()*edges.length|0,t:Math.random()}));let mx=0,my=0,ang=0;
+function size(){D=Math.min(devicePixelRatio||1,2);W=cv.clientWidth;H=cv.clientHeight;cv.width=W*D;cv.height=H*D;cx.setTransform(D,0,0,D,0,0)}
+addEventListener('resize',size);size();addEventListener('pointermove',e=>{mx=e.clientX/innerWidth-.5;my=e.clientY/innerHeight-.5});
+const rgba=(c,a)=>{const p=rgb(c);return`rgba(${p[0]},${p[1]},${p[2]},${a})`};
+function frame(ts){ang+=.004;cx.clearRect(0,0,W,H);const ry=ang+mx*.9,rx=my*.6,cy=Math.cos(ry),sy=Math.sin(ry),cxx=Math.cos(rx),sxx=Math.sin(rx),R=Math.min(W,H)*.46,F=2.4;
+  const node=v('--node'),acc=v('--accent'),spark=v('--atext');
+  const P=pts.map(p=>{let x=p.x*cy-p.z*sy,z=p.x*sy+p.z*cy,y=p.y*cxx-z*sxx;z=p.y*sxx+z*cxx;const s=F/(F+z);return{x:W/2+x*R*s,y:H/2+y*R*s,s,z,ph:p.ph}});
+  cx.lineWidth=1;for(const[i,j]of edges){const a=P[i],b=P[j];cx.strokeStyle=rgba(node,Math.max(0,.3-(a.z+b.z)*.1));cx.beginPath();cx.moveTo(a.x,a.y);cx.lineTo(b.x,b.y);cx.stroke()}
+  for(const sp of sparks){sp.t+=.012;if(sp.t>1){sp.t=0;sp.e=Math.random()*edges.length|0}const[i,j]=edges[sp.e],a=P[i],b=P[j],x=a.x+(b.x-a.x)*sp.t,y=a.y+(b.y-a.y)*sp.t;const g=cx.createRadialGradient(x,y,0,x,y,11);g.addColorStop(0,rgba(spark,.95));g.addColorStop(1,rgba(spark,0));cx.fillStyle=g;cx.beginPath();cx.arc(x,y,11,0,6.3);cx.fill()}
+  P.forEach((p,i)=>{const hot=i%17===0,pulse=hot?.6+.4*Math.sin(ts/500+p.ph):1;if(hot){const g=cx.createRadialGradient(p.x,p.y,0,p.x,p.y,26*p.s);g.addColorStop(0,rgba(acc,.5));g.addColorStop(1,rgba(acc,0));cx.fillStyle=g;cx.beginPath();cx.arc(p.x,p.y,26*p.s,0,6.3);cx.fill()}
+    cx.fillStyle=hot?acc:rgba(node,.55+p.s*.3);cx.beginPath();cx.arc(p.x,p.y,Math.max(.8,(hot?4.4:2.2)*p.s*pulse),0,6.3);cx.fill()});
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
