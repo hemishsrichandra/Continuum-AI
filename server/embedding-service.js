@@ -25,6 +25,8 @@ export function createEmbeddingService(config = {}, { fetchImpl = globalThis.fet
   const timeoutMs = Number(config.EMBEDDING_TIMEOUT_MS) > 0 ? Number(config.EMBEDDING_TIMEOUT_MS) : 10000;
   const cacheSize = Number(config.QUERY_EMBEDDING_CACHE) > 0 ? Number(config.QUERY_EMBEDDING_CACHE) : 500;
   const cacheTtl = 10 * 60 * 1000;
+  // Some OpenAI-compatible servers omit "index"; accepting that means trusting array order, so it is opt-in.
+  const allowUnindexed = config.EMBEDDING_ALLOW_UNINDEXED === 'true';
   let dimensions = remote ? Number(config.EMBEDDING_DIMENSIONS) || null : EMBEDDING_DIMENSIONS;
   let downUntil = 0;
   let lastError = null;
@@ -33,6 +35,42 @@ export function createEmbeddingService(config = {}, { fetchImpl = globalThis.fet
 
   const modelId = () => `${provider}:${model}`;
   const key = (text) => createHash('sha256').update(model + '\u0000' + text).digest('hex');
+
+  /**
+   * Map the provider's answer back onto the batch that was sent. A response is only used if it is complete and unambiguous: exactly one entry
+   * per input, each carrying a unique in-range "index" (entries may arrive in ANY order and are re-ordered by that index), every vector a
+   * non-empty array of finite numbers, all of the same size, and a model name that matches the one requested. Anything else is rejected
+   * (non-transient) so that no document is ever stored with another document's vector.
+   */
+  function orderedVectors(body, count) {
+    const reject = (why) => {
+      stats.failures++;
+      throw err('Embedding provider returned an invalid response (' + why + ').', { transient: false });
+    };
+    const items = Array.isArray(body?.data) ? body.data : [];
+    if (items.length !== count) reject('expected ' + count + ' entries, got ' + items.length);
+    if (typeof body.model === 'string' && body.model && !(body.model.includes(model) || model.includes(body.model))) reject('model identity mismatch');
+    const ordered = new Array(count);
+    const withIndex = items.filter((d) => d && d.index !== undefined).length;
+    if (withIndex === 0 && allowUnindexed) items.forEach((d, i) => { ordered[i] = d?.embedding; });
+    else {
+      if (withIndex !== count) reject('entries without an index');
+      for (const d of items) {
+        const i = d.index;
+        if (!Number.isInteger(i) || i < 0 || i >= count) reject('index out of range');
+        if (ordered[i] !== undefined) reject('duplicate index');
+        ordered[i] = d.embedding;
+      }
+    }
+    for (let i = 0; i < count; i++) if (ordered[i] === undefined) reject('missing index ' + i);
+    const size = Array.isArray(ordered[0]) ? ordered[0].length : 0;
+    for (const v of ordered) {
+      if (!Array.isArray(v) || !v.length) reject('empty vector');
+      if (v.length !== size) reject('vectors of different sizes');
+      if (!v.every((x) => typeof x === 'number' && Number.isFinite(x))) reject('non-numeric values');
+    }
+    return ordered;
+  }
 
   async function callRemote(texts) {
     if (now() < downUntil) throw err('Embedding provider is temporarily unavailable.');
@@ -65,13 +103,8 @@ export function createEmbeddingService(config = {}, { fetchImpl = globalThis.fet
       stats.failures++;
       throw err('Embedding provider returned an invalid response.');
     }
-    const vectors = (body.data || []).map((d) => d?.embedding);
-    if (vectors.length !== texts.length || vectors.some((v) => !Array.isArray(v) || !v.length)) {
-      stats.failures++;
-      throw err('Embedding provider returned an invalid response.', { transient: false });
-    }
+    const vectors = orderedVectors(body, texts.length);
     const size = vectors[0].length;
-    if (vectors.some((v) => v.length !== size)) throw err('Embedding provider returned vectors of different sizes.', { transient: false });
     if (dimensions && dimensions !== size) throw err(`Embedding dimension changed from ${dimensions} to ${size}; rebuild the index for the new model.`, { transient: false });
     dimensions = size;
     lastError = null;

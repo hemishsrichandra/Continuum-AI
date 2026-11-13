@@ -45,7 +45,7 @@ test('embedding evaluation uses the configured model and records it (mock provid
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     seen.push(String(url));
     const input = JSON.parse(options.body).input;
-    return Response.json({ data: input.map((x) => ({ embedding: /flick|screen|monitor|panel|display|strob/i.test(x) ? [1, 0, 0] : /jam|paper|sheet|printer/i.test(x) ? [0, 1, 0] : [0, 0, 1] })) });
+    return Response.json({ data: input.map((x, i) => ({ index: i, embedding: /flick|screen|monitor|panel|display|strob/i.test(x) ? [1, 0, 0] : /jam|paper|sheet|printer/i.test(x) ? [0, 1, 0] : [0, 0, 1] })) });
   });
   const r = await evaluate({ dataset: MINE, embeddings: true, embeddingEnv: { EMBEDDING_MODEL: 'mock-embed', OPENAI_API_KEY: 'k', OPENAI_BASE_URL: 'https://embeddings.example.test/v1' } });
   assert.equal(r.embeddingModel, 'mock-embed');
