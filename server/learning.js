@@ -376,6 +376,62 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
       const sync = result.status === 'published' && result.allowMemoryPublication !== false && !result.retiredAt ? await publish(result) : result.sync;
       return { success: true, status: result.status, sync };
     },
+    /** "I'll check and confirm later": a bounded, explicit extension of the confirmation wait. */
+    defer(profile, body) {
+      if (body.confirmed !== true) throw fault(400, 'Confirm that you will check the fix and answer later.');
+      return store.updateFor(profile.companyId, (data) => {
+        const r = data.resolutions.find((x) => x.id === body.id && x.companyId === profile.companyId);
+        const h = r && data.handoffs.find((x) => x.id === r.handoffId && x.scope === privateScope(profile));
+        if (!r || !h) throw fault(404, 'Solution not found in your account.');
+        if (r.status !== 'pending_confirmation') throw fault(409, 'This solution has already been answered.');
+        if ((r.deferrals || 0) >= 2) throw fault(409, 'You have already asked for more time twice. Please tell us whether it worked, or ask for a specialist.');
+        const now = new Date().toISOString();
+        const until = followThrough?.deferConfirmation(profile.companyId, r.id);
+        if (!until) throw fault(409, 'There is no open confirmation to extend.');
+        r.deferrals = (r.deferrals || 0) + 1;
+        r.confirmationDeadline = until;
+        h.confirmationDeadline = until;
+        h.confirmationDeferrals = r.deferrals;
+        h.revision = (h.revision || 0) + 1;
+        event(data, h, 'confirmation_deferred', 'Customer asked for more time to check the specialist solution.', now);
+        followThrough?.log({ companyId: profile.companyId, chatbotId: r.chatbotId, ticketId: h.ticketId, customerId: profile.id, kind: 'confirmation_deferred', detail: { proposalId: r.id, until, deferrals: r.deferrals }, actor: 'customer', at: now });
+        return { success: true, deadline: until, deferrals: r.deferrals };
+      });
+    },
+    /** A specialist marks a case urgent and/or asks the owner to look at it; only an owner closes an owner review. */
+    flag(staff, body, operation) {
+      if (body.confirmed !== true) throw fault(400, 'Confirm the flag.');
+      if (body.urgent === undefined && body.ownerReview === undefined) throw fault(400, 'Choose urgent, owner review, or both.');
+      if ((body.urgent !== undefined && typeof body.urgent !== 'boolean') || (body.ownerReview !== undefined && typeof body.ownerReview !== 'boolean'))
+        throw fault(400, 'Urgent and owner review must be true or false.');
+      const note = body.note === undefined || body.note === '' ? '' : field(body.note, 'note for the owner', 1000);
+      if (note && containsSecret(note)) throw fault(400, 'Remove passwords and keys from the note.');
+      return change(staff, operation, (data) => {
+        const h = caseFor(data, staff, field(body.handoffId, 'case ID', 100), body.revision);
+        if (['Resolved', 'Closed'].includes(h.status)) throw fault(409, 'This case is already closed.');
+        const now = new Date().toISOString(), row = rowFor(data, h, staff.provider);
+        const log = (kind, text) => { event(data, h, kind, text, now); followThrough?.log({ companyId: h.companyId, chatbotId: h.chatbotId, ticketId: h.ticketId, customerId: h.customerId, kind, detail: { by: staff.id }, actor: staff.id, at: now }); };
+        if (body.urgent !== undefined && body.urgent !== Boolean(h.urgent)) {
+          if (body.urgent) { h.priorityBefore = row.priority || 'Normal'; row.priority = 'Urgent'; h.urgent = true; h.urgentBy = staff.id; h.urgentAt = now; log('flagged_urgent', 'Marked urgent.'); }
+          else { row.priority = h.priorityBefore || 'Normal'; delete h.priorityBefore; h.urgent = false; log('urgent_cleared', 'Urgent flag removed.'); }
+        }
+        if (body.ownerReview !== undefined) {
+          if (body.ownerReview) {
+            if (h.ownerReview) throw fault(409, 'An owner review is already requested for this case.');
+            h.ownerReview = { requestedBy: staff.id, requestedAt: now, note };
+            log('owner_review_requested', 'Owner review requested.');
+          } else {
+            if (staff.role !== 'owner') throw fault(403, 'Only an owner can close an owner review.');
+            if (!h.ownerReview) throw fault(409, 'No owner review is open for this case.');
+            delete h.ownerReview;
+            log('owner_review_closed', 'Owner review closed.');
+          }
+        }
+        h.revision = (h.revision || 0) + 1;
+        h.updatedAt = now;
+        return { success: true, revision: h.revision, urgent: Boolean(h.urgent), ownerReview: Boolean(h.ownerReview) };
+      });
+    },
     async retire(staff, body) {
       if (body.confirmed !== true) throw fault(400, 'Confirm retiring this resolution.');
       const row = memoryPool?.get(staff.companyId, botId(staff), body.id);

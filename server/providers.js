@@ -183,7 +183,7 @@ export function provider(store, profile) {
           updatedAt: row.updatedAt || null,
           requirements: data.requirements.filter((item) => item.scope === scope && item.ticketId === id),
           appointments: data.bookings.filter((item) => item.scope === scope && item.ticketId === id),
-          handoffs: data.handoffs.filter((item) => item.scope === scope && item.ticketId === id).map(({ context, ...item }) => item),
+          handoffs: data.handoffs.filter((item) => item.scope === scope && item.ticketId === id).map(({ context, ownerReview, urgentBy, priorityBefore, ...item }) => item),
         };
       });
   };

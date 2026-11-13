@@ -239,7 +239,7 @@ export function createHandler({ file, config = process.env, service, vectorClien
         '/api/conversation/archive', '/api/feedback', '/api/slots', '/api/memory',
         '/api/reflect', '/api/chat', '/api/request', '/api/requirement', '/api/book',
         '/api/cancel', '/api/book/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
-        '/api/resolutions/outcome', '/api/connector/sync', '/api/troubleshooting/outcome', '/api/privacy/export', '/api/privacy/erase',
+        '/api/resolutions/defer', '/api/resolutions/outcome', '/api/connector/sync', '/api/troubleshooting/outcome', '/api/privacy/export', '/api/privacy/erase',
       ]);
       if (['owner', 'staff'].includes(profile.role) && customerRoutes.has(url.pathname))
         throw fault(403, 'Customer accounts handle personal requests and confirmations. Use the company dashboard or specialist console.');
@@ -386,6 +386,8 @@ export function createHandler({ file, config = process.env, service, vectorClien
             );
           return write(method === 'resolve' ? 201 : 200, await learning[method](operator, body, op));
         }
+        if (endpoint === 'POST /api/operator/flag')
+          return write(200, learning.flag(operator, await json(req)));
         if (endpoint === 'POST /api/operator/retire')
           return write(200, await learning.retire(operator, await json(req)));
         if (endpoint === 'POST /api/operator/review-resolution') {
@@ -407,6 +409,8 @@ export function createHandler({ file, config = process.env, service, vectorClien
       };
       if (endpoint === 'POST /api/resolutions/confirm')
         return write(200, await learning.confirm(profile, await json(req)));
+      if (endpoint === 'POST /api/resolutions/defer')
+        return write(200, learning.defer(profile, await json(req)));
       if (endpoint === 'POST /api/troubleshooting/outcome')
         return write(200, await troubleshooting.feedback(profile, await json(req)));
       if (endpoint === 'POST /api/resolutions/outcome') {

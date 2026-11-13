@@ -61,6 +61,17 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
     }
     return sql.prepare('SELECT deadline_at FROM follow_through_tasks WHERE company_id=? AND dedupe_key=?').get(companyId, 'confirm:' + proposalId)?.deadline_at || deadline;
   }
+  /**
+   * The customer asked for more time to try a specialist's fix. Only the explicit request moves the deadline, and only
+   * while the wait is still pending; silence still never counts as success.
+   */
+  function deferConfirmation(companyId, proposalId, extraHours = confirmationHours, at = Date.now()) {
+    const task = sql.prepare("SELECT id,deadline_at FROM follow_through_tasks WHERE company_id=? AND dedupe_key=? AND status='pending'").get(companyId, 'confirm:' + proposalId);
+    if (!task) return null;
+    const next = iso(Math.max(Date.parse(task.deadline_at), at) + extraHours * 3600000);
+    const moved = sql.prepare("UPDATE follow_through_tasks SET deadline_at=? WHERE id=? AND status='pending'").run(next, task.id);
+    return moved.changes ? next : null;
+  }
   function completeConfirmation(companyId, proposalId, outcome) {
     sql.prepare("UPDATE follow_through_tasks SET status='completed',processed_at=?,outcome_json=? WHERE company_id=? AND dedupe_key=? AND status='pending'")
       .run(iso(), JSON.stringify(outcome), companyId, 'confirm:' + proposalId);
@@ -280,6 +291,7 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
     log,
     timeline,
     scheduleConfirmation,
+    deferConfirmation,
     completeConfirmation,
     autoPublishBlockers,
     tick,

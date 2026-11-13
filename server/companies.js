@@ -167,6 +167,39 @@ export function createCompanies(store, config) {
       }).immediate();
       send(200,{success:true});return true;
     }
+    if (endpoint === 'POST /api/company/reinstate-membership') {
+      const body = await json(req);
+      if (body.confirmed !== true) throw fault(400, 'Confirm bringing this member back.');
+      const id = field(body.id, 'account', 100);
+      const member = sql.prepare("SELECT role FROM company_memberships WHERE company_id=? AND account_id=? AND status='revoked' AND role<>'owner'").get(companyId, id);
+      if (!member) throw fault(404, 'No revoked member found with that account.');
+      // Coming back is never an upgrade: a customer stays a customer, and a former specialist may return as either.
+      const role = body.role === undefined ? 'customer' : body.role;
+      if (!['customer', 'staff'].includes(role) || (role === 'staff' && member.role !== 'staff'))
+        throw fault(400, 'A member can return as a customer, or as a specialist only if they were one before.');
+      sql.transaction(() => {
+        sql.prepare("UPDATE company_memberships SET status='active', role=? WHERE company_id=? AND account_id=? AND status='revoked'").run(role, companyId, id);
+        store.update((data) => data.audit.push({ id: randomUUID(), scope: `company:${companyId}`, kind: 'membership_reinstated', accountId: id, role, authorId: session.account_id, createdAt: new Date().toISOString() }));
+      }).immediate();
+      send(200, { success: true, role });
+      return true;
+    }
+    if (endpoint === 'POST /api/company/invitations/resend') {
+      const body = await json(req);
+      if (body.confirmed !== true) throw fault(400, 'Confirm sending a new invitation. The previous link stops working.');
+      const email = field(body.email, 'email', 254).toLowerCase();
+      const previous = sql.prepare('SELECT role,provider FROM invitations WHERE company_id=? AND email=? AND consumed_at IS NULL ORDER BY expires_at DESC LIMIT 1').get(companyId, email);
+      if (!previous) throw fault(404, 'There is no unused invitation for that email address. Create a new one instead.');
+      const token = secret(), now = Date.now(), expiresAt = now + 48 * 3600000;
+      sql.transaction(() => {
+        // Only one live link per person: the old one is removed the moment the new one exists.
+        sql.prepare('DELETE FROM invitations WHERE company_id=? AND email=? AND consumed_at IS NULL').run(companyId, email);
+        sql.prepare('INSERT INTO invitations VALUES(?,?,?,?,?,?,NULL)').run(tokenHash(token), companyId, email, previous.provider, previous.role, expiresAt);
+        store.update((data) => data.audit.push({ id: randomUUID(), scope: `company:${companyId}`, kind: 'invitation_resent', email, authorId: session.account_id, createdAt: new Date().toISOString() }));
+      }).immediate();
+      send(201, { url: config.APP_URL + '/desk#invite=' + token, expiresAt });
+      return true;
+    }
     if (endpoint === 'GET /api/company') {
       send(200, {
         company: sql.prepare('SELECT id,name FROM companies WHERE id=?').get(companyId),

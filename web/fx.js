@@ -13,7 +13,7 @@ export function initTheme() {
     button.textContent = light ? '☾' : '☀';
     button.setAttribute('aria-label', light ? 'Switch to dark theme' : 'Switch to light theme');
     button.title = button.getAttribute('aria-label');
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', light ? '#f4f6fb' : '#060914');
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', light ? '#f5f7fa' : '#0b0f19');
   };
   button.addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
@@ -94,6 +94,37 @@ export function initScene() {
   io.observe(canvas);
 }
 
+/**
+ * "Watch a fix teach the system": the four-step journey runs as a continuous loop while it is on screen, and pauses when it is
+ * not. With reduced motion it shows the finished journey and does not animate.
+ */
+export function initJourney() {
+  const root = document.querySelector('#journey');
+  if (!root) return;
+  const nodes = [...root.querySelectorAll('.node')], count = root.querySelector('#j-count'), caption = root.querySelector('#j-caption');
+  const words = ['Customer A reports a flickering screen.', 'The standard suggestion fails, so a specialist writes a fix.', 'Customer A confirms it worked. Memory goes from 0 to 1.', 'Customer B reports a similar problem and receives A’s verified fix.'];
+  const show = (upTo) => {
+    nodes.forEach((n, i) => n.classList.toggle('on', i <= upTo));
+    count.textContent = upTo >= 2 ? '1' : '0';
+    count.classList.toggle('up', upTo >= 2);
+    caption.textContent = upTo >= 0 ? words[upTo] : words[0];
+  };
+  if (reduce || !('IntersectionObserver' in window)) { show(3); return; }
+  let visible = false, step = -1, timer = null;
+  const tick = () => {
+    timer = null;
+    if (!visible || document.hidden) return;
+    // after the last step, hold for a moment, then start again from an empty state
+    step = step >= 3 ? -1 : step + 1;
+    show(step);
+    timer = setTimeout(tick, step === 3 ? 3200 : step === -1 ? 700 : 1700);
+  };
+  const resume = () => { if (!timer && visible && !document.hidden) tick(); };
+  new IntersectionObserver((e) => { visible = e[0].isIntersecting; resume(); }, { threshold: 0.3 }).observe(root);
+  document.addEventListener('visibilitychange', resume);
+  show(-1);
+}
+
 export function initFx() {
   initTheme();
   initProgress();
@@ -101,4 +132,5 @@ export function initFx() {
   initTilt();
   initStory();
   initScene();
+  initJourney();
 }
