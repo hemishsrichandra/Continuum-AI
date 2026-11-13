@@ -42,7 +42,7 @@ References: Google's [web-server OAuth flow](https://developers.google.com/ident
 
 ## 3. Enable live AI, if wanted
 
-Set `HINDSIGHT_BASE_URL`, `HINDSIGHT_API_KEY`, and a unique `HINDSIGHT_BANK_PREFIX`; set `OPENAI_API_KEY` and any compatible endpoint/model overrides. `REQUIRE_LIVE_INTEGRATIONS=true` makes connection failures explicit instead of using local AI responses. These keys are independent of email and calendar configuration.
+Set `HINDSIGHT_BASE_URL`, `HINDSIGHT_API_KEY`, and a unique `HINDSIGHT_BANK_PREFIX`; set `OPENAI_API_KEY` (chat/drafting, e.g. Groq) and any compatible endpoint/model overrides. Neural embeddings use separate `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`. `REQUIRE_LIVE_INTEGRATIONS=true` makes connection failures explicit instead of using local AI responses. These keys are independent of email and calendar configuration.
 
 ## 4. Semantic search index (optional)
 

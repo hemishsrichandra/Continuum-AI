@@ -36,8 +36,8 @@ test('evaluating your own dataset runs the real flow and omits raw customer word
 });
 
 test('embedding evaluation fails loudly without configuration', async () => {
-  await assert.rejects(evaluate({ dataset: MINE, embeddings: true, embeddingEnv: {} }), /EMBEDDING_MODEL and OPENAI_API_KEY/);
-  await assert.rejects(evaluate({ dataset: MINE, embeddings: true, embeddingEnv: { EMBEDDING_MODEL: 'm' } }), /OPENAI_API_KEY/);
+  await assert.rejects(evaluate({ dataset: MINE, embeddings: true, embeddingEnv: {} }), /EMBEDDING_MODEL and EMBEDDING_API_KEY/);
+  await assert.rejects(evaluate({ dataset: MINE, embeddings: true, embeddingEnv: { EMBEDDING_MODEL: 'm' } }), /EMBEDDING_API_KEY/);
 });
 
 test('embedding evaluation uses the configured model and records it (mock provider)', async (t) => {
@@ -47,7 +47,7 @@ test('embedding evaluation uses the configured model and records it (mock provid
     const input = JSON.parse(options.body).input;
     return Response.json({ data: input.map((x, i) => ({ index: i, embedding: /flick|screen|monitor|panel|display|strob/i.test(x) ? [1, 0, 0] : /jam|paper|sheet|printer/i.test(x) ? [0, 1, 0] : [0, 0, 1] })) });
   });
-  const r = await evaluate({ dataset: MINE, embeddings: true, embeddingEnv: { EMBEDDING_MODEL: 'mock-embed', OPENAI_API_KEY: 'k', OPENAI_BASE_URL: 'https://embeddings.example.test/v1' } });
+  const r = await evaluate({ dataset: MINE, embeddings: true, embeddingEnv: { EMBEDDING_MODEL: 'mock-embed', EMBEDDING_API_KEY: 'k', EMBEDDING_BASE_URL: 'https://embeddings.example.test/v1' } });
   assert.equal(r.embeddingModel, 'mock-embed');
   assert.ok(seen.length && seen.every((u) => u === 'https://embeddings.example.test/v1/embeddings'), seen.join(','));
   assert.equal(r.counts.positiveQuestions, 4);

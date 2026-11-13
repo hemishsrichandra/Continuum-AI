@@ -138,7 +138,7 @@ test('F16: a remote embedding service returning inconsistent dimensions is ignor
     return Response.json({ data: input.map((x, i) => ({ index: i, embedding: (n++ % 2 ? [1, 0] : [1, 0, 0]) })) });
   });
   t.mock.method(console, 'warn', () => {});
-  const w = await world(t, { config: { OPENAI_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
+  const w = await world(t, { config: { EMBEDDING_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
   w.seed(w.company, { title: FOUR[0][0], symptoms: FOUR[0][1], steps: [FOUR[0][2]] });
   const out = await w.h.memoryPool.retrieve({ companyId: w.company, chatbotId: w.botOf(w.company), text: ISSUE });
   assert.equal(out.backend, LOCAL_EMBEDDING_MODEL);

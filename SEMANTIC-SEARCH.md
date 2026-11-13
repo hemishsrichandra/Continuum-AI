@@ -42,7 +42,7 @@ Without `CHROMA_URL`, nothing connects anywhere: Continuum runs in *basic mode* 
 | `EMBEDDING_PROVIDER` | What it is |
 | --- | --- |
 | `local` (default) | Offline hashed-concept vectors. Fast and private, but **not a neural model**: paraphrases outside its concept list can be missed. |
-| OpenAI-compatible (`EMBEDDING_MODEL` + `OPENAI_API_KEY`) | A real semantic model. Documents are embedded once by the indexing worker; only the customer's query is embedded at request time (small bounded cache). Text is passed through the privacy scrubber first, and a credential-like text is never sent. |
+| OpenAI-compatible (`EMBEDDING_MODEL` + `EMBEDDING_API_KEY`, endpoint `EMBEDDING_BASE_URL`; independent of the chat settings `OPENAI_*`) | A real semantic model. Documents are embedded once by the indexing worker; only the customer's query is embedded at request time (small bounded cache). Text is passed through the privacy scrubber first, and a credential-like text is never sent. |
 
 **Changing the model** is safe: every model has its own collection (`<namespace>_knowledge_<model>_<hash>`), so vectors from different models are never compared. Run `npm run index -- reindex` to fill the new collection; the old one can be deleted afterwards.
 
@@ -79,7 +79,7 @@ The two cannot share a transaction, so indexing is a persistent *desired state* 
 * **The default embedding (`local-hashed-concepts-v2`) is not neural and, on hard paraphrases, it barely works** (recall@3 about 0.03-0.09). Earlier figures around 0.9 came from paraphrases that share the offline concept list's vocabulary and must not be read as general semantic quality.
 * **ChromaDB does not change that**: with the same local vectors it indexes them faster at scale, it does not make them semantic. The difference between rows A and B is two queries out of 32 and should be read as noise.
 * **Safety held in every system**: 0 of 18 forbidden queries produced a recommendation, because compatibility and safety are hard gates that run regardless of the embedding.
-* **The neural row is BLOCKED, not estimated.** It needs an embeddings-capable endpoint; the configured one (`api.groq.com`) returned HTTP 404 for embeddings, so no neural number exists. Set `EMBEDDING_MODEL` and a key for an OpenAI-compatible embeddings API and re-run the command to fill it in, then choose the default from that result.
+* **The neural row is BLOCKED, not estimated.** It needs an embeddings-capable endpoint; the configured one (`api.groq.com`) returned HTTP 404 for embeddings, so no neural number exists. Set `EMBEDDING_MODEL` and `EMBEDDING_API_KEY` for an OpenAI-compatible embeddings API and re-run the command to fill it in, then choose the default from that result.
 * Latency and cost for a neural model are also unmeasured; cost scales with documents indexed once plus one query embedding per customer message (cached briefly).
 * The corpus is small and synthetic. It says nothing about real customers.
 

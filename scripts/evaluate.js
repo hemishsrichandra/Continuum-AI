@@ -56,8 +56,8 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
   };
   if (embeddings) {
     // Use a real embedding model for retrieval (no Hindsight needed). Fails loudly instead of silently using the local fallback.
-    if (!embeddingEnv.EMBEDDING_MODEL || !embeddingEnv.OPENAI_API_KEY) throw new Error('Embedding evaluation requires EMBEDDING_MODEL and OPENAI_API_KEY (and optionally OPENAI_BASE_URL).');
-    Object.assign(config, { EMBEDDING_MODEL: embeddingEnv.EMBEDDING_MODEL, OPENAI_API_KEY: embeddingEnv.OPENAI_API_KEY, ...(embeddingEnv.OPENAI_BASE_URL && { OPENAI_BASE_URL: embeddingEnv.OPENAI_BASE_URL }) });
+    if (!embeddingEnv.EMBEDDING_MODEL || !embeddingEnv.EMBEDDING_API_KEY) throw new Error('Embedding evaluation requires EMBEDDING_MODEL and EMBEDDING_API_KEY (and optionally EMBEDDING_BASE_URL).');
+    Object.assign(config, { EMBEDDING_MODEL: embeddingEnv.EMBEDDING_MODEL, EMBEDDING_API_KEY: embeddingEnv.EMBEDDING_API_KEY, ...(embeddingEnv.EMBEDDING_BASE_URL && { EMBEDDING_BASE_URL: embeddingEnv.EMBEDDING_BASE_URL }) });
   }
   if (live && (!config.HINDSIGHT_BASE_URL || !config.HINDSIGHT_API_KEY || !config.OPENAI_API_KEY))
     throw new Error('Live evaluation requires Hindsight and model credentials in .env.');

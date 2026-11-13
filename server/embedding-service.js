@@ -17,11 +17,16 @@ const BATCH = 64;
 const err = (message, { transient = true } = {}) => Object.assign(new Error(message), { transient });
 
 export function createEmbeddingService(config = {}, { fetchImpl = globalThis.fetch, now = Date.now } = {}) {
+  // Embeddings have their OWN credentials and endpoint (EMBEDDING_API_KEY / EMBEDDING_BASE_URL). The chat/drafting settings
+  // (OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL, e.g. Groq) are deliberately never used here, so the chat key is never sent to
+  // the embedding provider and changing one side cannot change the other. Without an embedding key the offline local embedding is used.
+  const apiKey = String(config.EMBEDDING_API_KEY || '').trim();
   const wantsRemote = config.EMBEDDING_PROVIDER ? config.EMBEDDING_PROVIDER !== 'local' : Boolean(config.EMBEDDING_MODEL);
-  const remote = wantsRemote && Boolean(config.EMBEDDING_MODEL && config.OPENAI_API_KEY);
+  const requestedModel = String(config.EMBEDDING_MODEL || '').trim() || (config.EMBEDDING_PROVIDER === 'openai' ? 'text-embedding-3-small' : '');
+  const remote = wantsRemote && Boolean(requestedModel && apiKey);
   const provider = remote ? 'openai' : 'local';
-  const model = remote ? config.EMBEDDING_MODEL : LOCAL_EMBEDDING_MODEL;
-  const baseUrl = (config.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const model = remote ? requestedModel : LOCAL_EMBEDDING_MODEL;
+  const baseUrl = (config.EMBEDDING_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const timeoutMs = Number(config.EMBEDDING_TIMEOUT_MS) > 0 ? Number(config.EMBEDDING_TIMEOUT_MS) : 10000;
   const cacheSize = Number(config.QUERY_EMBEDDING_CACHE) > 0 ? Number(config.QUERY_EMBEDDING_CACHE) : 500;
   const cacheTtl = 10 * 60 * 1000;
@@ -80,7 +85,7 @@ export function createEmbeddingService(config = {}, { fetchImpl = globalThis.fet
       response = await fetchImpl(baseUrl + '/embeddings', {
         method: 'POST',
         signal: AbortSignal.timeout(timeoutMs),
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + config.OPENAI_API_KEY },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
         body: JSON.stringify({ model, input: texts, ...(Number(config.EMBEDDING_DIMENSIONS) > 0 && { dimensions: Number(config.EMBEDDING_DIMENSIONS) }) }),
       });
     } catch {
