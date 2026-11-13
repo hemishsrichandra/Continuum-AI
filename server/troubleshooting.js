@@ -430,7 +430,13 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
   }
   /** Attach the specialist brief to a case opened some other way (for example the customer reviewed and confirmed a prepared handoff). */
   function attachBrief(p,handoffId,ticketId,reason) {
-    const brief=handoffBrief(p,provider(store,p).ticket(ticketId),reason);
+    const t=provider(store,p).ticket(ticketId);
+    // Asking for a person ends whatever the customer was trying: a pending attempt becomes "specialist requested" (skipped, never a failure).
+    for(const a of attempts(p,t).filter(x=>x.outcome==='pending')) {
+      sql.prepare("UPDATE troubleshooting_attempts SET outcome='skipped',outcome_detail='human_requested',outcome_at=?,handoff_id=? WHERE id=? AND outcome='pending'").run(now(),handoffId,a.id);
+      ev(p,t,'suggestion_human_requested',{source:a.source,sequence:a.sequence,memoryId:a.memory_id,handoffId});
+    }
+    const brief=handoffBrief(p,t,reason);
     store.updateFor(p.companyId,d=>{const h=d.handoffs.find(x=>x.id===handoffId&&x.companyId===p.companyId);if(h&&!h.brief) h.brief=brief;});
   }
   return {process,feedback:processFeedback,choose,attempts,attachBrief};

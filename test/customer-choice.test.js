@@ -150,3 +150,17 @@ test('only the customer who owns the request can choose; staff and other custome
   const stale = await mallory.api('troubleshooting/outcome', { attemptId: 'nope', outcome: 'worked', confirmed: true });
   assert.ok([403, 404].includes(stale.status));
 });
+
+test('asking for a person after choosing a suggestion closes that attempt as "specialist requested", not as pending and not as a failure', async (t) => {
+  const { w, cust, ticket, shown, attempts, choose } = await setup(t);
+  await choose(shown.choices[0].id);
+  assert.equal(attempts()[0].outcome, 'pending');
+  const sent = await cust.api('handoff', { ticketId: ticket, summary: 'I would like to talk to a specialist about this.', confirmed: true });
+  assert.equal(sent.status, 201, JSON.stringify(sent.data));
+  assert.deepEqual([attempts()[0].outcome, attempts()[0].outcome_detail], ['skipped', 'human_requested']);
+  assert.equal(w.db().prepare("SELECT COUNT(*) n FROM troubleshooting_attempts WHERE outcome='failed'").get().n, 0);
+  assert.equal(w.db().prepare('SELECT SUM(reuse_failure_count) n FROM memory_pool').get().n || 0, 0);
+  const brief = w.db().prepare("SELECT payload FROM records WHERE collection='handoffs'").all().map((r) => JSON.parse(r.payload))[0].brief;
+  assert.equal(brief.trigger, 'customer asked for a person');
+  assert.equal(brief.tried[0].outcome, 'human_requested');
+});
