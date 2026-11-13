@@ -198,7 +198,7 @@ function render() {
   if (pending.length) {
     // Shown right above the message box, next to the specialist's answer, instead of pushing the conversation down.
     const html = '<section class="confirm-inline" aria-label="Confirm the specialist solution"><div><b>Did the specialist’s solution work?</b><small>Your answer lets Continuum reuse a successful fix for others after personal details are removed. A fix that did not work is never treated as approval.</small></div>' +
-      pending.map((h) => '<div class="outcome-main"><button class="button success" data-confirm-solution="' + q(h.resolutionId) + '" data-accepted="true"><svg class="tick-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 5"/></svg> Yes, it’s fixed</button><button class="button" data-confirm-solution="' + q(h.resolutionId) + '" data-accepted="false">Not yet, I still need help</button></div>').join('') + '</section>';
+      pending.map((h) => '<div class="outcome-main"><button class="button success" data-confirm-solution="' + q(h.resolutionId) + '" data-accepted="true"><svg class="tick-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3.2L13 5"/></svg> Yes, it’s fixed</button><button class="button" data-confirm-solution="' + q(h.resolutionId) + '" data-accepted="false">Not yet, I still need help</button>' + ((h.confirmationDeferrals || 0) < 2 ? '<button class="button ghost" data-defer-solution="' + q(h.resolutionId) + '">I’ll check and confirm later</button>' : '') + '</div>' + (h.confirmationDeadline && h.confirmationDeferrals ? '<small class="muted">You asked for more time. We’ll check back after ' + q(formatDate(h.confirmationDeadline, true)) + '.</small>' : '')).join('') + '</section>';
     const composer = document.querySelector('#chat-form');
     if (composer) composer.insertAdjacentHTML('beforebegin', html);
     else document.querySelector('.desk-center').insertAdjacentHTML('afterbegin', html);
@@ -457,6 +457,19 @@ app.addEventListener('click', async (event) => {
         });
         await refresh();
         state.notice = 'Your confirmation was saved.';
+      } finally {
+        state.busy = false;
+        if (state.authenticated) render();
+      }
+      return;
+    }
+    if (button.dataset.deferSolution) {
+      state.busy = true;
+      button.disabled = true;
+      try {
+        const r = await api('resolutions/defer', { body: { id: button.dataset.deferSolution, confirmed: true } });
+        await refresh();
+        state.notice = 'No problem. We’ll keep this open until ' + formatDate(r.deadline, true) + '. Come back and tell us how it went.';
       } finally {
         state.busy = false;
         if (state.authenticated) render();

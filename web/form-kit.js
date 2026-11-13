@@ -94,3 +94,17 @@ export async function copyText(text, button) {
 
 /** Show a number-and-caption summary as small coloured badges, instead of a sentence of counters. */
 export const badges = (items) => `<ul class="stat-badges">${items.map(([n, label, tone = '']) => `<li class="stat-badge ${tone}"><b>${q(n)}</b><span>${q(label)}</span></li>`).join('')}</ul>`;
+
+/** Ask for a short note. Resolves with the text, or null if the person backs out. */
+export function noteDialog({ title, label, confirm = 'Send', cancel = 'Cancel', hint = '' }) {
+  return new Promise((resolve) => {
+    const d = document.createElement('dialog');
+    d.className = 'confirm-dialog';
+    d.setAttribute('aria-labelledby', 'note-title');
+    d.innerHTML = `<form method="dialog"><h2 id="note-title">${q(title)}</h2><label>${q(label)}<textarea name="note" rows="4" maxlength="1000"></textarea></label>${hint ? `<small class="muted">${q(hint)}</small>` : ''}<div class="actions"><button class="button" value="no" formnovalidate>${q(cancel)}</button><button class="button primary" value="yes">${q(confirm)}</button></div></form>`;
+    d.addEventListener('close', () => { resolve(d.returnValue === 'yes' ? d.querySelector('textarea').value.trim() : null); d.remove(); });
+    document.body.append(d);
+    d.showModal();
+    d.querySelector('textarea').focus();
+  });
+}

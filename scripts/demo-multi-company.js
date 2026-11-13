@@ -61,7 +61,7 @@ try {
   console.log('Fictional password: '+password);
   h.close();
   if(process.argv.includes('--serve')) {
-    const env={...process.env,DATABASE_FILE:file,APP_URL:'http://localhost:3211',FRONTEND_PORT:'3211',API_PORT:'0',NODE_ENV:'test',ENABLE_DEMO_MODE:'false',ENABLE_OUTBOX_WORKER:'false',REQUIRE_LIVE_INTEGRATIONS:'false',REQUIRE_EMAIL_VERIFICATION:'false',HINDSIGHT_BASE_URL:'',HINDSIGHT_API_KEY:'',OPENAI_API_KEY:'',RESEND_API_KEY:'',EMAIL_FROM:'',GOOGLE_CLIENT_ID:'',GOOGLE_CLIENT_SECRET:'',PROVIDER_ALLOWED_ORIGINS:''};
+    const env={...process.env,DEMO_SIGNIN_PASSWORD:password,DEMO_SIGNIN_HINTS:JSON.stringify([{email:'owner-a@example.test',name:'Alex Owner',role:'owner',company:'Fictional Company A'},{email:'owner-b@example.test',name:'Blair Owner',role:'owner',company:'Fictional Company B'},{email:'one@example.test',name:'Customer One',role:'customer',company:'Companies A and B'},{email:'two@example.test',name:'Customer Two',role:'customer',company:'Fictional Company A'}]),DATABASE_FILE:file,APP_URL:'http://localhost:3211',FRONTEND_PORT:'3211',API_PORT:'0',NODE_ENV:'test',ENABLE_DEMO_MODE:'false',ENABLE_OUTBOX_WORKER:'false',REQUIRE_LIVE_INTEGRATIONS:'false',REQUIRE_EMAIL_VERIFICATION:'false',HINDSIGHT_BASE_URL:'',HINDSIGHT_API_KEY:'',OPENAI_API_KEY:'',RESEND_API_KEY:'',EMAIL_FROM:'',GOOGLE_CLIENT_ID:'',GOOGLE_CLIENT_SECRET:'',PROVIDER_ALLOWED_ORIGINS:''};
     console.log('Isolated browser demo: http://localhost:3211/desk');
     const child=spawn(process.execPath,['server/start.js'],{env,stdio:'inherit'});
     const code=await new Promise(resolve=>child.on('exit',resolve));if(code) process.exitCode=code;

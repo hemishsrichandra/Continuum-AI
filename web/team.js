@@ -9,6 +9,14 @@ import { confirmDialog, copyText } from './form-kit.js';
 const TABS = [['overview', 'Overview'], ['team', 'Team & access'], ['services', 'AI services'], ['knowledge', 'Knowledge'], ['connections', 'Connections']];
 const pillTone = (status) => (status === 'active' ? 'green' : status === 'revoked' ? 'warn' : '');
 
+const when = (ms) => new Date(ms).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const pendingInvites = (data) => {
+  const list = (data.invitations || []).filter((i) => !i.consumed_at);
+  if (!list.length) return '';
+  return `<div class="hub-card"><div class="hub-section-head"><div><h2>Pending invitations</h2><p>Invitations expire after 48 hours. Sending a new link closes the old one.</p></div></div>
+    <div class="table-scroll"><table class="data-table"><thead><tr><th>Email</th><th>Role</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${list.map((i) => `<tr><td><b>${q(i.email)}</b></td><td>${q(i.role === 'staff' ? 'Specialist' : 'Customer')} · ${q(i.provider)}</td><td><span class="pill ${i.expires_at > Date.now() ? 'green' : 'warn'}">${i.expires_at > Date.now() ? 'Open until ' + q(when(i.expires_at)) : 'Expired'}</span></td><td class="row-actions"><button class="button small" data-resend="${q(i.email)}">Send a new link</button></td></tr>`).join('')}</tbody></table></div>
+    <div class="copy-row" id="resend-row" hidden><input id="resend-link" readonly aria-label="New invitation link"><button class="button small" data-copy="#resend-link">Copy</button></div></div>`;
+};
 export async function mountTeam() {
   const app = document.querySelector('#app');
   let data;
@@ -75,7 +83,8 @@ export async function mountTeam() {
           <div class="copy-row" id="invitation-row" hidden><input id="invitation-link" readonly aria-label="Invitation link"><button class="button small" data-copy="#invitation-link">Copy</button></div>
           <p class="muted small">Invitations expire after 48 hours and work only for the email address you enter.</p></div></div>
         <div class="hub-card"><div class="hub-section-head"><div><h2>Members</h2><p>${data.members.length} ${data.members.length === 1 ? 'person' : 'people'} in this company.</p></div></div>
-          <div class="table-scroll"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Support</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${data.members.map((m) => `<tr><td><b>${q(m.name)}</b><small>${q(m.email)}</small></td><td>${q(m.role)}</td><td>${q(m.provider || '—')}</td><td><span class="pill ${pillTone(m.status)}">${q(m.status)}</span></td><td class="row-actions">${m.role === 'staff' && m.status === 'active' ? `<button class="button small" data-revoke="${q(m.id)}" data-name="${q(m.name)}">Remove specialist access</button>` : ''}${m.role !== 'owner' && m.status === 'active' ? `<button class="button small danger-ghost" data-revoke-membership="${q(m.id)}" data-name="${q(m.name)}">Revoke company access</button>` : ''}</td></tr>`).join('')}</tbody></table></div></div>
+          <div class="table-scroll"><table class="data-table"><thead><tr><th>Name</th><th>Role</th><th>Support</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${data.members.map((m) => `<tr><td><b>${q(m.name)}</b><small>${q(m.email)}</small></td><td>${q(m.role)}</td><td>${q(m.provider || '—')}</td><td><span class="pill ${pillTone(m.status)}">${q(m.status)}</span></td><td class="row-actions">${m.role === 'staff' && m.status === 'active' ? `<button class="button small" data-revoke="${q(m.id)}" data-name="${q(m.name)}">Remove specialist access</button>` : ''}${m.role !== 'owner' && m.status === 'active' ? `<button class="button small danger-ghost" data-revoke-membership="${q(m.id)}" data-name="${q(m.name)}">Revoke company access</button>` : ''}${m.role !== 'owner' && m.status === 'revoked' ? `${m.role === 'staff' ? `<button class="button small" data-reinstate="${q(m.id)}" data-role="staff" data-name="${q(m.name)}">Reinstate as specialist</button>` : ''}<button class="button small" data-reinstate="${q(m.id)}" data-role="customer" data-name="${q(m.name)}">Reinstate${m.role === 'staff' ? ' as customer' : ''}</button>` : ''}</td></tr>`).join('')}</tbody></table></div></div>
+        ${pendingInvites(data)}
         <div data-access></div>`;
       host.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copyText(host.querySelector(b.dataset.copy).value, b)));
       host.querySelector('#customer-code').addEventListener('click', async (event) => {
@@ -110,6 +119,23 @@ export async function mountTeam() {
       };
       host.querySelectorAll('[data-revoke]').forEach((b) => b.addEventListener('click', () => act(b, 'company/revoke-staff', `Remove specialist access for ${b.dataset.name}?`, 'They stay a customer of this company but can no longer work cases. Cases they hold return to the queue.', 'Remove specialist access', 'Specialist access removed. Active assignments were released; review the service queue.')));
       host.querySelectorAll('[data-revoke-membership]').forEach((b) => b.addEventListener('click', () => act(b, 'company/revoke-membership', `Revoke ${b.dataset.name}’s company access?`, 'They will lose all access to this company, including their requests. This is the stronger of the two options.', 'Revoke access', 'Company access revoked.')));
+      host.querySelectorAll('[data-reinstate]').forEach((b) => b.addEventListener('click', async () => {
+        const asRole = b.dataset.role;
+        if (!(await confirmDialog({ title: `Reinstate ${b.dataset.name}?`, body: asRole === 'staff' ? 'They get their specialist access back. Cases that were released to the queue stay there.' : 'They return as a customer of this company. They will not have specialist access.', confirm: 'Reinstate' }))) return;
+        b.disabled = true;
+        try { await request('company/reinstate-membership', { body: { id: b.dataset.reinstate, role: asRole, confirmed: true } }); await mountTeam(); notice('Member reinstated.'); }
+        catch (e) { notice(e.message); b.disabled = false; }
+      }));
+      host.querySelectorAll('[data-resend]').forEach((b) => b.addEventListener('click', async () => {
+        if (!(await confirmDialog({ title: 'Send a new invitation link?', body: 'The earlier link for ' + b.dataset.resend + ' stops working. The new one lasts 48 hours.', confirm: 'Send new link' }))) return;
+        b.disabled = true;
+        try {
+          const r = await request('company/invitations/resend', { body: { email: b.dataset.resend, confirmed: true } });
+          host.querySelector('#resend-row').hidden = false;
+          host.querySelector('#resend-link').value = r.url;
+          notice('New invitation link created for ' + b.dataset.resend + '. Copy it and share it with them.');
+        } catch (e) { notice(e.message); } finally { b.disabled = false; }
+      }));
       await mountStaffAccess(host.querySelector('[data-access]'));
     },
 

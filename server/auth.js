@@ -42,6 +42,16 @@ export function createAuth(store, config, delivery, companies) {
   const secure = config.NODE_ENV === 'production' || config.COOKIE_SECURE === 'true';
   const cookieName = secure ? '__Host-continuum' : 'continuum_session';
   const demoEnabled = config.ENABLE_DEMO_MODE === 'true' && config.NODE_ENV !== 'production';
+  // A local demo (npm run demo:multi -- --serve) can list its fictional accounts so evaluators pick the right kind.
+  // Off unless DEMO_SIGNIN_HINTS is set, and never in production.
+  const demoSignIn = (() => {
+    if (config.NODE_ENV === 'production' || !config.DEMO_SIGNIN_HINTS) return null;
+    try {
+      const list = JSON.parse(config.DEMO_SIGNIN_HINTS);
+      if (!Array.isArray(list)) return null;
+      return { accounts: list.slice(0, 8).map((a) => ({ email: String(a.email).slice(0, 254), name: String(a.name || '').slice(0, 100), role: a.role === 'owner' ? 'owner' : 'customer', company: String(a.company || '').slice(0, 100) })), password: String(config.DEMO_SIGNIN_PASSWORD || '').slice(0, 200) };
+    } catch { return null; }
+  })();
   const verificationRequired =
     config.NODE_ENV === 'production' || config.REQUIRE_EMAIL_VERIFICATION === 'true';
   const lifetime = 7 * 86400000;
@@ -195,7 +205,7 @@ export function createAuth(store, config, delivery, companies) {
   async function handle(req, endpoint, send, session) {
     const ip = req.socket.remoteAddress;
     if (endpoint === 'GET /api/auth/config') {
-      send(200, { demoEnabled, emailConfigured: delivery.emailConfigured, verificationRequired });
+      send(200, { demoEnabled, emailConfigured: delivery.emailConfigured, verificationRequired, ...(demoSignIn && { demoAccounts: demoSignIn.accounts, demoPassword: demoSignIn.password }) });
       return true;
     }
     if (endpoint === 'GET /api/auth/workspaces') {

@@ -95,13 +95,13 @@ const attemptCard = (c) => {
       ${learned ? '<span class="pill green">✓ Verified · confirmed by the original customer</span>' : ''}
       <p class="steps">${q(a.steps)}</p>
       ${learned ? `<details><summary>Why this was recommended</summary><p>${q(x.why)}</p><dl><dt>Constraints matched</dt><dd>${q(x.constraintsMatched.join('; '))}</dd><dt>Similarity (cosine)</dt><dd>${q(x.scores.cosine)}</dd><dt>Keyword (BM25)</dt><dd>${q(x.scores.normBm25)}</dd><dt>S_hybrid</dt><dd>${q(x.scores.S_hybrid)}</dd><dt>Compatibility</dt><dd>${q(x.scores.S_compat)}</dd><dt>Reliability</dt><dd>${q(x.scores.W_reliability)}</dd><dt>S_final</dt><dd>${q(x.scores.S_final)} (needs ≥ ${q(x.threshold)})</dd></dl><p>${q(x.retrieval)}</p></details>` : '<small>Hardcoded demo playbook. This is not learned memory.</small>'}
-      <div class="demo-row"><button class="button primary small" data-act="feedback" data-case="${q(c.id)}" data-worked="true" ${busy ? 'disabled' : ''}>It worked</button><button class="button small" data-act="feedback" data-case="${q(c.id)}" data-worked="false" ${busy ? 'disabled' : ''}>Still need help</button></div></div>`;
+      <div class="demo-row"><button class="button success small" data-act="feedback" data-case="${q(c.id)}" data-worked="true" ${busy ? 'disabled' : ''}>It worked</button><button class="button small" data-act="feedback" data-case="${q(c.id)}" data-worked="false" ${busy ? 'disabled' : ''}>Still need help</button></div></div>`;
   }
   if (c.status === 'needs_info')
     return `<div class="demo-card waiting"><p>${q(c.clarification)}</p><form class="demo-form" data-form="device" data-case="${q(c.id)}"><label>Device and version<input name="device" required maxlength="200" value="${q(c.user === 'B' ? state.script.userB.device : state.script.userA.device)}"></label><button class="button small" ${busy ? 'disabled' : ''}>Continue</button></form></div>`;
   if (c.status === 'queued') return `<div class="demo-card waiting"><span class="pill">With the demo specialist</span><p>Your case moved to the demo-only specialist queue. It is not a real company queue.</p></div>`;
   if (c.status === 'proposal_sent' && c.proposal)
-    return `<div class="demo-card learned"><span class="pill blue">Specialist proposal</span><p class="steps">${q(c.proposal.steps)}</p><small>Nothing is learned until you confirm the outcome.</small><div class="demo-row"><button class="button primary small" data-act="confirm" data-case="${q(c.id)}" data-accepted="true" ${busy ? 'disabled' : ''}>It worked</button><button class="button small" data-act="confirm" data-case="${q(c.id)}" data-accepted="false" ${busy ? 'disabled' : ''}>Still need help</button></div></div>`;
+    return `<div class="demo-card learned"><span class="pill blue">Specialist proposal</span><p class="steps">${q(c.proposal.steps)}</p><small>Nothing is learned until you confirm the outcome.</small><div class="demo-row"><button class="button success small" data-act="confirm" data-case="${q(c.id)}" data-accepted="true" ${busy ? 'disabled' : ''}>It worked</button><button class="button small" data-act="confirm" data-case="${q(c.id)}" data-accepted="false" ${busy ? 'disabled' : ''}>Still need help</button></div></div>`;
   if (c.status === 'resolved') {
     const used = [...c.attempts].reverse().find((x) => x.outcome === 'succeeded');
     return `<div class="demo-card resolved"><span class="pill green">Resolved · you confirmed it worked</span>${used?.source === 'learned' ? '<p>Resolved with the fix ' + q((used.label || 'learned earlier').replace(/^Learned/, 'learned')) + '.</p>' : c.proposal?.status === 'confirmed' ? '<p>Resolved with the specialist’s solution. Continuum learned it.</p>' : '<p>Resolved with the initial standard suggestion.</p>'}</div>`;
@@ -115,13 +115,13 @@ function customerPanel(user) {
   const d = drafts[user] || { description: '', device: '' };
   const open = latest && !['resolved'].includes(latest.status);
   return `<section class="demo-panel" id="panel-${user}" data-hidden="${activeTab !== user}" aria-labelledby="h-${user}">
-    <div><span class="role">CUSTOMER VIEW</span><h2 id="h-${user}">User ${user}${user === 'A' ? ' · teaches' : ' · benefits'}</h2></div>
+    <div class="demo-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="role">CUSTOMER VIEW</span></div><div><h2 id="h-${user}">User ${user}${user === 'A' ? ' · teaches' : ' · benefits'}</h2></div>
     ${open ? '' : `<form class="demo-form" data-form="issue" data-user="${user}">
       <label>What is going wrong?<textarea name="description" required maxlength="500" placeholder="Describe the problem">${q(d.description)}</textarea></label>
       <label>Device and version<input name="device" maxlength="200" placeholder="e.g. Demo Laptop X1, firmware 4" value="${q(d.device)}"></label>
       <div class="demo-row"><button class="button primary small" ${busy ? 'disabled' : ''}>Report issue</button><button type="button" class="button small" data-act="fill" data-user="${user}" data-which="script">Use script text</button>${user === 'B' ? '<button type="button" class="button small" data-act="fill" data-user="B" data-which="incompatible">Try an incompatible device</button>' : ''}</div>
       <p class="demo-script">${user === 'A' ? 'Script: a flickering screen on a fictional laptop.' : 'Script: the same problem in different words. Learned fixes from other demo sessions are never visible here.'}</p></form>`}
-    ${cases.length ? cases.slice(-2).map((c) => `<div><h3>${q(c.id)} · ${q(c.description)}</h3><small>${q(c.device || 'No device given')}</small>${attemptCard(c)}${c.attempts.filter((a) => a.outcome === 'failed').map((a) => `<p class="demo-script">✗ ${a.source === 'learned' ? 'Learned fix' : 'Initial standard suggestion'}: still need help</p>`).join('')}</div>`).join('') : '<p class="demo-empty">No issue reported yet.</p>'}
+    ${cases.length ? cases.slice(-2).map((c) => `<div class="demo-thread"><div class="bubble customer">${q(c.description)}</div><small class="demo-device">${q(c.device || 'No device given')} · ${q(c.id)}</small><div class="assistant-response"><span class="assistant-mark" aria-hidden="true">∿</span><div class="answer-content">${attemptCard(c)}${c.attempts.filter((a) => a.outcome === 'failed').map((a) => `<p class="demo-script">✗ ${a.source === 'learned' ? 'Learned fix' : 'Initial standard suggestion'}: still need help</p>`).join('')}</div></div></div>`).join('') : '<p class="demo-empty">No issue reported yet.</p>'}
   </section>`;
 }
 function specialistPanel() {
@@ -129,7 +129,7 @@ function specialistPanel() {
   const target = queued.find((c) => c.status === 'queued') || null;
   const d = drafts.S || {};
   return `<section class="demo-panel specialist" id="panel-S" data-hidden="${activeTab !== 'S'}" aria-labelledby="h-S">
-    <div><span class="role">COMPANY · SPECIALIST VIEW (DEMO ONLY)</span><h2 id="h-S">Demo specialist queue</h2></div>
+    <div class="demo-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="role">SPECIALIST CONSOLE · DEMO ONLY</span></div><div><h2 id="h-S">Demo specialist queue</h2></div>
     ${queued.length ? queued.map((c) => `<div class="demo-card ${c.status === 'queued' ? 'waiting' : ''}"><span class="pill">${c.status === 'queued' ? 'Waiting for a specialist' : 'Sent to User ' + q(c.user) + ' · awaiting confirmation'}</span><p><b>User ${q(c.user)}:</b> ${q(c.description)}</p><small>${q(c.device || 'No device given')}</small>${c.attempts.map((a) => `<p class="demo-script">${a.outcome === 'failed' ? '✗' : '•'} Tried: ${q(a.source === 'learned' ? 'learned fix' : 'initial standard suggestion')} — ${q(a.steps)}</p>`).join('')}</div>`).join('') : '<p class="demo-empty">The queue is empty. A case appears here only after “Still need help”.</p>'}
     ${target ? `<form class="demo-form" data-form="propose" data-case="${q(target.id)}"><h3>Resolution Passport for ${q(target.id)}</h3>
       <label>Title<input name="title" required maxlength="100" value="${q(d.title || '')}"></label>
