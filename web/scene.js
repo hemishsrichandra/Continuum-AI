@@ -47,27 +47,27 @@ export function mountScene(canvas, { reduce = false } = {}) {
   nodes.forEach((n, i) => { posAll.set([n.x, n.y, n.z], i * 3); if (i % 17 === 0) posHot.push(n.x, n.y, n.z); });
   const pointsGeo = new THREE.BufferGeometry();
   pointsGeo.setAttribute('position', new THREE.BufferAttribute(posAll, 3));
-  const points = new THREE.Points(pointsGeo, new THREE.PointsMaterial({ map: tex, size: 0.09, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0x9db4ff }));
+  const points = new THREE.Points(pointsGeo, new THREE.PointsMaterial({ map: tex, size: 0.09, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0x93c5fd }));
   const hotGeo = new THREE.BufferGeometry();
   hotGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(posHot), 3));
-  const hot = new THREE.Points(hotGeo, new THREE.PointsMaterial({ map: tex, size: 0.26, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xb9a6ff }));
+  const hot = new THREE.Points(hotGeo, new THREE.PointsMaterial({ map: tex, size: 0.26, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0x38bdf8 }));
   const lineArr = new Float32Array(edges.length * 6);
   edges.forEach(([i, j], e) => lineArr.set([nodes[i].x, nodes[i].y, nodes[i].z, nodes[j].x, nodes[j].y, nodes[j].z], e * 6));
   const lineGeo = new THREE.BufferGeometry();
   lineGeo.setAttribute('position', new THREE.BufferAttribute(lineArr, 3));
-  const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0x8ca5ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.26, blending: THREE.AdditiveBlending, depthWrite: false }));
   const sparks = Array.from({ length: 6 }, () => ({ e: Math.floor(Math.random() * edges.length), t: Math.random() }));
   const sparkGeo = new THREE.BufferGeometry();
   sparkGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(sparks.length * 3), 3));
-  const sparkPoints = new THREE.Points(sparkGeo, new THREE.PointsMaterial({ map: tex, size: 0.16, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0x5ee6b0 }));
+  const sparkPoints = new THREE.Points(sparkGeo, new THREE.PointsMaterial({ map: tex, size: 0.16, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0x34d399 }));
   group.add(lines, points, hot, sparkPoints);
 
   const palette = () => {
     const light = document.documentElement.dataset.theme === 'light';
-    points.material.color.set(light ? 0x4660e6 : 0x9db4ff);
-    lines.material.color.set(light ? 0x4660e6 : 0x8ca5ff);
-    lines.material.opacity = light ? 0.3 : 0.22;
-    hot.material.color.set(light ? 0x8b6df0 : 0xb9a6ff);
+    points.material.color.set(light ? 0x2563eb : 0x93c5fd);
+    lines.material.color.set(light ? 0x2563eb : 0x3b82f6);
+    lines.material.opacity = light ? 0.3 : 0.26;
+    hot.material.color.set(light ? 0x0284c7 : 0x38bdf8);
     const mode = light ? THREE.NormalBlending : THREE.AdditiveBlending;
     [points, hot, lines, sparkPoints].forEach((o) => { o.material.blending = mode; o.material.needsUpdate = true; });
   };
