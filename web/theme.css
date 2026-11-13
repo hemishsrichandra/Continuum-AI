@@ -612,3 +612,14 @@ dialog::backdrop { background: rgba(12,5,8,.72); }
 
 /* The space the removed notice used to occupy stays empty on wide screens, so the 3D sphere is never covered by the panels below */
 @media (min-width: 900px) { .wrap .demo-hero { margin-bottom: 130px; } }
+
+.preview-note { color: var(--text-2); font-size: 13px; margin: 0 0 12px; }
+.advisory { margin: 6px 0 0; font-size: 13px; color: var(--text); padding: 8px 10px; border-radius: 10px; border: 1px dashed var(--line-2); background: var(--tint-amber-bg); }
+
+/* Other suggestions that qualified are previews next to the best one */
+.alt-choices { display: grid; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.alt-choices h4 { margin: 0; font-size: 14px; }
+.alt-choice { display: grid; gap: 6px; padding: 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface-2); }
+.alt-choice p { margin: 0; } .alt-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+.alt-choice small { color: var(--text-2); } .alt-choice .button { justify-self: start; }
+.more-outcomes { flex-basis: 100%; } .more-outcomes summary { cursor: pointer; color: var(--text-2); font-size: 13px; }

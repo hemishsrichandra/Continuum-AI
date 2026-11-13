@@ -165,7 +165,8 @@ export function compatibility(environment, query, fields = {}) {
   );
   const queryWords = tokens(query + ' ' + Object.values(fields || {}).join(' '));
   for (const word of extra) if (!queryWords.has(word)) missing.push(word);
-  return { compatible: !missing.length && !conflicts.length, missing, conflicts };
+  const unparsedMissing = missing.filter((m) => typeof m === 'string' && extra.includes(m));
+  return { compatible: !missing.length && !conflicts.length, missing, conflicts, missingConditions: evaluation.missingConditions || [], unparsedMissing };
 }
 export function safeHistory(store, scope, ticketId, enabled, statedPreferences = []) {
   if (!enabled) return [];

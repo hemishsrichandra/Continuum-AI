@@ -166,3 +166,12 @@ Checked in a real browser against the local demo: invite, resend, revoke and rei
 ## Home journey
 
 The four-step "Watch a fix teach the system" animation now loops continuously while it is on screen (it holds on the last step, resets, and repeats) and pauses when scrolled away or the tab is hidden. There is no Play or Replay button and no "fictional data" tag on that section. With reduced motion it shows the finished journey and does not animate.
+
+## V3 round: what changed and what is still open
+
+Full table: [V3-LEDGER.md](V3-LEDGER.md). In short:
+
+* **Done and tested:** specialists no longer type "Matching symptoms" (the server derives the searchable text from the customer's own issue); one-click claim and release with an owner dispatch list; natural device names with the safe generic partial match and its exact advisory; marketing copy that no longer overclaims; sign-in demo hints that need an explicit local `NODE_ENV`.
+* **Partly done:** up to three suggestions together (the best plus up to two previews the customer can choose instead, plus the outcomes not applicable, unable to try and human requested); batched, resumable sync for SQLite and PostgreSQL (CSV and REST are still bounded single reads).
+* **Not done:** the optional query normalizer, a connection-test button and the source edit / pause screens, Linux and bare category words as devices, automated browser tests.
+* **Measured** (synthetic SQLite source, this machine): 1,000 records in about 1 s and 10,000 in about 10 s, with peak process memory of 90 MB and 183 MB. Retrieval without ChromaDB took about 13 ms at 1,000 records and about 340 ms at 10,000.

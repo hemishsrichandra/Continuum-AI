@@ -214,6 +214,7 @@ export class SqliteStore {
     this.migrateV7();
     this.migrateV8();
     this.migrateV9();
+    this.migrateV10();
     // Idempotent hardening: the case timeline is an audit trail and can only be appended to.
     this.db.exec(`
       CREATE TRIGGER IF NOT EXISTS case_events_append_only_update BEFORE UPDATE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
@@ -290,6 +291,12 @@ export class SqliteStore {
   // that affects the index; workers claim jobs with a token and finish them only if both still match. The triggers now also cover
   // applicability, safety restrictions, origin, version and verification flags (they previously missed applicability and safety).
   // Applicability changes also invalidate the device facets, which are rebuilt lazily.
+  // Migration 10: why an attempt was skipped (not_applicable, unable_to_try, human_requested, set_aside). Additive and idempotent.
+  migrateV10() {
+    const has = (table, column) => this.db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+    if (!has('troubleshooting_attempts', 'outcome_detail')) this.db.exec('ALTER TABLE troubleshooting_attempts ADD COLUMN outcome_detail TEXT');
+    if (!has('company_data_sources', 'sync_cursor')) this.db.exec('ALTER TABLE company_data_sources ADD COLUMN sync_cursor INTEGER');
+  }
   migrateV9() {
     if (this.db.prepare('SELECT 1 FROM schema_migrations WHERE version=9').get()) return;
     this.db.transaction(() => {

@@ -23,6 +23,8 @@ test('status recalls private preferences while issue troubleshooting requests re
   for(const id of ['bob','carol']) {
     const {token,profile}=await login(id);
     const result=(await api('chat',{token,body:{message:profile.prompt,retain:false}})).data;
+    // Bob's ticket names a device (Pixel 8), which now seeds his environment; Carol's incident names none, so she is still asked.
+    if(id==='bob') {assert.equal(result.workflow.stage,'standard_pending');continue;}
     assert.equal(result.workflow.stage,'context');assert.equal(result.action,null);
     assert.match(result.reply,/device model and operating-system version/i);
   }

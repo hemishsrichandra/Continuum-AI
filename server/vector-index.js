@@ -26,11 +26,7 @@ const backoff = (attempts) => Math.min(3600000, 30000 * 2 ** Math.max(0, attempt
 const iso = (ms = Date.now()) => new Date(ms).toISOString();
 
 /** The text that represents a passport in the semantic index. */
-export const documentText = (row) => {
-  const applies = parse(row.applicability_json, {});
-  const where = [applies.environmentText, ...(applies.conditions || []).map((c) => (c.values || []).join(' '))].filter(Boolean).join('; ');
-  return `${row.title}\n${row.symptoms_text}\n${stepsList(parse(row.steps_json, [])).join(' ')}${where ? '\nApplies to: ' + where : ''}`;
-};
+export const documentText = (row) => `${row.title}\n${row.symptoms_text}\n${stepsList(parse(row.steps_json, [])).join(' ')}`; // Title + the sanitized original issue + steps; applicability stays separate metadata
 
 export function createVectorIndex(store, { vectors, embedding }) {
   const sql = store.db;

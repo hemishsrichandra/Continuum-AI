@@ -298,12 +298,14 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
       const hybrid = hybridScore(cos, bm);
       const gate = compatibilityGate({ applicability: parse(r.applicability_json, {}), safety: parse(r.safety_restrictions_json, {}), facts, text: gateText, fields });
       const w = reliability(r.initial_confidence_score, r.reuse_success_count, r.reuse_failure_count);
-      const final = gate.eligible ? finalScore(hybrid, gate.compat, w) : 0;
+      // A partly confirmed generic environment needs a strong enough semantic match; mandatory conditions never reach this branch.
+      const usable = gate.eligible && (!gate.partial || hybrid >= THRESHOLDS.partialHybrid);
+      const final = usable ? finalScore(hybrid, gate.compat, w) : 0;
       return {
         id: r.id,
         row: r,
         signature: signatureOf(parse(r.steps_json, [])),
-        eligible: gate.eligible,
+        eligible: usable,
         gate,
         hybrid,
         finalScore: final,
@@ -372,9 +374,12 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
       return v.trim();
     };
     if (input.confirmed !== true || input.reviewedForPrivacy !== true) throw fault(400, 'Confirm the revision and review it for private information.');
+    // The searchable problem text of a revision is the previous version's (the customer's original issue); it is never typed.
+    const prior = scoped(staff.companyId, staff.chatbotId, memoryId);
+    if (!prior) throw fault(404, 'Resolution not found in this company and service.');
     const passport = screen({
       title: field(input.title, 'title', 100),
-      symptoms: field(input.symptoms, 'symptoms', 1000),
+      symptoms: prior.symptoms_text,
       applicability: normalizeApplicability(input.applicability || { environmentText: field(input.environment, 'applicable environment', 500) }),
       safety: normalizeSafety(input.safety ?? ''),
       steps: [field(input.solution, 'solution steps', 2000)],

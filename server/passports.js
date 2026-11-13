@@ -198,8 +198,8 @@ function safetyKeywords(text) {
 }
 
 /** Compute C_init for a passport. `facts` are the diagnostic facts of the source case. */
-export function computeInitialConfidence({ symptoms, applicability, safety, steps }, { facts = null, author = { kind: 'staff' } } = {}) {
-  const completeness = passportCompleteness({ symptoms, applicability, safety, steps });
+export function computeInitialConfidence({ title, applicability, safety, steps }, { facts = null, author = { kind: 'staff' } } = {}) {
+  const completeness = passportCompleteness({ title, applicability, safety, steps });
   const conditions = [...(applicability.conditions || []), ...conditionsFromText(applicability.environmentText || '')];
   const diag = facts ? diagnosticSimilarity(conditions, facts) : { score: conditions.length ? 0.5 : 0.5, evaluation: null };
   const r = authorReliability(author);

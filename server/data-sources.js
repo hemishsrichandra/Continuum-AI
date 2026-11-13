@@ -33,7 +33,10 @@ import { field, json } from './requests.js';
 import { sanitizeDeep, isPersonalKey, shapeEvidence, shapeProvenance } from './privacy-sanitizer.js';
 
 export const SOURCE_TYPES = ['csv_sync', 'sqlite', 'rest_api', 'postgres'];
+// Preview and CSV limits only. A real sync is not capped at this number: it reads databases in batches (see DATA_SOURCE_BATCH_SIZE and
+// DATA_SOURCE_MAX_RECORDS, a pause-and-resume safety limit, never a silent cut-off).
 export const MAX_RECORDS = 2000;
+const CSV_MAX_ROWS = 50000;
 const MAX_BYTES = 1048576;
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const PATH = /^[A-Za-z_][A-Za-z0-9_]{0,63}(?:\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,3}$/;
@@ -160,7 +163,7 @@ export function parseCsv(textInput) {
       if (row.some((x) => x !== '')) rows.push(row);
       row = [];
     } else cell += c;
-    if (rows.length > MAX_RECORDS + 1) throw fault(400, `At most ${MAX_RECORDS} records can be imported at once.`);
+    if (rows.length > CSV_MAX_ROWS + 1) throw fault(400, `A pasted CSV can hold at most ${CSV_MAX_ROWS} rows. Use a SQLite or PostgreSQL source, or split the file.`);
   }
   if (quoted) throw fault(400, 'The CSV has an unterminated quoted field.');
   row.push(cell);
@@ -179,6 +182,9 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
   const pgHosts = new Set((config.DATA_SOURCE_POSTGRES_HOSTS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
   const pgPorts = new Set((config.DATA_SOURCE_POSTGRES_PORTS || '5432').split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0 && n < 65536));
   const now = () => new Date().toISOString();
+  const intOr = (v, d, lo, hi) => { const n = Number(v); return Number.isInteger(n) && n >= lo && n <= hi ? n : d; };
+  const batchSize = intOr(config.DATA_SOURCE_BATCH_SIZE, 500, 10, 5000); // rows fetched, mapped and written per step
+  const maxRecords = intOr(config.DATA_SOURCE_MAX_RECORDS, 100000, 100, 5000000); // one sync run pauses here and can be resumed
 
   const availability = {
     csv_sync: () => ({ available: true }),
@@ -209,7 +215,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     if (!sqliteDirs.some((d) => real === d || real.startsWith(d + sep))) throw fault(400, 'That file is not in a directory the server owner allowed.');
     return real;
   }
-  async function readSqlite(conn, mapping) {
+  async function readSqlite(conn, mapping, { offset = 0, limit = batchSize } = {}) {
     if (!availability.sqlite().available) throw fault(503, availability.sqlite().reason);
     const file = safePath(conn.path);
     if (!IDENT.test(conn.table || '')) throw fault(400, 'Enter a plain table name.');
@@ -222,7 +228,8 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
       if (!known.size) throw fault(400, 'That table was not found.');
       const missing = columns.filter((c) => !known.has(c));
       if (missing.length) throw fault(400, `Columns not found in the table: ${missing.join(', ')}.`);
-      return db.prepare(`SELECT ${columns.map((c) => `"${c}"`).join(',')} FROM "${conn.table}" LIMIT ${MAX_RECORDS + 1}`).all();
+      // A stable order makes the page boundaries reliable; the id column was validated as a plain identifier above.
+      return db.prepare(`SELECT ${columns.map((c) => `"${c}"`).join(',')} FROM "${conn.table}" ORDER BY "${mapping.fields.externalId}" LIMIT ? OFFSET ?`).all(limit, offset);
     } finally {
       db.close();
     }
@@ -242,9 +249,9 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     try { body = JSON.parse(response.body.toString()); } catch { throw fault(502, 'The REST source did not return JSON.'); }
     const list = conn.recordsPath ? dotted(body, conn.recordsPath) : body;
     if (!Array.isArray(list)) throw fault(502, 'The REST source must return an array of records (set “recordsPath” if they are nested).');
-    return list.slice(0, MAX_RECORDS + 1);
+    return list; // one HTTP response, bounded by MAX_BYTES; larger sources should be SQLite/PostgreSQL or split
   }
-  async function readPostgres(conn, mapping) {
+  async function readPostgres(conn, mapping, { offset = 0, limit = batchSize } = {}) {
     const status_ = availability.postgres();
     if (!status_.available) throw fault(503, status_.reason);
     if (!IDENT.test(conn.table || '') || (conn.schema && !IDENT.test(conn.schema))) throw fault(400, 'Enter a plain table (and optional schema) name.');
@@ -270,7 +277,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     }
     try {
       const table = (conn.schema ? `"${conn.schema}".` : '') + `"${conn.table}"`;
-      const result = await client.query(`SELECT ${columns.map((c) => `"${c}"`).join(',')} FROM ${table} LIMIT ${MAX_RECORDS + 1}`);
+      const result = await client.query(`SELECT ${columns.map((c) => `"${c}"`).join(',')} FROM ${table} ORDER BY "${mapping.fields.externalId}" LIMIT ${Number(limit)} OFFSET ${Number(offset)}`);
       return result.rows;
     } finally {
       await client.end().catch(() => {});
@@ -291,25 +298,46 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     diagnosticSchema: JSON.parse(row.diagnostic_schema_json), declaredVerified: Boolean(row.declared_verified),
     status: row.status, lastSyncedAt: row.last_synced_at, lastSyncResult: row.last_sync_result_json ? JSON.parse(row.last_sync_result_json) : null,
     lastError: row.last_error, createdAt: row.created_at, availability: availability[row.source_type]?.(),
-    authoritativeSnapshot: Boolean(row.authoritative_snapshot), syncIntervalHours: row.sync_interval_hours ?? null, nextSyncAt: row.sync_interval_hours ? row.next_sync_at : null,
+    resumable: row.status === 'deferred', authoritativeSnapshot: Boolean(row.authoritative_snapshot), syncIntervalHours: row.sync_interval_hours ?? null, nextSyncAt: row.sync_interval_hours ? row.next_sync_at : null,
   });
 
-  /** Read + map + validate without writing anything. */
+  /** Rows come in batches: sqlite and PostgreSQL are paged from the database; CSV and REST are one bounded read that is sliced. */
+  async function* sourceBatches(row, mapping, startOffset = 0) {
+    const conn = connection(row), type = row.source_type;
+    if (type === 'sqlite' || type === 'postgres') {
+      const read = type === 'sqlite' ? readSqlite : readPostgres;
+      for (let offset = startOffset; ;) {
+        const rows = await read(conn, mapping, { offset, limit: batchSize });
+        if (!rows.length) return;
+        yield { rows, nextOffset: offset + rows.length, last: rows.length < batchSize };
+        if (rows.length < batchSize) return;
+        offset += rows.length;
+      }
+    }
+    const raw = await readers[type](conn, mapping);
+    for (let i = startOffset; i < raw.length; i += batchSize) yield { rows: raw.slice(i, i + batchSize), nextOffset: Math.min(i + batchSize, raw.length), last: i + batchSize >= raw.length };
+  }
+  const mapBatch = (rows, row, mapping, schema, seenIds, base) => rows.map((r, i) => {
+    const m = mapRecord(r, mapping, schema, { declaredVerified: Boolean(row.declared_verified) });
+    if (m.externalId && seenIds.has(m.externalId)) m.issues.push('duplicate external id in this batch');
+    seenIds.add(m.externalId);
+    return { index: base + i, ...m };
+  });
+
+  /** Read + map + validate without writing anything. Looks at the first PREVIEW records only and says so. */
   async function dryRun(row, { limit = 200 } = {}) {
     const mapping = JSON.parse(row.field_mapping_json);
     const schema = JSON.parse(row.diagnostic_schema_json);
-    const raw = await readers[row.source_type](connection(row), mapping);
-    if (raw.length > MAX_RECORDS) throw fault(400, `At most ${MAX_RECORDS} records can be imported at once.`);
     const seen = new Set();
-    const records = raw.map((r, index) => {
-      const m = mapRecord(r, mapping, schema, { declaredVerified: Boolean(row.declared_verified) });
-      if (m.externalId && seen.has(m.externalId)) m.issues.push('duplicate external id in this batch');
-      seen.add(m.externalId);
-      return { index, ...m };
-    });
+    const records = [];
+    let truncated = false;
+    for await (const batch of sourceBatches(row, mapping)) {
+      records.push(...mapBatch(batch.rows, row, mapping, schema, seen, records.length));
+      if (records.length >= MAX_RECORDS) { truncated = !batch.last; break; }
+    }
     const valid = records.filter((r) => !r.issues.length);
     return {
-      total: records.length, valid: valid.length, invalid: records.length - valid.length,
+      total: records.length, truncated, valid: valid.length, invalid: records.length - valid.length,
       flaggedForReview: valid.filter((r) => r.hazards.length).length,
       withRedactions: valid.filter((r) => r.redactions).length,
       records,
@@ -317,27 +345,27 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
     };
   }
 
-  /** Idempotent, transactional upsert into this company's pool. */
+  /**
+   * Idempotent, transactional upsert into this company's pool, one batch per transaction. A run that reaches DATA_SOURCE_MAX_RECORDS
+   * pauses (status "deferred") and the next run continues from where it stopped; nothing is dropped. Records the source no longer lists
+   * are retired only after ONE uninterrupted run read the whole source from the start.
+   */
   async function sync(companyId, id, actor) {
     const row = stored(companyId, id);
-    const result = { startedAt: now(), inserted: 0, updated: 0, unchanged: 0, skippedLocallyReviewed: 0, invalid: 0, flaggedForReview: 0, duplicates: 0, missingFromSource: 0 };
-    let report;
-    try {
-      report = await dryRun(row, { limit: 0 });
-    } catch (e) {
-      const message = safeMessage(e);
-      sql.prepare("UPDATE company_data_sources SET status='error',last_error=?,updated_at=? WHERE id=? AND company_id=?").run(message, now(), id, companyId);
-      throw e.status ? e : fault(503, message);
-    }
-    const seenKeys = new Set();
-    sql.transaction(() => {
-      for (const rec of report.records) {
+    if (row.status === 'syncing' && Date.now() - Date.parse(row.updated_at) < 10 * 60 * 1000) throw fault(409, 'A sync is already running for this source.');
+    const mapping = JSON.parse(row.field_mapping_json), schema = JSON.parse(row.diagnostic_schema_json);
+    const resuming = row.status === 'deferred' && Number.isInteger(row.sync_cursor) && row.sync_cursor > 0;
+    const startOffset = resuming ? row.sync_cursor : 0;
+    const result = { startedAt: now(), inserted: 0, updated: 0, unchanged: 0, skippedLocallyReviewed: 0, invalid: 0, flaggedForReview: 0, duplicates: 0, missingFromSource: 0, processed: 0, batches: 0, ...(resuming && { resumedFrom: startOffset }) };
+    sql.prepare("UPDATE company_data_sources SET status='syncing',updated_at=? WHERE id=? AND company_id=?").run(now(), id, companyId);
+    const seenKeys = new Set(), seenIds = new Set();
+    const apply = (rec) => {
         // A record the source still has but that fails validation is NOT withdrawn: it must not be retired.
         if (rec.externalId) seenKeys.add(`import:${id}:${rec.externalId}`);
         if (rec.issues.length) {
           if (rec.issues.includes('duplicate external id in this batch')) result.duplicates++;
           else result.invalid++;
-          continue;
+          return;
         }
         const sourceKey = `import:${id}:${rec.externalId}`;
         const p = rec.passport;
@@ -354,7 +382,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
           });
           result.inserted++;
           if (rec.hazards.length) result.flaggedForReview++;
-          continue;
+          return;
         }
         sql.prepare("UPDATE memory_pool SET last_seen_at=?,source_version=? WHERE id=? AND company_id=?").run(seenAt, rec.updatedAt || null, latest.id, companyId);
         // A record the source withdrew earlier and now lists again returns through the normal approval policy.
@@ -363,17 +391,17 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
           sql.prepare("UPDATE memory_pool SET status=?,source_status='present',flagged_reason=?,updated_at=? WHERE id=? AND company_id=?")
             .run(hold ? 'flagged_for_review' : 'active', rec.hazards.length ? 'Imported instructions need review: ' + rec.hazards.join(', ') : hold ? 'Imported from a company database and waiting for approval' : null, seenAt, latest.id, companyId);
           result.reappeared = (result.reappeared || 0) + 1;
-          continue;
+          return;
         }
         sql.prepare("UPDATE memory_pool SET source_status='present' WHERE id=? AND company_id=? AND source_status<>'present'").run(latest.id, companyId);
         // An import still waiting for approval has no local decisions yet, so the source may keep correcting it.
         const awaiting = latest.origin_type === 'company_db_sync' && latest.status === 'flagged_for_review' && !latest.locally_reviewed && latest.version_number === 1 && latest.reuse_failure_count === 0 && String(latest.flagged_reason || '').startsWith('Imported');
         // Never overwrite local decisions: review, revision lineage, flags or tracked failures.
         const local = latest.locally_reviewed || latest.version_number > 1 || latest.parent_version_id || (latest.status !== 'active' && !awaiting) || latest.reuse_failure_count > 0 || latest.origin_type !== 'company_db_sync';
-        if (local) { result.skippedLocallyReviewed++; continue; }
+        if (local) { result.skippedLocallyReviewed++; return; }
         const next = { title: p.title, symptoms_text: p.symptoms, applicability_json: JSON.stringify(p.applicability), safety_restrictions_json: JSON.stringify(p.safety), steps_json: JSON.stringify(stepsList(p.steps)) };
         const same = latest.title === next.title && latest.symptoms_text === next.symptoms_text && latest.applicability_json === next.applicability_json && latest.safety_restrictions_json === next.safety_restrictions_json && latest.steps_json === next.steps_json;
-        if (same) { result.unchanged++; continue; }
+        if (same) { result.unchanged++; return; }
         sql.prepare(`UPDATE memory_pool SET title=?,symptoms_text=?,applicability_json=?,safety_restrictions_json=?,steps_json=?,initial_confidence_score=?,
           status=?,flagged_reason=?,risk_level=?,verification_evidence_json=?,provenance_json=?,updated_at=? WHERE id=? AND company_id=?`)
           .run(next.title, next.symptoms_text, next.applicability_json, next.safety_restrictions_json, next.steps_json, rec.cInit.score,
@@ -385,12 +413,39 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
         refreshFacets(sql, sql.prepare('SELECT * FROM memory_pool WHERE id=?').get(latest.id));
         result.updated++;
         if (rec.hazards.length) result.flaggedForReview++;
+    };
+    let nextOffset = startOffset, deferred = false, total = 0, invalidTotal = 0;
+    try {
+      for await (const batch of sourceBatches(row, mapping, startOffset)) {
+        const records = mapBatch(batch.rows, row, mapping, schema, seenIds, total);
+        sql.transaction(() => { for (const rec of records) apply(rec); }).immediate();
+        total += records.length;
+        invalidTotal += records.filter((r) => r.issues.length).length;
+        nextOffset = batch.nextOffset;
+        result.processed = total;
+        result.batches++;
+        sql.prepare('UPDATE company_data_sources SET last_sync_result_json=?,updated_at=? WHERE id=? AND company_id=?').run(JSON.stringify({ ...result, inProgress: true }), now(), id, companyId);
+        if (total >= maxRecords && !batch.last) { deferred = true; break; }
       }
-      // Reconciliation. Only a COMPLETE, owner-declared authoritative snapshot may retire records the source no longer
-      // lists. A partial, failed, empty or mostly-invalid read never does: absence from it proves nothing.
+    } catch (e) {
+      const message = safeMessage(e);
+      sql.prepare("UPDATE company_data_sources SET status='error',last_error=?,updated_at=? WHERE id=? AND company_id=?").run(message, now(), id, companyId);
+      throw e.status ? e : fault(503, message);
+    }
+    if (deferred) {
+      result.deferred = true;
+      result.nextOffset = nextOffset;
+      result.warning = `Paused after ${total} records (the per-run limit is ${maxRecords}). Nothing was dropped: run the sync again to continue from record ${nextOffset}.`;
+      result.finishedAt = now();
+      sql.prepare("UPDATE company_data_sources SET status='deferred',sync_cursor=?,last_error=NULL,last_synced_at=?,last_sync_result_json=?,updated_at=? WHERE id=? AND company_id=?").run(nextOffset, result.finishedAt, JSON.stringify(result), result.finishedAt, id, companyId);
+      return result;
+    }
+    sql.transaction(() => {
+      // Reconciliation. Only a COMPLETE, owner-declared authoritative snapshot, read in one uninterrupted run from the start, may retire
+      // records the source no longer lists. A resumed, partial, failed, empty or mostly-invalid read never does.
       const current = sql.prepare("SELECT id,source_key FROM memory_pool WHERE company_id=? AND source_id=? AND origin_type='company_db_sync' AND status IN ('active','flagged_for_review')").all(companyId, id);
-      const absent = current.filter((e) => !seenKeys.has(e.source_key));
-      const complete = Boolean(row.authoritative_snapshot) && report.total > 0 && report.invalid / report.total <= 0.5;
+      const absent = resuming ? [] : current.filter((e) => !seenKeys.has(e.source_key));
+      const complete = !resuming && Boolean(row.authoritative_snapshot) && total > 0 && invalidTotal / total <= 0.5;
       result.snapshot = complete ? 'complete' : 'partial';
       result.missingFromSource = absent.length;
       if (absent.length && complete) {
@@ -400,11 +455,12 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
       } else if (absent.length) {
         const mark = sql.prepare("UPDATE memory_pool SET source_status='missing' WHERE id=? AND company_id=?");
         for (const e of absent) mark.run(e.id, companyId);
-        if (!report.total) result.warning = 'The source returned no records, so nothing was retired.';
-        else if (!row.authoritative_snapshot) result.warning = 'Records missing from the source were left in place because this source is not marked as a complete snapshot.';
+        if (!row.authoritative_snapshot) result.warning = 'Records missing from the source were left in place because this source is not marked as a complete snapshot.';
       }
+      if (!total) result.warning = 'The source returned no records, so nothing was retired.';
+      if (resuming) result.warning = 'The resumed import finished. Run a full sync to reconcile records the source no longer lists.';
       result.finishedAt = now();
-      sql.prepare("UPDATE company_data_sources SET status='ok',last_error=NULL,last_synced_at=?,last_complete_sync_at=CASE WHEN ? THEN ? ELSE last_complete_sync_at END,last_sync_result_json=?,updated_at=? WHERE id=? AND company_id=?")
+      sql.prepare("UPDATE company_data_sources SET status='ok',sync_cursor=NULL,last_error=NULL,last_synced_at=?,last_complete_sync_at=CASE WHEN ? THEN ? ELSE last_complete_sync_at END,last_sync_result_json=?,updated_at=? WHERE id=? AND company_id=?")
         .run(result.finishedAt, complete ? 1 : 0, result.finishedAt, JSON.stringify(result), result.finishedAt, id, companyId);
     }).immediate();
     return result;

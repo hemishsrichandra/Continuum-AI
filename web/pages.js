@@ -40,13 +40,13 @@ function home() {
   return `<section class="wrap hero3d"><canvas id="scene" aria-hidden="true"></canvas><div class="copy">
     <div class="eyebrow"><span class="status-dot"></span> SUPPORT THAT REMEMBERS WHAT WORKS</div>
     <h1>Good support<br><span class="grad">remembers.</span></h1>
-    <p class="lead">Every fixed problem becomes a verified answer for the next customer. Confirmed by people, kept by your company, never shared with another.</p>
+    <p class="lead">Fixes your customers confirm and your team reviews become answers for the next customer. Kept by your company, never shared with another.</p>
     <div class="actions">${link('Try the demo', '/demo', true)}${link('See how it works', '/about', false)}</div>
-    <div class="fx-chips" aria-hidden="true"><span class="fx-chip"><span class="status-dot"></span>Fix confirmed by Customer A</span><span class="fx-chip">✦ Found for Customer B in 40 ms</span><span class="fx-chip">⛨ Company-private</span></div>
+    <div class="fx-chips" aria-hidden="true"><span class="fx-chip"><span class="status-dot"></span>Fix confirmed by Customer A</span><span class="fx-chip">✦ Matched for Customer B</span><span class="fx-chip">⛨ Company-private</span></div>
   </div></section>
 
   <section class="wrap sec3d" id="product"><div class="sec-head reveal"><div><span class="eyebrow">THE WORKSPACE</span><h2>One calm place for<br>every request.</h2></div><p>The conversation in the middle, your context on the right, and every answer labelled with where it came from.</p></div>
-    <div class="scene3d reveal"><div class="ws-mock product-preview" data-tilt="6" aria-label="Preview of the support workspace">
+    <p class="preview-note reveal">Illustrative preview. The customers, devices and requests shown are fictional.</p><div class="scene3d reveal"><div class="ws-mock product-preview" data-tilt="6" aria-label="Preview of the support workspace">
       <aside><div class="ws-tag">REQUESTS</div><div class="ws-req on"><b>MacBook Pro</b>Display flickers<br><span class="pill amber">Waiting for part</span></div><div class="ws-req"><b>Wi-Fi keeps dropping</b>Resolved yesterday</div><div class="ws-req"><b>Printer paper jam</b>New</div></aside>
       <div class="main"><div class="ws-bubble me">My display flickers after startup.</div><div class="ws-bubble">Here’s a fix that worked for a customer with your model: <b>open Display settings, choose the Standard profile and restart.</b><div class="ws-src"><span class="pill green">✓ Confirmed by a customer</span><span>Model X · firmware 4</span></div></div>
         <div class="ws-actions"><span class="button primary small">It worked</span><span class="button small">Still need help</span><span class="button small">Talk to a person</span></div></div>
@@ -57,7 +57,7 @@ function home() {
     <div class="story-steps"><span class="eyebrow">HOW IT WORKS</span>
       <div class="story-step"><h3><span class="num">01</span>A customer reports a problem</h3><p>They describe it in their own words and get a safe first suggestion.</p></div>
       <div class="story-step"><h3><span class="num">02</span>A specialist solves it</h3><p>When the suggestion fails, a person writes the fix and what it applies to.</p></div>
-      <div class="story-step"><h3><span class="num">03</span>The customer confirms</h3><p>Only after “It worked” does the fix become trusted company knowledge.</p></div>
+      <div class="story-step"><h3><span class="num">03</span>The customer confirms</h3><p>A fix the customer confirms becomes trusted company knowledge. Anything unconfirmed stays clearly labelled.</p></div>
       <div class="story-step"><h3><span class="num">04</span>The next customer is helped</h3><p>A matching problem gets the verified fix, checked against device and safety.</p></div></div>
     <div class="story-stack scene3d" aria-hidden="true">
       <div class="story-card"><span class="who">CUSTOMER A</span><div class="big">“My screen flickers after startup.”</div><span class="pill">Standard suggestion: restart. Didn’t help.</span></div>
@@ -76,7 +76,7 @@ function home() {
 
   <section class="wrap sec3d"><div class="sec-head reveal"><div><span class="eyebrow">WHY IT FEELS DIFFERENT</span><h2>Trusted answers,<br>not guesses.</h2></div><p>Three promises the product keeps.</p></div>
     <div class="tilt-cards scene3d">
-      <article class="tilt-card card reveal" data-tilt="9"><div class="ic" aria-hidden="true">${ic('✓')}</div><h3>Verified by people</h3><p>Nothing is reused until a customer confirms it worked. Unconfirmed fixes are always labelled.</p></article>
+      <article class="tilt-card card reveal" data-tilt="9"><div class="ic" aria-hidden="true">${ic('✓')}</div><h3>Verified by people</h3><p>Customer-confirmed fixes are marked as such. Imported, owner-approved and unconfirmed fixes carry their own label and are never presented as confirmed.</p></article>
       <article class="tilt-card card reveal" data-tilt="9"><div class="ic" aria-hidden="true">${ic('⛨')}</div><h3>Safe by default</h3><p>Fixes are checked against your device, version and safety rules before they are ever shown.</p></article>
       <article class="tilt-card card reveal" data-tilt="9"><div class="ic" aria-hidden="true">${ic('◈')}</div><h3>Private to your company</h3><p>Each company’s knowledge stays its own. Personal details are removed before anything is saved.</p></article>
     </div></section>

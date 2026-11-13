@@ -133,7 +133,7 @@ function specialistPanel() {
     ${queued.length ? queued.map((c) => `<div class="demo-card ${c.status === 'queued' ? 'waiting' : ''}"><span class="pill">${c.status === 'queued' ? 'Waiting for a specialist' : 'Sent to User ' + q(c.user) + ' · awaiting confirmation'}</span><p><b>User ${q(c.user)}:</b> ${q(c.description)}</p><small>${q(c.device || 'No device given')}</small>${c.attempts.map((a) => `<p class="demo-script">${a.outcome === 'failed' ? '✗' : '•'} Tried: ${q(a.source === 'learned' ? 'learned fix' : 'initial standard suggestion')} — ${q(a.steps)}</p>`).join('')}</div>`).join('') : '<p class="demo-empty">The queue is empty. A case appears here only after “Still need help”.</p>'}
     ${target ? `<form class="demo-form" data-form="propose" data-case="${q(target.id)}"><h3>Resolution Passport for ${q(target.id)}</h3>
       <label>Title<input name="title" required maxlength="100" value="${q(d.title || '')}"></label>
-      <label>Matching symptoms<textarea name="symptoms" required maxlength="300">${q(d.symptoms || '')}</textarea></label>
+      
       <label>Applies to (device and version)<input name="environment" required maxlength="200" value="${q(d.environment || '')}"></label>
       <label>Solution steps<textarea name="steps" required maxlength="600">${q(d.steps || '')}</textarea></label>
       <label>Safety restrictions<input name="safety" maxlength="300" value="${q(d.safety ?? '')}" placeholder="None identified"></label>
