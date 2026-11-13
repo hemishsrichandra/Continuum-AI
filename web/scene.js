@@ -27,7 +27,7 @@ export function mountScene(canvas, { reduce = false } = {}) {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 50);
-  camera.position.z = 3.6;
+  camera.position.z = 2.7; // closer than before: the shell fills the hero like the approved preview
   const group = new THREE.Group();
   scene.add(group);
 
@@ -47,10 +47,10 @@ export function mountScene(canvas, { reduce = false } = {}) {
   nodes.forEach((n, i) => { posAll.set([n.x, n.y, n.z], i * 3); if (i % 17 === 0) posHot.push(n.x, n.y, n.z); });
   const pointsGeo = new THREE.BufferGeometry();
   pointsGeo.setAttribute('position', new THREE.BufferAttribute(posAll, 3));
-  const points = new THREE.Points(pointsGeo, new THREE.PointsMaterial({ map: tex, size: 0.07, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0x9db4ff }));
+  const points = new THREE.Points(pointsGeo, new THREE.PointsMaterial({ map: tex, size: 0.09, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0x9db4ff }));
   const hotGeo = new THREE.BufferGeometry();
   hotGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(posHot), 3));
-  const hot = new THREE.Points(hotGeo, new THREE.PointsMaterial({ map: tex, size: 0.2, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xb9a6ff }));
+  const hot = new THREE.Points(hotGeo, new THREE.PointsMaterial({ map: tex, size: 0.26, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xb9a6ff }));
   const lineArr = new Float32Array(edges.length * 6);
   edges.forEach(([i, j], e) => lineArr.set([nodes[i].x, nodes[i].y, nodes[i].z, nodes[j].x, nodes[j].y, nodes[j].z], e * 6));
   const lineGeo = new THREE.BufferGeometry();
@@ -90,10 +90,10 @@ export function mountScene(canvas, { reduce = false } = {}) {
   const draw = (now) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    spin += dt * 0.1;
-    group.rotation.y += (spin + mx * 0.8 - group.rotation.y) * 0.06;
+    spin += dt * 0.24; // about one turn every 26 s (was one every 63 s)
+    group.rotation.y += (spin + mx * 0.9 - group.rotation.y) * 0.08;
     group.rotation.x += (my * 0.5 - group.rotation.x) * 0.04;
-    hot.material.size = 0.2 + Math.sin(now / 600) * 0.04;
+    hot.material.size = 0.26 + Math.sin(now / 600) * 0.05;
     const attr = sparkGeo.attributes.position;
     sparks.forEach((s, i) => {
       s.t += dt * 0.7;

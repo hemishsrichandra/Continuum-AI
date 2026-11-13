@@ -94,6 +94,32 @@ export function initScene() {
   io.observe(canvas);
 }
 
+/** "Watch a fix teach the system": the four-step journey from the approved design. Plays once when it scrolls into view and can be replayed. */
+export function initJourney() {
+  const root = document.querySelector('#journey');
+  if (!root) return;
+  const nodes = [...root.querySelectorAll('.node')], count = root.querySelector('#j-count'), caption = root.querySelector('#j-caption'), play = root.querySelector('#j-play');
+  const words = ['Customer A reports a flickering screen.', 'The standard suggestion fails, so a specialist writes a fix.', 'Customer A confirms it worked. Memory goes from 0 to 1.', 'Customer B reports a similar problem and receives A’s verified fix.'];
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  let running = false;
+  const show = (upTo) => {
+    nodes.forEach((n, i) => n.classList.toggle('on', i <= upTo));
+    count.textContent = upTo >= 2 ? '1' : '0';
+    count.classList.toggle('up', upTo >= 2);
+    caption.textContent = upTo >= 0 ? words[upTo] : 'Press Play to follow one problem from report to reuse.';
+  };
+  const run = async () => {
+    if (running) return;
+    running = true; play.disabled = true; show(-1);
+    for (let i = 0; i < 4; i++) { show(i); await pause(reduce ? 300 : 1500); }
+    running = false; play.disabled = false; play.textContent = '↺ Replay';
+  };
+  play.addEventListener('click', run);
+  if (reduce || !('IntersectionObserver' in window)) { show(3); play.textContent = '↺ Replay'; return; }
+  const io = new IntersectionObserver((e) => { if (e[0].isIntersecting) { io.disconnect(); run(); } }, { threshold: 0.5 });
+  io.observe(root);
+}
+
 export function initFx() {
   initTheme();
   initProgress();
@@ -101,4 +127,5 @@ export function initFx() {
   initTilt();
   initStory();
   initScene();
+  initJourney();
 }

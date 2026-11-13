@@ -44,6 +44,7 @@ const routes = {
   '/workspace-control.js': ['workspace-control.js', 'text/javascript; charset=utf-8'],
   '/chatbot-config.js': ['chatbot-config.js', 'text/javascript; charset=utf-8'],
   '/ui.js': ['ui.js', 'text/javascript; charset=utf-8'],
+  '/form-kit.js': ['form-kit.js', 'text/javascript; charset=utf-8'],
 };
 process.env.APP_URL ||= 'http://localhost:' + frontendPort;
 process.env.ENABLE_OUTBOX_WORKER ||= 'true';

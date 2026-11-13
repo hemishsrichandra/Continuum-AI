@@ -76,11 +76,8 @@ const stepClass = (done) => (done ? 'step done' : 'step');
 function chain() {
   const s = state.summary;
   const hasEvent = (kind) => state.events.some((e) => e.kind === kind);
-  return `<div class="demo-chain" aria-label="Learning progress">
-    <span class="${stepClass(hasEvent('still_need_help'))}">1 · A’s first suggestion fails</span><span class="arrow" aria-hidden="true">→</span>
-    <span class="${stepClass(hasEvent('specialist_proposed'))}">2 · Specialist proposes</span><span class="arrow" aria-hidden="true">→</span>
-    <span class="${stepClass(s.verifiedMemoryCreated)}">3 · A confirms: memory grows</span><span class="arrow" aria-hidden="true">→</span>
-    <span class="${stepClass(s.userBBenefited)}">4 · B benefits</span></div>`;
+  const node = (done, n, title, sub) => `<li class="${stepClass(done)}"><i aria-hidden="true">${done ? '✓' : n}</i><b>${title}</b><small>${sub}</small><span class="sr-only">${done ? ' (done)' : ' (not yet)'}</span></li>`;
+  return `<ol class="demo-chain demo-path" aria-label="Learning progress">${node(hasEvent('still_need_help'), 1, 'A’s suggestion fails', 'Customer A')}${node(hasEvent('specialist_proposed'), 2, 'Specialist proposes', 'A person writes it')}${node(s.verifiedMemoryCreated, 3, 'A confirms', 'Memory grows')}${node(s.userBBenefited, 4, 'B benefits', 'Customer B')}</ol>`;
 }
 function meter() {
   const grew = state.learnedCount > lastCount;

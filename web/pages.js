@@ -54,6 +54,14 @@ function home() {
       <div class="story-card"><span class="who">CUSTOMER B</span><div class="big">“The monitor blinks when it boots.”</div><span class="pill green">✦ Matched A’s verified fix</span></div></div>
   </div></section>
 
+  <section class="wrap sec3d" id="journey"><div class="sec-head reveal"><div><span class="eyebrow">TRY IT · FICTIONAL DATA</span><h2>Watch a fix<br><span class="grad">teach the system.</span></h2></div><p>One problem, from the first report to the next customer’s answer. The demo runs the same steps with your own typing.</p></div>
+    <div class="journey reveal"><ol class="path">
+      <li class="node"><i aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg></i><b>Customer A</b><small>Reports it</small></li>
+      <li class="node"><i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 6l4 4-8 8H6v-4z"/><path d="M13 7l4 4"/></svg></i><b>Specialist</b><small>Writes the fix</small></li>
+      <li class="node"><i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></i><b>Confirmed</b><small>“It worked”</small></li>
+      <li class="node"><i aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c.8-4 3-6 6-6s5.2 2 6 6M15 14c3 0 4.6 1.6 5.4 5"/></svg></i><b>Customer B</b><small>Gets the fix</small></li></ol>
+      <div class="meter"><div><span class="eyebrow">LEARNED MEMORY</span><div class="count" id="j-count" aria-hidden="true">0</div></div><p id="j-caption" role="status">Press Play to follow one problem from report to reuse.</p><button class="button primary" id="j-play" type="button">▶ Play</button></div></div></section>
+
   <section class="wrap sec3d"><div class="sec-head reveal"><div><span class="eyebrow">WHY IT FEELS DIFFERENT</span><h2>Trusted answers,<br>not guesses.</h2></div><p>Three promises the product keeps.</p></div>
     <div class="tilt-cards scene3d">
       <article class="tilt-card card reveal" data-tilt="9"><div class="ic" aria-hidden="true">✓</div><h3>Verified by people</h3><p>Nothing is reused until a customer confirms it worked. Unconfirmed fixes are always labelled.</p></article>
