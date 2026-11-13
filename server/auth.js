@@ -37,21 +37,24 @@ export function emailAddress(value) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fault(400, 'Enter a valid email address.');
   return email;
 }
+/**
+ * A local demo (npm run demo:multi -- --serve) can list its fictional accounts on the sign-in page so evaluators pick the
+ * right kind. Off unless DEMO_SIGNIN_HINTS is set, and never in production.
+ */
+export function demoSignInHints(config) {
+  if (config.NODE_ENV === 'production' || !config.DEMO_SIGNIN_HINTS) return null;
+  try {
+    const list = JSON.parse(config.DEMO_SIGNIN_HINTS);
+    if (!Array.isArray(list)) return null;
+    return { accounts: list.slice(0, 8).map((a) => ({ email: String(a.email).slice(0, 254), name: String(a.name || '').slice(0, 100), role: a.role === 'owner' ? 'owner' : 'customer', company: String(a.company || '').slice(0, 100) })), password: String(config.DEMO_SIGNIN_PASSWORD || '').slice(0, 200) };
+  } catch { return null; }
+}
 export function createAuth(store, config, delivery, companies) {
   const sql = store.db;
   const secure = config.NODE_ENV === 'production' || config.COOKIE_SECURE === 'true';
   const cookieName = secure ? '__Host-continuum' : 'continuum_session';
   const demoEnabled = config.ENABLE_DEMO_MODE === 'true' && config.NODE_ENV !== 'production';
-  // A local demo (npm run demo:multi -- --serve) can list its fictional accounts so evaluators pick the right kind.
-  // Off unless DEMO_SIGNIN_HINTS is set, and never in production.
-  const demoSignIn = (() => {
-    if (config.NODE_ENV === 'production' || !config.DEMO_SIGNIN_HINTS) return null;
-    try {
-      const list = JSON.parse(config.DEMO_SIGNIN_HINTS);
-      if (!Array.isArray(list)) return null;
-      return { accounts: list.slice(0, 8).map((a) => ({ email: String(a.email).slice(0, 254), name: String(a.name || '').slice(0, 100), role: a.role === 'owner' ? 'owner' : 'customer', company: String(a.company || '').slice(0, 100) })), password: String(config.DEMO_SIGNIN_PASSWORD || '').slice(0, 200) };
-    } catch { return null; }
-  })();
+  const demoSignIn = demoSignInHints(config);
   const verificationRequired =
     config.NODE_ENV === 'production' || config.REQUIRE_EMAIL_VERIFICATION === 'true';
   const lifetime = 7 * 86400000;

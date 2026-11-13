@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { world } from './_helpers.js';
+import { demoSignInHints } from '../server/auth.js';
 
 const HINTS = JSON.stringify([{ email: 'owner-a@example.test', name: 'Alex Owner', role: 'owner', company: 'Fictional Company A' }, { email: 'one@example.test', name: 'Customer One', role: 'whatever', company: 'A' }]);
 
@@ -23,4 +24,10 @@ test('demo sign-in hints ignore malformed input', async (t) => {
   assert.equal((await bad.owner.api('auth/config')).data.demoAccounts, undefined);
   const notList = await world(t, { config: { DEMO_SIGNIN_HINTS: '{"email":"x"}' } });
   assert.equal((await notList.owner.api('auth/config')).data.demoAccounts, undefined);
+});
+
+test('demo sign-in hints are never produced in production, whatever else is set', () => {
+  assert.equal(demoSignInHints({ NODE_ENV: 'production', DEMO_SIGNIN_HINTS: HINTS, DEMO_SIGNIN_PASSWORD: 'fictional' }), null);
+  assert.equal(demoSignInHints({ NODE_ENV: 'test', DEMO_SIGNIN_HINTS: HINTS, DEMO_SIGNIN_PASSWORD: 'fictional' }).accounts.length, 2);
+  assert.equal(demoSignInHints({ NODE_ENV: 'test' }), null);
 });
