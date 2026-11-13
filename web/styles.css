@@ -172,7 +172,7 @@ small, .muted { color: var(--muted); }
 .billing button span { color: var(--tint-blue-fg); margin-left: 5px; font-size: 10px; }
 .pricing-cards { margin-top: 0; }
 .price-card { padding: 30px; display: flex; flex-direction: column; }
-.price-card.featured { border-color: #3b82f6; background: var(--surface); box-shadow: none; }
+.price-card.featured { border-color: var(--a1); background: var(--surface); box-shadow: none; }
 .plan-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 30px; }
 .plan-heading h2 { font-size: 23px; }
 .price-card>p { margin-top: 14px; }

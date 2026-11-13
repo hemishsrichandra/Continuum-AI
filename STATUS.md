@@ -137,11 +137,17 @@ Driven by a written critique of the first redesign. What changed:
 
 **Not done from the critique (needs backend work or a larger rebuild):** reinstate a revoked member, resend an invitation, let a customer defer confirming a specialist fix, flag a case urgent or request an owner review, a master-detail case view replacing the nested accordions, redrawing the simulated screens inside the demo to match the real app, a sign-in screen that separates owner from customer demo accounts, and skeleton loading for booking slots. The new editors were exercised in a real browser (a service saved and reloaded unchanged) but the data-source wizard dialog and the Approve/Retire buttons were not clicked through end to end, and there is no automated browser test for any of this.
 
-## Colour palette change (no more blue-to-violet)
+## Colour palette: Oxblood & Parchment
 
-The violet gradient is gone. New palette: cobalt `#3b82f6` / `#2563eb` (primary), ice cyan `#38bdf8` (secondary), emerald `#34d399` (confirmed and success), on neutral navy-slate surfaces in dark theme and slate-on-white in light theme. Primary buttons, the logo and the assistant mark are solid cobalt; the hero word keeps a single white-to-ice-blue sheen (dark-to-cobalt in light theme); customer chat bubbles are a quiet cobalt tint; background haze is cobalt on navy; the 3D constellation uses pale ice nodes, cyan hot nodes, cobalt lines and emerald sparks. Accent colour is used sparingly: capability cards, service cards and the demo track are neutral, emerald marks confirmed states, and the featured plan has a plain cobalt ring.
+The cobalt palette was replaced by **Oxblood & Parchment** after a side-by-side preview (`design-preview/palettes.html`). Two colours do most of the work and one accent gets about a tenth.
 
-Checked with axe (WCAG 2.x A/AA): 0 violations on Home (four scroll positions), Product, About, Pricing, Booking, all five company tabs, and the operator Overview, Cases and Knowledge views, in both themes. A scan taken within about two seconds of switching theme can catch colours mid-transition (it did once, on the billing toggle); every such flag cleared on a settled re-scan. The customer desk and sign-in were not re-scanned after this colour change, and nothing here has been checked on real devices.
+* **Dark ("Medium wine"):** page `#150A0F`, cards `#2C1620`, raised `#42242F`, parchment text `#F5ECDF`, accent pale mint `#B8F2D0` (primary buttons and confirmed states, with dark green text).
+* **Light:** page parchment `#F3E9DC`, surfaces `#FBF4EA` / `#E8DACA`, oxblood text `#2B0F16`. The primary button is oxblood with mint text, and wine `#7A1E33` is used for accent text.
+* Solid surfaces replace the see-through glass. The hero word is a plain accent colour (no gradient). Customer chat bubbles invert (parchment on oxblood, or the reverse). The most urgent stat card and the closing band invert too, and the 3D sphere uses parchment or oxblood nodes with mint or wine hot nodes. Browser chrome colours and the style-guide swatches follow.
+
+**App shell fix:** the company, desk and operator pages used a shell rule that painted the whole page in the raised layer colour, which in dark mode made every card darker than the page and the screen one red wash. The page is now the darkest layer, borders are neutral parchment, headings are parchment instead of mint, and leftover blue values in the old stylesheet (selected rows, composer button, focus outlines, dialog backdrop, timeline dots) now use the palette.
+
+Checked with axe (WCAG 2.x A/AA) in both themes: Home (five scroll positions), Product, About, Pricing, Booking, sign-in, the five company tabs, operator Overview, Cases and Knowledge, and the customer desk, all with 0 violations once animations had settled. Scans taken mid-fade or just after a theme switch can flag the decorative story cards and other transitioning colours; each of those passed when re-checked at full opacity. Not checked on real devices or with a screen reader.
 
 ## Backend and workflow items from the UI critique
 

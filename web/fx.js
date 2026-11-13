@@ -13,7 +13,7 @@ export function initTheme() {
     button.textContent = light ? '☾' : '☀';
     button.setAttribute('aria-label', light ? 'Switch to dark theme' : 'Switch to light theme');
     button.title = button.getAttribute('aria-label');
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', light ? '#f5f7fa' : '#0b0f19');
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', light ? '#f3e9dc' : '#150a0f');
   };
   button.addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
