@@ -98,7 +98,8 @@ export function createPrivacyControls(store, memory, config = {}) {
         touched.add(c.ticketId);
       }
       for (const m of data.memories) {
-        if (m.scope !== scope || !inScope(m.ticketId) || m.text === REMOVED) continue;
+        // Customer-wide memories (for example a callback preference) are filed under a shared id but remember the request they came from.
+        if (m.scope !== scope || !(inScope(m.ticketId) || (m.sourceTicketId && inScope(m.sourceTicketId))) || m.text === REMOVED) continue;
         erased.push({ id: m.id, ticketId: m.ticketId });
         m.text = REMOVED;
         m.invalidatedAt ||= stamp;
