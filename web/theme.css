@@ -492,3 +492,41 @@ details.infra { border-top: 1px solid var(--line); padding-top: 12px; } details.
 .more-figures { margin-top: 14px; }
 .decision-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .decision-gap { flex: 1; min-width: 24px; }
+
+/* ---------- Public pages: real icons, distinct cards, clearer toggles and slots ---------- */
+.tile-icon svg, .ic svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tile-icon, .ic { display: inline-grid; place-items: center; color: var(--blue-dark); }
+.cards { align-items: stretch; } .cards > .card { height: 100%; }
+.cards > .card:nth-child(1), .tilt-cards > .card:nth-child(1) { box-shadow: inset 3px 0 0 var(--a1), var(--shadow); }
+.cards > .card:nth-child(2), .tilt-cards > .card:nth-child(2) { box-shadow: inset 3px 0 0 var(--a2), var(--shadow); }
+.cards > .card:nth-child(3), .tilt-cards > .card:nth-child(3) { box-shadow: inset 3px 0 0 var(--ok), var(--shadow); }
+/* the hero's second button must not look disabled */
+.hero3d .button:not(.primary) { background: var(--glass-2); border-color: var(--line-2); color: var(--text); }
+.window-dots i:nth-child(1) { background: #ff5f57; border-color: transparent; } .window-dots i:nth-child(2) { background: #febc2e; border-color: transparent; } .window-dots i:nth-child(3) { background: #28c840; border-color: transparent; }
+/* how-it-works cards: each actor has its own edge colour */
+.story-card:nth-child(1) { border-left: 4px solid var(--text-3); } .story-card:nth-child(2) { border-left: 4px solid var(--warn); }
+.story-card:nth-child(3) { border-left: 4px solid var(--ok); } .story-card:nth-child(4) { border-left: 4px solid var(--a1); }
+/* FAQ: the plus turns into a cross, rows respond to hover */
+.faq details summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; padding: 16px 12px; border-radius: 12px; transition: background .2s; }
+.faq details summary:hover { background: var(--glass); }
+.faq details summary span { display: inline-block; font-size: 22px; line-height: 1; transition: transform .3s; color: var(--text-2); }
+.faq details[open] summary span { transform: rotate(45deg); color: var(--text); }
+/* closing band is a destination, not another card; the logo is not used as a watermark */
+.cta-symbol { display: none; }
+.cta { background: linear-gradient(135deg, color-mix(in srgb, var(--a1) 24%, var(--surface)), color-mix(in srgb, var(--a2) 18%, var(--surface))); border-color: var(--line-2); }
+/* pricing */
+.billing { display: inline-flex; gap: 4px; padding: 4px; border-radius: 99px; background: var(--glass); border: 1px solid var(--line-2); }
+.billing button { border: 0; border-radius: 99px; padding: 8px 18px; background: none; color: var(--text-2); font: 600 14px 'DM Sans', sans-serif; cursor: pointer; min-height: 38px; transition: background .25s, color .25s; }
+.billing button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--a1), var(--shadow); }
+.billing button span { color: var(--ok); font-size: 12px; margin-left: 4px; }
+:root[data-theme="light"] .billing button span { color: #11724f; }
+.price-card.featured { border: 1px solid transparent; background: linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(135deg, var(--a1), var(--a2), var(--ok)) border-box; box-shadow: var(--glow); }
+.price { display: flex; align-items: baseline; gap: 8px; } .price strong { font: 700 44px 'Space Grotesk', sans-serif; line-height: 1; }
+/* booking: time slots look selectable, agenda reads like a schedule */
+.slot { position: relative; display: block; cursor: pointer; }
+.slot input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.slot span { display: block; padding: 10px 8px; text-align: center; border-radius: 12px; border: 1px solid var(--line-2); background: var(--glass); font-weight: 600; transition: background .2s, border-color .2s, box-shadow .2s; }
+.slot:hover span { background: var(--glass-2); border-color: var(--tint-blue-line); }
+.slot input:checked + span { border-color: var(--a1); background: var(--glass-2); box-shadow: inset 0 0 0 1px var(--a1); color: var(--text); }
+.slot input:focus-visible + span { outline: 2px solid var(--a1); outline-offset: 2px; }
+.agenda li > span { font: 700 22px 'Space Grotesk', sans-serif; color: var(--blue-dark); }
