@@ -623,3 +623,18 @@ dialog::backdrop { background: rgba(12,5,8,.72); }
 .alt-choice p { margin: 0; } .alt-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
 .alt-choice small { color: var(--text-2); } .alt-choice .button { justify-self: start; }
 .more-outcomes { flex-basis: 100%; } .more-outcomes summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
+/* ------------------------------------------------------------------------------------------ hero graphic placement
+   The constellation sits in its own column and never runs behind the headline or the buttons. Below 1000px there is no
+   room for a second column, so it becomes a faint backdrop instead. */
+.hero3d canvas { right: -10%; width: 54%; }
+.hero3d .lead { max-width: 520px; }
+@media (max-width: 1000px) { .hero3d canvas { width: 62%; right: -22%; opacity: .32; } }
+@media (max-width: 900px) { .hero3d canvas { width: 100%; right: -30%; opacity: .22; } }
+.demo-hero { max-width: 660px; }
+.demo-scene { width: 42%; right: -4%; opacity: .7; }
+@media (max-width: 1100px) { .demo-scene { display: none; } }
+
+/* Story stack: words follow --c (set per card while scrolling) so only the front card is readable. Shorter pin, less dead scroll. */
+.story3d { height: 300vh; }
+.story-card > * { opacity: var(--c, 1); transition: opacity .3s ease; }
+@media (max-width: 900px), (prefers-reduced-motion: reduce) { .story3d { height: auto; } }

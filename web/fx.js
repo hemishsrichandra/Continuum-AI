@@ -40,8 +40,21 @@ export function initReveal(root = document) {
   const items = [...root.querySelectorAll('.reveal:not(.in)')];
   if (!items.length) return;
   if (reduce || !('IntersectionObserver' in window)) { items.forEach((el) => el.classList.add('in')); return; }
-  const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: 0.12 });
+  // An observer alone can miss an element that enters and leaves between two frames (a fast scroll or a jump link),
+  // leaving it invisible for good. So anything whose top has reached the viewport, or already scrolled past it, is shown.
+  const pending = new Set(items);
+  let frame = 0;
+  const show = (el) => { el.classList.add('in'); pending.delete(el); io.unobserve(el); };
+  const sweep = () => {
+    frame = 0;
+    pending.forEach((el) => { if (el.getBoundingClientRect().top < innerHeight * 0.92) show(el); });
+    if (!pending.size) removeEventListener('scroll', onScroll);
+  };
+  const onScroll = () => { if (!frame) frame = requestAnimationFrame(sweep); };
+  const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) show(e.target); }), { threshold: 0 });
   items.forEach((el) => io.observe(el));
+  addEventListener('scroll', onScroll, { passive: true });
+  sweep();
 }
 
 export function initTilt(root = document) {
@@ -67,7 +80,7 @@ export function initStory() {
   if (!story || reduce) return;
   const steps = [...story.querySelectorAll('.story-step')], cards = [...story.querySelectorAll('.story-card')];
   const render = () => {
-    if (innerWidth <= 900) { steps.forEach((s) => s.classList.add('on')); cards.forEach((c) => { c.style.transform = ''; c.style.opacity = ''; }); return; }
+    if (innerWidth <= 900) { steps.forEach((s) => s.classList.add('on')); cards.forEach((c) => { c.style.transform = ''; c.style.opacity = ''; c.style.removeProperty('--c'); }); return; }
     const r = story.getBoundingClientRect();
     const p = Math.min(1, Math.max(0, -r.top / (story.offsetHeight - innerHeight)));
     const s = p * (cards.length - 1);
@@ -75,8 +88,12 @@ export function initStory() {
     cards.forEach((c, i) => {
       const d = i - s, a = Math.abs(d);
       c.style.transform = `translate3d(${d * 14}%, ${d * -5}%, ${-a * 130}px) rotateY(${d * -16}deg) rotateX(${a * 3}deg)`;
-      c.style.opacity = Math.max(0, 1 - a * 1.3);
-      c.style.zIndex = 10 - Math.round(a * 3);
+      // The front card is opaque and on top, and only its words are shown: the cards behind keep the stack's depth,
+      // but two cards' text never shows through each other mid-transition.
+      const front = i === Math.round(s);
+      c.style.opacity = front ? 1 : Math.min(1, Math.max(0, 1.2 - a * 1.4));
+      c.style.setProperty('--c', front ? 1 : 0);
+      c.style.zIndex = front ? 20 : 10 - Math.round(a * 3);
     });
   };
   addEventListener('scroll', render, { passive: true });
