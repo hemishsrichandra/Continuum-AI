@@ -127,7 +127,7 @@ const frontend = createServer(async (req, res) => {
     if (auditEnabled && route[0] === 'index.html') body = Buffer.from(body.toString().replace('</head>', '<script type="module" src="/audit.js"></script></head>'));
     res.writeHead(routes[path] ? 200 : 404, {
       'Content-Type': route[1],
-      'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' https://fonts.googleapis.com; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
       'Cache-Control': 'no-cache',

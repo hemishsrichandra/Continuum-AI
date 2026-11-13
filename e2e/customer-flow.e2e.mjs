@@ -44,7 +44,20 @@ async function deskFor(label) {
   await page.waitForSelector('#message');
   return { user: customer, page, context, ticketId: made.data.ticketId };
 }
-const ask = async (page, text) => { await page.fill('#message', text); await page.click('#chat-form button[type=submit]'); };
+// The desk re-renders while it loads; wait for it to settle, make sure the typed text survived, and wait for the real API answer.
+const settle = (page) => page.waitForLoadState('networkidle').catch(() => {});
+const ask = async (page, text) => {
+  await settle(page);
+  for (let i = 0; i < 4; i++) { await page.fill('#message', text); if ((await page.inputValue('#message')) === text) break; await settle(page); }
+  const answered = page.waitForResponse((r) => /\/api\/chat/.test(r.url()) && r.request().method() === 'POST');
+  await page.click('#chat-form button[type=submit]');
+  await answered;
+};
+const pick = async (page, locator) => {
+  const answered = page.waitForResponse((r) => /\/api\/troubleshooting\/choose/.test(r.url()) && r.request().method() === 'POST');
+  await locator.locator('[data-choose]').click();
+  await answered;
+};
 const until = async (fn, what, ms = 15000) => { const end = Date.now() + ms; for (;;) { const v = fn(); if (v) return v; if (Date.now() > end) throw new Error('Timed out waiting for ' + what); await new Promise((r) => setTimeout(r, 150)); } };
 const attempts = () => query("SELECT outcome,outcome_detail,memory_id FROM troubleshooting_attempts WHERE source='learned' ORDER BY created_at");
 const failures = () => query('SELECT COALESCE(SUM(reuse_failure_count),0) n FROM memory_pool')[0].n;
@@ -68,7 +81,7 @@ test('choosing one suggestion records exactly that one; "It worked" resolves the
   await ask(page, ISSUE);
   await page.waitForSelector('.alt-choice');
   const title = await page.locator('.alt-choice b').nth(1).innerText();
-  await page.locator('.alt-choice').nth(1).locator('[data-choose]').click();
+  await pick(page, page.locator('.alt-choice').nth(1));
   await page.waitForSelector('[data-attempt][data-worked="true"]');
   const rows = attempts().filter((a) => a.outcome === 'pending');
   assert.equal(rows.length, 1);
@@ -88,7 +101,7 @@ test('"Doesn’t apply" and "I can’t try this" are recorded as their own outco
     const { page, context } = await deskFor(name);
     await ask(page, ISSUE);
     await page.waitForSelector('.alt-choice');
-    await page.locator('.alt-choice').first().locator('[data-choose]').click();
+    await pick(page, page.locator('.alt-choice').first());
     await page.waitForSelector('.more-outcomes');
     await page.click('.more-outcomes summary');
     await page.click(`[data-outcome="${outcome}"]`);
@@ -106,7 +119,7 @@ test('"Still need help" counts one failure for the chosen fix only, and offers t
   const { page, context } = await deskFor('Eli');
   await ask(page, ISSUE);
   await page.waitForSelector('.alt-choice');
-  await page.locator('.alt-choice').first().locator('[data-choose]').click();
+  await pick(page, page.locator('.alt-choice').first());
   await page.waitForSelector('[data-attempt][data-worked="false"]');
   const before = failures();
   await page.click('[data-attempt][data-worked="false"]');
@@ -120,7 +133,7 @@ test('asking for a person opens one specialist case with a brief of what was tri
   const { page, context } = await deskFor('Fay');
   await ask(page, ISSUE);
   await page.waitForSelector('.alt-choice');
-  await page.locator('.alt-choice').first().locator('[data-choose]').click();
+  await pick(page, page.locator('.alt-choice').first());
   await page.waitForSelector('[data-attempt]');
   const handoffs = () => query("SELECT payload FROM records WHERE collection='handoffs'").map((r) => JSON.parse(r.payload));
   const before = handoffs().length;
