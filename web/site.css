@@ -1,0 +1,87 @@
+/* =====================================================================================================
+   Site polish layer, loaded after theme.css: shared icons, evidence and trust, pricing hints, legal pages,
+   the 404 page and demo finishing touches. Uses only the tokens defined in theme.css.
+   ===================================================================================================== */
+
+/* ------------------------------------------------------------------------------------------ one icon set */
+.ui-icon, .fx-chip svg, .pill svg, .trust-badges svg {
+  width: 1.05em; height: 1.05em; flex: none; vertical-align: -0.15em;
+  fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+}
+.menu-toggle { gap: 8px; align-items: center; }
+.theme-toggle { display: inline-grid; place-items: center; }
+.theme-toggle .ui-icon { width: 17px; height: 17px; }
+.pill svg { margin-right: 5px; }
+
+/* ------------------------------------------------------------------------------------------ calmer motion */
+/* One signature motion (the learning loop) stays; the floating chips are still. */
+.fx-chip { animation: none; }
+
+/* ------------------------------------------------------------------------------------------ evidence strip */
+.proof { padding-block: 10px 30px; }
+.proof-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 0; border: 1px solid var(--line); border-radius: 20px; background: var(--glass); overflow: hidden; }
+.proof-stats > div { padding: 24px 26px; display: flex; flex-direction: column-reverse; gap: 6px; }
+.proof-stats > div + div { border-left: 1px solid var(--line); }
+.proof-stats dd { margin: 0; font: 600 clamp(32px, 4vw, 46px)/1 'Space Grotesk', sans-serif; letter-spacing: -.04em; color: var(--text); }
+.proof-stats dt { font-size: 14px; color: var(--text-2); }
+.proof-note { margin: 12px 4px 0; font-size: 13px; color: var(--text-3); }
+.proof-note a, .trust-badges a { color: var(--atext); text-decoration: underline; text-underline-offset: 3px; }
+.trust-badges { list-style: none; padding: 0; margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.trust-badges li { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass-2); font-size: 13px; color: var(--text-2); }
+.trust-badges a { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.trust-badges a:hover { text-decoration: underline; }
+@media (max-width: 760px) {
+  .proof-stats { grid-template-columns: minmax(0, 1fr); }
+  .proof-stats > div + div { border-left: 0; border-top: 1px solid var(--line); }
+}
+
+/* ------------------------------------------------------------------------------------------ pricing hints */
+.hint { position: relative; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 8px; border-radius: 50%;
+  border: 1px solid var(--line-2); font-size: 11px; font-weight: 700; color: var(--text-2); cursor: help; vertical-align: 1px; }
+.hint::after { content: attr(data-hint); position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translate(-50%, 4px); width: max-content; max-width: 260px;
+  padding: 10px 12px; border-radius: 12px; background: var(--text); color: var(--bg); font-size: 12.5px; font-weight: 500; line-height: 1.45; text-align: left;
+  box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; z-index: 5; white-space: normal; }
+.hint:hover::after, .hint:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
+@media (max-width: 700px) { .hint::after { left: 0; transform: translate(-20%, 4px); } .hint:hover::after, .hint:focus-visible::after { transform: translate(-20%, 0); } }
+
+/* ------------------------------------------------------------------------------------------ footer legal links */
+.footer-legal { display: flex !important; flex-direction: column; gap: 16px; font-size: 12px; color: var(--text-2); }
+.footer-top { align-items: flex-start; }
+.footer-top > div:first-child { margin-right: auto; }
+@media (max-width: 760px) { .footer-legal { flex-direction: row; flex-wrap: wrap; gap: 14px 20px; } }
+
+/* ------------------------------------------------------------------------------------------ legal pages */
+.legal { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; align-items: start; }
+.legal-note { grid-column: 1 / -1; margin: 0; }
+.legal-toc { position: sticky; top: 100px; display: grid; gap: 10px; font-size: 14px; }
+.legal-toc a { color: var(--text-2); }
+.legal-toc a:hover { color: var(--text); }
+.legal-body { max-width: 720px; }
+.legal-body h2 { font-size: 24px; margin: 36px 0 12px; scroll-margin-top: 100px; }
+.legal-body h2:first-child { margin-top: 0; }
+.legal-body p, .legal-body li { color: var(--text-2); line-height: 1.7; }
+.legal-body ul { padding-left: 20px; display: grid; gap: 6px; }
+.legal-body a { color: var(--atext); text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 860px) { .legal { grid-template-columns: minmax(0, 1fr); gap: 24px; } .legal-toc { position: static; display: flex; flex-wrap: wrap; gap: 8px 16px; } .legal-toc .eyebrow { width: 100%; } }
+
+/* ------------------------------------------------------------------------------------------ 404 */
+.not-found-page { min-height: 100vh; }
+.not-found { min-height: calc(100vh - 120px); display: grid; place-content: center; justify-items: center; text-align: center; gap: 18px; padding-block: 60px; }
+.not-found h1 { font-size: clamp(40px, 6vw, 76px); line-height: 1.05; }
+.not-found .lead { margin: 0; max-width: 520px; }
+.not-found-mark { width: 200px; height: 68px; fill: none; stroke: var(--atext); stroke-width: 5; stroke-linecap: round; }
+.not-found-mark circle { fill: var(--atext); stroke: none; }
+.not-found-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px; margin-top: 18px; font-size: 14px; }
+.not-found-links a { color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ------------------------------------------------------------------------------------------ demo: empty states and finish */
+.demo-empty { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px dashed var(--line-2); border-radius: 14px; color: var(--text-2); font-size: 13px; }
+.demo-empty .ui-icon { width: 22px; height: 22px; color: var(--atext); margin-top: 1px; }
+.demo-empty b { display: block; color: var(--text); font-size: 14px; margin-bottom: 2px; }
+.demo-finish { margin-top: 24px; padding: 32px; border-radius: 22px; display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: center; justify-content: space-between;
+  background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow); }
+.demo-finish h2 { color: var(--on-accent); font-size: clamp(24px, 3vw, 34px); margin: 6px 0 8px; }
+.demo-finish p { margin: 0; max-width: 560px; color: var(--on-accent); opacity: .85; }
+.demo-finish .eyebrow { color: var(--on-accent); opacity: .7; }
+.demo-finish .button.primary { background: var(--on-accent); color: var(--accent); }
+.demo-finish .button:not(.primary) { background: transparent; color: var(--on-accent); border-color: color-mix(in srgb, var(--on-accent) 40%, transparent); }
