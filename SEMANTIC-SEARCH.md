@@ -66,6 +66,23 @@ The two cannot share a transaction, so indexing is a persistent *desired state* 
 * **Fallback without ChromaDB:** pools up to `SQLITE_SCAN_LIMIT` (300) are compared in full using stored vectors (nothing is re-embedded per query); larger pools use the FTS candidates only. This is a recall trade-off, measured in `evaluation/benchmark-results.json`.
 * **Hard gates run first:** safety restrictions, applicability conditions, unknown mandatory facts, company and service scope. A high similarity can never override them.
 
+## How good is the semantic search? (measured, and what is NOT measured)
+
+`npm run benchmark:semantic` compares three systems on one held-out set (16 fixes, 32 customer paraphrases written to avoid the fixes' own words, and 18 queries where **nothing** may be recommended: wrong device, safety restriction hit, unrelated). Run on 2026-11-13:
+
+| System | Recall@3 | Recommended where forbidden | Median ms | p95 ms | Embedding |
+| --- | ---: | ---: | ---: | ---: | --- |
+| A. SQLite only | 0.094 | 0/18 | 3.4 | 4.4 | local-hashed-concepts-v2 (offline, not neural) |
+| B. Chroma + local vectors | 0.031 | 0/18 | 6.8 | 8 | local-hashed-concepts-v2 (offline, not neural) |
+| C. Chroma + neural embeddings | not run | n/a | n/a | n/a | not run: the embedding endpoint (api.groq.com, model text-embedding-3-small) could not serve embeddings: Embedding provider returned HTTP 404. |
+
+* **The default embedding (`local-hashed-concepts-v2`) is not neural and, on hard paraphrases, it barely works** (recall@3 about 0.03-0.09). Earlier figures around 0.9 came from paraphrases that share the offline concept list's vocabulary and must not be read as general semantic quality.
+* **ChromaDB does not change that**: with the same local vectors it indexes them faster at scale, it does not make them semantic. The difference between rows A and B is two queries out of 32 and should be read as noise.
+* **Safety held in every system**: 0 of 18 forbidden queries produced a recommendation, because compatibility and safety are hard gates that run regardless of the embedding.
+* **The neural row is BLOCKED, not estimated.** It needs an embeddings-capable endpoint; the configured one (`api.groq.com`) returned HTTP 404 for embeddings, so no neural number exists. Set `EMBEDDING_MODEL` and a key for an OpenAI-compatible embeddings API and re-run the command to fill it in, then choose the default from that result.
+* Latency and cost for a neural model are also unmeasured; cost scales with documents indexed once plus one query embedding per customer message (cached briefly).
+* The corpus is small and synthetic. It says nothing about real customers.
+
 ## Recovery
 
 | Situation | What to do |

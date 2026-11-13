@@ -260,6 +260,7 @@ Detailed records: [Multi-company verification](MULTI-COMPANY-VERIFICATION.md) ·
 | --- | --- |
 | [Multi-company implementation](MULTI-COMPANY.md) | Data model, migration, service configuration, workflow, memory boundaries, secure linking and demo instructions. |
 | [Semantic search](SEMANTIC-SEARCH.md) | SQLite + ChromaDB hybrid retrieval, embeddings, index consistency, recovery and rollback. |
+| [Privacy and erasure](PRIVACY.md) | What is stored where, what erasure removes, what is kept and why. |
 | [Upgrade audit](UPGRADE-AUDIT.md) | The 21 audit items, what changed, what was verified and what is still open. |
 | [Integration setup](SETUP.md) | Environment configuration, email, Google Calendar, Hindsight and deployment prerequisites. |
 | [Company and specialist interfaces](COMPANY-INTERFACE.md) | Owner/staff workflows and role separation. |

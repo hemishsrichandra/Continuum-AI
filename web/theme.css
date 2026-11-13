@@ -166,8 +166,9 @@ th, td { border-color: var(--line); }
 .story3d { height: 380vh; position: relative; }
 .story3d .pin { position: sticky; top: 0; height: 100vh; display: grid; grid-template-columns: 1fr 1.1fr; gap: 40px; align-items: center; }
 .story-steps { display: grid; gap: 10px; }
-.story-step { padding: 18px 20px; border-radius: 16px; border: 1px solid transparent; opacity: .75; transition: .4s; }
-.story-step:not(.on) p, .story-step:not(.on) .num { color: var(--text); }
+.story-step { padding: 18px 20px; border-radius: 16px; border: 1px solid transparent; transition: background .4s, border-color .4s, box-shadow .4s; }
+/* Inactive steps are quieter through colour, never opacity, so their contrast is the same at every moment of a transition. */
+.story-step:not(.on) h3 { color: var(--text-2); }
 .story-step.on { opacity: 1; background: var(--glass-2); border-color: var(--line); box-shadow: var(--shadow); }
 .story-step h3 { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; font-size: 20px; }
 .story-step .num { font: 600 13px 'Space Grotesk'; color: var(--a1); } .story-step p { margin: 0; color: var(--text-2); font-size: 15px; }
