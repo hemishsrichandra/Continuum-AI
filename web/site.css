@@ -85,3 +85,50 @@
 .demo-finish .eyebrow { color: var(--on-accent); opacity: .7; }
 .demo-finish .button.primary { background: var(--on-accent); color: var(--accent); }
 .demo-finish .button:not(.primary) { background: transparent; color: var(--on-accent); border-color: color-mix(in srgb, var(--on-accent) 40%, transparent); }
+
+/* ------------------------------------------------------------------------------------------ app: toasts */
+.toast-region { position: fixed; right: 20px; bottom: 20px; z-index: 1000; display: grid; gap: 10px; width: min(380px, calc(100vw - 32px)); pointer-events: none; }
+.toast { pointer-events: auto; display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center; padding: 12px 12px 12px 14px; border-radius: 14px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--line-2); box-shadow: var(--shadow); animation: toast-in .22s ease-out; }
+.toast p { margin: 0; font-size: 14px; line-height: 1.45; }
+.toast .ui-icon { width: 20px; height: 20px; }
+.toast.success .ui-icon { color: var(--tint-green-fg); }
+.toast.error { border-color: var(--tint-red-line); } .toast.error .ui-icon { color: var(--tint-red-fg); }
+.toast.info .ui-icon { color: var(--atext); }
+.toast-action { border: 0; background: var(--accent); color: var(--on-accent); font: 600 13px 'DM Sans', sans-serif; padding: 7px 12px; border-radius: 9px; cursor: pointer; min-height: 32px; }
+.toast-close { border: 0; background: none; color: var(--text-3); font-size: 20px; line-height: 1; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; }
+.toast-close:hover { background: var(--surface-2); color: var(--text); }
+.toast.leaving { opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (max-width: 600px) { .toast-region { right: 16px; left: 16px; bottom: 16px; width: auto; } }
+
+/* ------------------------------------------------------------------------------------------ app: loading skeletons */
+.skeleton-block { display: grid; gap: 14px; margin-bottom: 14px; }
+.skeleton-card { display: grid; gap: 10px; padding: 20px; border-radius: 18px; border: 1px solid var(--line); background: var(--glass); }
+.skeleton-card i { display: block; height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.skeleton-card i:nth-child(1) { width: 38%; height: 16px; } .skeleton-card i:nth-child(2) { width: 88%; } .skeleton-card i:nth-child(3) { width: 64%; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* ------------------------------------------------------------------------------------------ app: empty states */
+.empty-block { display: flex; gap: 14px; align-items: flex-start; padding: 22px; border: 1px dashed var(--line-2); border-radius: 18px; color: var(--text-2); }
+.empty-block > .ui-icon { width: 26px; height: 26px; color: var(--atext); margin-top: 2px; }
+.empty-block b { display: block; color: var(--text); font-size: 15px; }
+.empty-block p { margin: 4px 0 0; font-size: 14px; max-width: 520px; }
+.empty-block .button { margin-top: 12px; }
+
+/* ------------------------------------------------------------------------------------------ app: command palette */
+.palette-trigger { gap: 8px; align-items: center; }
+.palette-trigger kbd, .palette kbd { font: 600 11px 'DM Sans', sans-serif; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line-2); color: var(--text-3); background: var(--surface-2); }
+.console-head .palette-trigger { margin-top: 12px; }
+dialog.palette { width: min(620px, calc(100vw - 32px)); max-height: min(520px, 80vh); margin: 12vh auto auto; padding: 0; border: 1px solid var(--line-2); border-radius: 18px;
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
+dialog.palette::backdrop { background: rgba(10, 4, 6, .5); backdrop-filter: blur(3px); }
+.palette-search { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.palette-search .ui-icon { width: 20px; height: 20px; color: var(--text-3); }
+.palette-search input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: 500 16px 'DM Sans', sans-serif; min-height: 32px; padding: 0; box-shadow: none; }
+#palette-list { list-style: none; margin: 0; padding: 8px; overflow-y: auto; }
+#palette-list [role=option] { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 14px; color: var(--text); }
+#palette-list [role=option] small { color: var(--text-3); }
+#palette-list [aria-selected=true] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--atext); }
+.palette-group { padding: 10px 12px 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); font-weight: 700; }
+.palette-empty { margin: 0; padding: 18px 20px; color: var(--text-3); font-size: 14px; }

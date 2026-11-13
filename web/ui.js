@@ -4,7 +4,11 @@ import { mountOperator } from './operator.js';
 import { renderAuth, openAccount } from './auth-ui.js';
 import { mountSite } from './pages.js';
 import { request, escapeHtml as q, readSession, saveSession, formatDate, calendarLink } from './client.js';
+import { toast } from './toast.js';
+import { confirmDialog } from './form-kit.js';
+import { mountPalette } from './palette.js';
 mountSite();
+mountPalette();
 await mountWorkspaceControl();
 if (location.pathname.replace(/\/+$/, '') === '/operator') await mountOperator();
 if (location.pathname.replace(/\/+$/, '') === '/team') await mountTeam();
@@ -75,6 +79,14 @@ async function api(route, options = {}) {
   }
 }
 function message(text, isError = false) {
+  // Confirmations appear as a toast; errors stay in place next to what failed.
+  if (!isError) {
+    state.notice = '';
+    const banner = document.querySelector('#desk-notice');
+    if (banner) banner.hidden = true;
+    toast(text);
+    return;
+  }
   state[isError ? 'error' : 'notice'] = text;
   const target = document.querySelector(isError ? '#desk-error' : '#desk-notice');
   if (target) {
@@ -617,7 +629,7 @@ app.addEventListener('click', async (event) => {
       return;
     }
     if (action === 'erase-data') {
-      if (!window.confirm('Remove the content of your conversations and remembered context for this service? This cannot be undone. Your requests and specialist updates are kept.')) return;
+      if (!(await confirmDialog({ title: 'Remove your conversation content?', body: 'This removes your conversations and remembered context for this service. It cannot be undone. Your requests and specialist updates are kept.', confirm: 'Remove content', cancel: 'Keep it', danger: true }))) return;
       try {
         const r = await api('privacy/erase', { body: { confirmed: true } });
         message(`Removed ${r.erased.conversations} conversation entries and ${r.erased.rememberedContext} remembered items.`);

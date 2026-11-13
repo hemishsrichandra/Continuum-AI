@@ -47,6 +47,8 @@ const routes = {
   '/ui.js': ['ui.js', 'text/javascript; charset=utf-8'],
   '/form-kit.js': ['form-kit.js', 'text/javascript; charset=utf-8'],
   '/site.css': ['site.css', 'text/css; charset=utf-8'],
+  '/toast.js': ['toast.js', 'text/javascript; charset=utf-8'],
+  '/palette.js': ['palette.js', 'text/javascript; charset=utf-8'],
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
   '/og-image.png': ['og-image.png', 'image/png'],
   '/privacy': ['index.html', 'text/html; charset=utf-8'],
