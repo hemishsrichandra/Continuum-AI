@@ -24,7 +24,7 @@ import {
   rankCandidates,
   needsReviewFlag,
 } from './scoring.js';
-import { insertPassport, ORIGINS, ORIGIN_LABELS, verificationOf, SOURCE_LABELS, signatureOf, stepsList, computeInitialConfidence, normalizeApplicability, normalizeSafety } from './passports.js';
+import { insertPassport, ORIGINS, ORIGIN_LABELS, verificationOf, SOURCE_LABELS, refreshFacets, signatureOf, stepsList, computeInitialConfidence, normalizeApplicability, normalizeSafety } from './passports.js';
 import { containsSecret, scrubPII } from './privacy.js';
 import { createEmbeddingService } from './embedding-service.js';
 import { createVectorStore } from './vector-store.js';
@@ -159,6 +159,8 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
     const origins = allowedOrigins.filter((o) => ORIGINS.includes(o));
     if (!origins.length) return { eligible: [], withheld: [], rejected: [], backend: 'none' };
     const originSql = origins.map(() => '?').join(',');
+    // Device facets invalidated by an applicability edit (any code path, including direct SQL) are rebuilt before they are used.
+    for (const stale of sql.prepare('SELECT * FROM memory_pool WHERE company_id=? AND facets_at IS NULL LIMIT 200').all(companyId)) refreshFacets(sql, stale);
     const poolSize = sql.prepare(`SELECT COUNT(*) AS n FROM memory_pool WHERE company_id=? AND chatbot_id=? AND status='active' AND origin_type IN (${originSql})`).get(companyId, chatbotId, ...origins).n;
     if (!poolSize) return { eligible: [], withheld: [], rejected: [], backend: embedding.model };
     const queryTokens = tokens(text);

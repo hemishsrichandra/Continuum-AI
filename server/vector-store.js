@@ -91,7 +91,7 @@ export function createVectorStore(config = {}, { client: injected = null, now = 
         collection.upsert({
           ids: items.map((i) => i.id),
           embeddings: items.map((i) => Array.from(i.vector)),
-          metadatas: items.map((i) => ({ company_id: i.companyId, chatbot_id: i.chatbotId, origin: i.origin || '', version: i.version || 1, content_hash: i.contentHash || '', model: modelId })),
+          metadatas: items.map((i) => ({ company_id: i.companyId, chatbot_id: i.chatbotId, origin: i.origin || '', version: i.version || 1, content_hash: i.contentHash || '', doc_hash: i.docHash || '', model: modelId })),
         }),
         timeoutMs * 3,
         'Vector index',
@@ -176,6 +176,23 @@ export function createVectorStore(config = {}, { client: injected = null, now = 
     }
   }
 
+  /** Every entry (id and metadata) in the model's collection, paged. Reconciliation compares the stored document hash. */
+  async function listEntries(modelId) {
+    const collection = await collectionFor(modelId, null);
+    const out = [];
+    try {
+      for (let offset = 0; ; offset += 500) {
+        const page = await withTimeout(collection.get({ limit: 500, offset, include: ['metadatas'] }), timeoutMs, 'Vector index');
+        (page.ids || []).forEach((id, i) => out.push({ id, metadata: page.metadatas?.[i] || {} }));
+        if ((page.ids || []).length < 500) break;
+      }
+      ok();
+      return out;
+    } catch (e) {
+      throw fail(e);
+    }
+  }
+
   async function getVectorStoreHealth({ probe = false, modelId = null } = {}) {
     if (!enabled) return { enabled: false, ok: false, reason: 'not configured' };
     if (probe) {
@@ -204,6 +221,7 @@ export function createVectorStore(config = {}, { client: injected = null, now = 
     deleteKnowledgeVectors,
     presentIds,
     listIds,
+    listEntries,
     getVectorStoreHealth,
     close: () => collections.clear(),
   };

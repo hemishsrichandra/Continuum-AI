@@ -213,6 +213,7 @@ export class SqliteStore {
     this.migrateV6();
     this.migrateV7();
     this.migrateV8();
+    this.migrateV9();
     // Idempotent hardening: the case timeline is an audit trail and can only be appended to.
     this.db.exec(`
       CREATE TRIGGER IF NOT EXISTS case_events_append_only_update BEFORE UPDATE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
@@ -283,6 +284,46 @@ export class SqliteStore {
       if (!has('company_data_sources', 'authoritative_snapshot')) this.db.exec('ALTER TABLE company_data_sources ADD COLUMN authoritative_snapshot INTEGER NOT NULL DEFAULT 0');
       if (!has('company_data_sources', 'last_complete_sync_at')) this.db.exec('ALTER TABLE company_data_sources ADD COLUMN last_complete_sync_at TEXT');
       this.db.prepare('INSERT OR IGNORE INTO schema_migrations VALUES(7,?)').run(new Date().toISOString());
+    }).immediate();
+  }
+  // Migration 9: concurrency control for the vector index. Each memory carries a monotonic GENERATION bumped by triggers on every change
+  // that affects the index; workers claim jobs with a token and finish them only if both still match. The triggers now also cover
+  // applicability, safety restrictions, origin, version and verification flags (they previously missed applicability and safety).
+  // Applicability changes also invalidate the device facets, which are rebuilt lazily.
+  migrateV9() {
+    if (this.db.prepare('SELECT 1 FROM schema_migrations WHERE version=9').get()) return;
+    this.db.transaction(() => {
+      const has = (table, column) => this.db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+      if (!has('vector_index_state', 'generation')) this.db.exec('ALTER TABLE vector_index_state ADD COLUMN generation INTEGER NOT NULL DEFAULT 0');
+      if (!has('vector_index_state', 'claim_token')) this.db.exec('ALTER TABLE vector_index_state ADD COLUMN claim_token TEXT');
+      if (!has('vector_index_state', 'claimed_generation')) this.db.exec('ALTER TABLE vector_index_state ADD COLUMN claimed_generation INTEGER');
+      const ts = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
+      const bump = (extra = '') => `ON CONFLICT(memory_id) DO UPDATE SET ${extra}status='pending',attempts=0,next_attempt_at=0,last_error=NULL,generation=generation+1,claim_token=NULL,updated_at=excluded.updated_at`;
+      this.db.exec(`
+        DROP TRIGGER IF EXISTS vector_state_insert; DROP TRIGGER IF EXISTS vector_state_update; DROP TRIGGER IF EXISTS vector_state_delete;
+        CREATE TRIGGER vector_state_insert AFTER INSERT ON memory_pool BEGIN
+          INSERT INTO vector_index_state(memory_id,company_id,chatbot_id,status,attempts,next_attempt_at,updated_at,generation) VALUES(NEW.id,NEW.company_id,NEW.chatbot_id,'pending',0,0,${ts},1)
+          ${bump()};
+        END;
+        CREATE TRIGGER vector_state_update AFTER UPDATE OF status,title,symptoms_text,steps_json,search_terms,chatbot_id,company_id,applicability_json,safety_restrictions_json,origin_type,version_number,customer_confirmed,locally_reviewed ON memory_pool
+        WHEN OLD.status IS NOT NEW.status OR OLD.title IS NOT NEW.title OR OLD.symptoms_text IS NOT NEW.symptoms_text OR OLD.steps_json IS NOT NEW.steps_json OR OLD.search_terms IS NOT NEW.search_terms
+          OR OLD.chatbot_id IS NOT NEW.chatbot_id OR OLD.company_id IS NOT NEW.company_id OR OLD.applicability_json IS NOT NEW.applicability_json OR OLD.safety_restrictions_json IS NOT NEW.safety_restrictions_json
+          OR OLD.origin_type IS NOT NEW.origin_type OR OLD.version_number IS NOT NEW.version_number OR OLD.customer_confirmed IS NOT NEW.customer_confirmed OR OLD.locally_reviewed IS NOT NEW.locally_reviewed BEGIN
+          INSERT INTO vector_index_state(memory_id,company_id,chatbot_id,status,attempts,next_attempt_at,updated_at,generation) VALUES(NEW.id,NEW.company_id,NEW.chatbot_id,'pending',0,0,${ts},1)
+          ${bump('company_id=excluded.company_id,chatbot_id=excluded.chatbot_id,')};
+        END;
+        CREATE TRIGGER vector_state_delete AFTER DELETE ON memory_pool BEGIN
+          INSERT INTO vector_index_state(memory_id,company_id,chatbot_id,status,attempts,next_attempt_at,updated_at,generation) VALUES(OLD.id,OLD.company_id,OLD.chatbot_id,'pending',0,0,${ts},1)
+          ${bump()};
+        END;
+        DROP TRIGGER IF EXISTS passport_facets_stale;
+        CREATE TRIGGER passport_facets_stale AFTER UPDATE OF applicability_json ON memory_pool WHEN OLD.applicability_json IS NOT NEW.applicability_json BEGIN
+          UPDATE memory_pool SET facets_at=NULL WHERE id=NEW.id;
+        END;
+        CREATE INDEX IF NOT EXISTS memory_pool_facets_stale ON memory_pool(company_id) WHERE facets_at IS NULL;
+        UPDATE vector_index_state SET generation=1 WHERE generation=0;
+      `);
+      this.db.prepare('INSERT OR IGNORE INTO schema_migrations VALUES(9,?)').run(new Date().toISOString());
     }).immediate();
   }
   // Migration 8: scrub verification evidence, provenance and review notes stored before receipts had a strict schema.

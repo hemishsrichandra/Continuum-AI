@@ -25,6 +25,8 @@ export function createFakeChroma() {
       rows,
       async upsert({ ids, embeddings, metadatas }) {
         guard();
+        if (state.beforeUpsert) await state.beforeUpsert(ids);
+        guard();
         state.upserts++;
         ids.forEach((id, i) => rows.set(id, { vector: embeddings[i], meta: metadatas[i] }));
       },
@@ -38,10 +40,11 @@ export function createFakeChroma() {
           .slice(0, nResults);
         return { ids: [found.map((f) => f.id)], distances: [found.map((f) => f.d)] };
       },
-      async get({ ids, limit, offset = 0 } = {}) {
+      async get({ ids, limit, offset = 0, include = [] } = {}) {
         guard();
         const all = [...rows.keys()];
-        return { ids: ids ? all.filter((id) => ids.includes(id)) : all.slice(offset, limit ? offset + limit : undefined) };
+        const picked = ids ? all.filter((id) => ids.includes(id)) : all.slice(offset, limit ? offset + limit : undefined);
+        return { ids: picked, ...(include.includes('metadatas') && { metadatas: picked.map((id) => rows.get(id).meta) }) };
       },
       async delete({ ids }) {
         guard();
