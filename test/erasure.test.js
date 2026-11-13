@@ -105,3 +105,14 @@ test('withdrawing fixes learned from erased requests removes them from search an
   await w.h.vectorIndex.drain();
   assert.ok(!fake.collection().rows.has(learned.id), 'and from the vector index');
 });
+
+test('erasing ONE request also removes the customer-wide preference that was learned from it', async (t) => {
+  const { w, a, ta } = await scene(t);
+  const other = await w.ticket(a, 'Second request about wifi dropping.', 'Wifi');
+  await w.ask(a, other, 'My wifi drops. Please text me on 98765 43210 about it.');
+  assert.ok(everywhere(w).includes('98765 43210'), 'stored before erasure');
+  await a.api('privacy/erase', { confirmed: true, ticketId: other });
+  assert.ok(!everywhere(w).includes('98765 43210'), 'no copy of the phone number remains, including the customer-wide preference');
+  assert.ok(everywhere(w).includes(PHONE), 'the other request is untouched');
+  void ta;
+});

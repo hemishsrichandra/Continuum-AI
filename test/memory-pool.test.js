@@ -193,7 +193,7 @@ test('a configured remote embedding backend is used for semantic matches without
     calls.push(String(url));
     const input = JSON.parse(options.body).input;
     // Both the passport and the paraphrase land on the same direction; invoices elsewhere.
-    return Response.json({ data: input.map((x) => ({ embedding: /invoice/i.test(x) ? [0, 0, 1] : /Standard playbook/i.test(x) ? [0, 1, 0] : [1, 0, 0] })) });
+    return Response.json({ data: input.map((x, i) => ({ index: i, embedding: /invoice/i.test(x) ? [0, 0, 1] : /Standard playbook/i.test(x) ? [0, 1, 0] : [1, 0, 0] })) });
   });
   const w = await world(t, { config: { OPENAI_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
   w.seed(w.company, { title: FOUR[0][0], symptoms: FOUR[0][1], steps: [FOUR[0][2]] });
