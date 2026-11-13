@@ -94,3 +94,20 @@ Branch `feature/chroma-hybrid-rag`. Environment: Windows 11, Node 24.13, ChromaD
 * `docker-compose.yml` has not been run (Docker is not installed here); the same ChromaDB version was run through pip.
 * Deferred: splitting `server/app.js` and replacing JSON collections (item 20), a per-company SLA editor, demo-session persistence.
 * Windows-only: `npm test` uses `test/setup-windows-cleanup.js` to ignore file-lock errors when deleting temp folders.
+
+## UI redesign (branch `feature/ui-redesign`)
+
+Dark-first design with a light theme, glass surfaces, and 3D used only where it explains something. Rough reference mock: `design-preview/index.html`.
+
+**What changed**
+* **Design system:** `web/theme.css` defines tokens for both themes. The legacy stylesheets (`styles.css`, `demo.css`) had their ~300 hard-coded colours converted to those tokens, so every screen follows the theme. `theme-init.js` applies the saved theme before first paint; the toggle sits in the navigation.
+* **Home:** a Three.js "memory constellation" hero (lazy-loaded, paused off-screen, static frame for reduced motion, removed if WebGL is missing), a tilting product preview, a pinned four-step scroll story, tilt cards. Three.js is MIT-licensed and served from this site (`/vendor/…`) because the security policy only allows scripts from this origin.
+* **Navigation:** Home, Product, How it works, Pricing, Demo, plus Sign in and Try the demo. The style guide is no longer linked.
+* **Sign-in:** a split screen with three modes (Sign in / Join a team / Create a company) and one secondary link; "Schema adapter" became "Type of support".
+* **Customer workspace:** removed the "Memory lab" tab and the "Confirmed actions" / "Helpful responses" tiles; "Request a specialist" became "Talk to a person"; data and privacy controls sit behind one disclosure.
+* **Owner console:** a sidebar (Overview, Cases, Knowledge) instead of one long page; Knowledge has In use / Needs you / Older versions filters; plain-language labels; the data-source form is a four-step wizard and exposes the new "complete snapshot" option.
+* **Demo:** shared navigation, the constellation behind the headline, glowing progress steps.
+
+**Verified:** `npm test` 272 tests, 271 passed, 0 failed, 1 skipped; `npm run test:http` passes with the new assets. axe (WCAG A/AA) reported **0 violations** on Home, Product, How it works, Pricing, Team and the console's Overview, Cases and Knowledge in dark, and on Home, Pricing and the console in light (after fixing four real contrast problems it found). No horizontal overflow at 375 px on Home, Pricing, the console and the demo. The guided demo still runs end to end.
+
+**Not verified / limits:** the customer workspace and the sign-in screen were checked visually but not scanned with axe in both themes; the Cases and Knowledge sections were not exercised with many cases; there is no automated browser test (all UI checks were manual); WebGL performance on low-end devices was not measured; the 3D scene adds about 175 KB gzipped of JavaScript, loaded only on Home and Demo.
