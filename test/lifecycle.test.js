@@ -140,7 +140,10 @@ test('staleness is judged only against a COMPLETE sync; a paused, failed or part
   const lc = s.w.h.dataSources.lifecycle;
   assert.deepEqual(lc.staleReport(s.w.company), [], 'everything was just seen');
   const day = 86400000;
-  const old = new Date(Date.now() - 45 * day).toISOString();
+  // Fix the "complete sync" instant so the test does not depend on how long the sync above took.
+  const completed = new Date().toISOString();
+  s.w.db().prepare('UPDATE company_data_sources SET last_complete_sync_at=? WHERE id=?').run(completed, a.id);
+  const old = new Date(Date.parse(completed) - 45 * day).toISOString();
   s.w.db().prepare("UPDATE memory_pool SET last_seen_at=? WHERE external_record_id='R-2'").run(old);
   assert.equal(lc.staleReport(s.w.company).length, 1);
   assert.match(lc.staleReport(s.w.company)[0].reason, /45 days/);
