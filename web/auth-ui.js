@@ -42,7 +42,7 @@ export async function renderAuth(app, { onSession, error = '', initialMode = 'lo
         const list = settings.demoAccounts.filter((a) => a.role === role);
         return list.length ? `<div class="demo-group"><h3>${title}</h3><p class="muted small">${blurb}</p>${list.map((a) => `<button type="button" class="demo-account" data-demo-account="${q(a.email)}"><b>${q(a.name)}</b><small>${q(a.company)}</small></button>`).join('')}</div>` : '';
       };
-      form.insertAdjacentHTML('afterend', `<aside class="demo-accounts" aria-label="Demo accounts"><p class="eyebrow">LOCAL DEMO · FICTIONAL ACCOUNTS</p>${group('owner', 'Company owner', 'Manage people, services and knowledge, and work cases.')}${group('customer', 'Customer', 'Ask for help, book visits and confirm fixes.')}</aside>`);
+      form.insertAdjacentHTML('afterend', `<section class="demo-accounts" aria-label="Demo accounts"><p class="eyebrow">LOCAL DEMO · FICTIONAL ACCOUNTS</p>${group('owner', 'Company owner', 'Manage people, services and knowledge, and work cases.')}${group('customer', 'Customer', 'Ask for help, book visits and confirm fixes.')}</section>`);
       app.querySelectorAll('[data-demo-account]').forEach((b) => b.addEventListener('click', () => {
         form.elements.email.value = b.dataset.demoAccount;
         form.elements.password.value = settings.demoPassword || '';

@@ -68,6 +68,8 @@ export function containsPII(text, options) {
 // Instructions that must never be auto-published or silently imported as active.
 const dangerous = [
   [/\b(?:open|pry|puncture|pierce|disassemble|remove)\b[^.]{0,30}\bbattery\b/i, 'battery disassembly'],
+  [/\b(?:pierce|puncture|cut|stab|lance)\b[^.]{0,35}\b(?:lithium|pouch|cell(?!\s*(?:phone|service|signal|tower|network))|battery)\b/i, 'battery puncture'],
+  [/\b(?:solder|weld)\b[^.]{0,30}\b(?:battery|cell|terminal)\b/i, 'battery soldering'],
   [/\b(?:bypass|disable|override)\b[^.]{0,30}\b(?:safety|fuse|thermal|interlock|breaker)\b/i, 'safety bypass'],
   [/\b(?:disable|turn off|uninstall)\b[^.]{0,20}\b(?:antivirus|firewall|security software|defender|edr)\b/i, 'security control disabled'],
   [/\brm\s+-rf\b|\bformat\s+(?:c:|the (?:drive|disk))|\bdd\s+if=|\bmkfs\b|\bdel\s+\/[fsq]/i, 'destructive command'],
@@ -77,7 +79,17 @@ const dangerous = [
   [/<script\b|javascript:|\bon\w+\s*=/i, 'active content'],
   [/\b(?:ignore|disregard|forget)\b[^.]{0,40}\b(?:previous|prior|above|earlier|all)\b[^.]{0,30}\b(?:instructions?|rules|prompts?)\b|\bsystem prompt\b|\byou are now\b|\b(?:reveal|print|show)\b[^.]{0,20}\b(?:your|the) (?:instructions|prompt|secrets?)\b/i, 'instruction injection'],
 ];
+/**
+ * Undo simple obfuscation before inspecting: single letters joined by punctuation ("p.r.y", "b-a-t-t-e-r-y", "s*o*l*d*e*r") are read as the word they
+ * spell, and zero-width and soft-hyphen characters are dropped. The original text is inspected as well, so nothing that matched before stops matching.
+ */
+export function deobfuscate(text) {
+  return String(text || '')
+    .replace(/[​-‍⁠­﻿]/g, '')
+    .replace(/(?<![A-Za-z])(?:[A-Za-z][.\-_*|/·•]){2,}[A-Za-z](?![A-Za-z])/g, (run) => run.replace(/[^A-Za-z]/g, ''));
+}
 export function dangerousInstructions(text) {
-  const t = String(text || '');
-  return dangerous.filter(([p]) => p.test(t)).map(([, why]) => why);
+  const raw = String(text || '');
+  const plain = deobfuscate(raw);
+  return dangerous.filter(([p]) => p.test(raw) || (plain !== raw && p.test(plain))).map(([, why]) => why);
 }
