@@ -42,7 +42,8 @@ export function emailAddress(value) {
  * right kind. Off unless DEMO_SIGNIN_HINTS is set, and never in production.
  */
 export function demoSignInHints(config) {
-  if (config.NODE_ENV === 'production' || !config.DEMO_SIGNIN_HINTS) return null;
+  // Only an explicitly local environment qualifies: a missing or unknown NODE_ENV on a reachable host must not expose accounts.
+  if (!['development', 'test'].includes(config.NODE_ENV) || !config.DEMO_SIGNIN_HINTS) return null;
   try {
     const list = JSON.parse(config.DEMO_SIGNIN_HINTS);
     if (!Array.isArray(list)) return null;

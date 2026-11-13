@@ -274,3 +274,7 @@ Detailed records: [Multi-company verification](MULTI-COMPANY-VERIFICATION.md) ·
 ---
 
 **Continuum keeps the useful outcome of a support conversation available for the next compatible case—with human review, customer confirmation and company boundaries intact.**
+
+## More documentation
+
+See [DOCS.md](DOCS.md) for an index of every guide, audit and report, and [V3-LEDGER.md](V3-LEDGER.md) for the latest requirement-by-requirement status.

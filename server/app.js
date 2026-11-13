@@ -239,7 +239,7 @@ export function createHandler({ file, config = process.env, service, vectorClien
         '/api/conversation/archive', '/api/feedback', '/api/slots', '/api/memory',
         '/api/reflect', '/api/chat', '/api/request', '/api/requirement', '/api/book',
         '/api/cancel', '/api/book/cancel', '/api/handoff', '/api/outcome', '/api/resolutions/confirm',
-        '/api/resolutions/defer', '/api/resolutions/outcome', '/api/connector/sync', '/api/troubleshooting/outcome', '/api/privacy/export', '/api/privacy/erase',
+        '/api/resolutions/defer', '/api/troubleshooting/choose', '/api/resolutions/outcome', '/api/connector/sync', '/api/troubleshooting/outcome', '/api/privacy/export', '/api/privacy/erase',
       ]);
       if (['owner', 'staff'].includes(profile.role) && customerRoutes.has(url.pathname))
         throw fault(403, 'Customer accounts handle personal requests and confirmations. Use the company dashboard or specialist console.');
@@ -413,6 +413,14 @@ export function createHandler({ file, config = process.env, service, vectorClien
         return write(200, learning.defer(profile, await json(req)));
       if (endpoint === 'POST /api/troubleshooting/outcome')
         return write(200, await troubleshooting.feedback(profile, await json(req)));
+      if (endpoint === 'POST /api/troubleshooting/choose') {
+        const out = await troubleshooting.choose(profile, await json(req));
+        const ticket = db.ticket(out.attempt.ticket_id);
+        const at = new Date().toISOString();
+        const response = { id: out.id, reply: out.reply, model: 'Company memory', ticket, action: null, decision: { mode: 'recommend', action: null }, evidence: out.evidence, learnedSource: out.learnedSource, alternatives: out.alternatives, attempt: out.attempt, resolutionUse: out.resolutionUse, retained: null, trace: { knowledge: 'Company memory', memory: 'Operational workflow', recalled: 1, learnedResolutions: 1, elapsedMs: 0 }, workflow: out.workflow };
+        store.updateFor(profile.companyId, (data) => { data.conversations.push({ id: out.id, scope: db.scope, ticketId: ticket.id, message: 'I’ll try: ' + out.title, response, memory: true, createdAt: at }); });
+        return write(200, { success: true, id: out.id });
+      }
       if (endpoint === 'POST /api/resolutions/outcome') {
         const body = await json(req);
         body.allowHandoff=selectedBot.allowedActions.includes('handoff');

@@ -144,7 +144,7 @@ test('F4: an applicability-only change (even by direct SQL) queues reindexing an
   assert.equal(w.db().prepare('SELECT facets_at FROM memory_pool WHERE id=?').get(row.id).facets_at, null, 'device facets are marked stale');
   await w.h.vectorIndex.drain();
   assert.equal(state().status, 'indexed');
-  assert.notEqual(vector().meta.doc_hash, hashBefore, 'the stored document changed');
+  assert.equal(vector().meta.doc_hash, hashBefore, 'applicability is separate metadata: the embedded text (title, issue, steps) is unchanged, so nothing is needlessly re-embedded');
   // Retrieval uses the new applicability; facets are rebuilt on demand.
   const ask = (text) => w.h.memoryPool.retrieve({ companyId: w.company, chatbotId: w.botOf(w.company), text });
   assert.equal((await ask('The display flickers after startup on Model Z firmware 9.')).eligible.length, 1);

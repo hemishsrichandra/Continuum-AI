@@ -14,6 +14,7 @@ export const THRESHOLDS = Object.freeze({
   consecutiveFailures: 2, // consecutive failures that flag for review
   minOutcomesForReliability: 2, // reliability rule only applies after this many outcomes
   maxSuggestions: 3,
+  partialHybrid: 0.65, // a generic, only partly confirmed environment stays in play from this S_hybrid up (with S_compat 0.5)
 });
 export const AUTHOR_DEFAULTS = Object.freeze({ verifiedImport: 0.85, newStaff: 0.75, unverifiedImport: 0.5, standardPlaybook: 0.85 });
 
@@ -21,7 +22,7 @@ export const clamp01 = (n) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) 
 const round = (n) => Math.round(n * 10000) / 10000;
 
 // ---------------------------------------------------------------------------
-// Passport completeness P_passport: 0.25 for each adequately filled section.
+// Passport completeness P_passport: 0.25 for each adequately filled section (title, environment, safety review, steps).
 // Blank is never evidence. "None identified" safety counts only after review.
 const meaningful = (text, min = 3) => tokens(text || '').size >= min;
 export function passportCompleteness(p = {}) {
@@ -29,7 +30,8 @@ export function passportCompleteness(p = {}) {
   const applicability = p.applicability || {};
   const safety = p.safety || {};
   const parts = {
-    symptoms: meaningful(p.symptoms, 2) && String(p.symptoms).trim().length >= 12,
+    title: meaningful(p.title, 2) && String(p.title).trim().length >= 6,
+    // Title, environment, steps and the safety review decide completeness. Symptoms are derived server-side, so they never count.
     applicability:
       (Array.isArray(applicability.conditions) && applicability.conditions.length > 0) ||
       conditionsFromText(applicability.environmentText || '').length > 0 ||
@@ -196,17 +198,27 @@ export function compatibilityGate({ applicability = {}, safety = {}, facts = {},
   const required = conditions.filter((c) => c.required !== false);
   const optional = conditions.filter((c) => c.required === false);
   const evaluation = evaluateConditions(required, facts);
+  const missingConditions = [...(evaluation.missingConditions || [])];
+  let unparsedMissing = [];
   // Free-text environment restrictions (legacy and specialist-entered) are checked
   // with the same negation/version-aware parser plus explicit-keyword rules.
   if (applicability.environmentText) {
     const legacy = compatibility(applicability.environmentText, text, fields);
     evaluation.missing.push(...legacy.missing);
     evaluation.conflicts.push(...legacy.conflicts);
+    missingConditions.push(...legacy.missingConditions);
+    unparsedMissing = legacy.unparsedMissing || [];
     evaluation.status = evaluation.conflicts.length ? 'conflict' : evaluation.missing.length ? 'unknown' : 'compatible';
   }
   const safetyHits = safetyConflicts(safety, facts, text);
   if (safetyHits.length) return { eligible: false, status: 'safety_conflict', compat: 0, reasons: safetyHits, evaluation };
   if (evaluation.status === 'conflict') return { eligible: false, status: 'conflict', compat: 0, reasons: evaluation.conflicts, evaluation };
+  // The one permitted partial case: every missing fact belongs to a generic "verified on" device name (no version, firmware or
+  // other mandatory requirement), and nothing else in the environment text is unaccounted for. Mandatory facts still ask first.
+  if (evaluation.status === 'unknown' && missingConditions.length && missingConditions.every((c) => c.generic) && !unparsedMissing.length) {
+    const verifiedOn = applicability.environmentText || missingConditions.map(describeCondition).join('; ');
+    return { eligible: true, partial: true, status: 'partial', compat: 0.5, reasons: ['environment not fully confirmed: ' + verifiedOn], advisory: `Note: This solution was verified on ${verifiedOn}. Steps may vary slightly for your setup.`, verifiedOn, evaluation };
+  }
   if (evaluation.status === 'unknown') return { eligible: false, status: 'unknown', compat: 0, reasons: evaluation.missing, evaluation };
   let compat = 1;
   if (optional.length) {

@@ -94,18 +94,21 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
   }
   function draftPassport(staff, body) {
     const title = field(body.title, 'title', 100),
-      symptoms = field(body.symptoms, 'symptoms', 1000),
       environment = field(body.environment, 'product and versions', 500),
       solution = field(body.solution, 'solution steps', 2000);
     const safetyText = typeof body.safety === 'string' ? body.safety.slice(0, 1000) : '';
     if (body.riskLevel !== undefined && !['standard', 'high'].includes(body.riskLevel)) throw fault(400, 'Choose a valid risk level.');
-    const all = [title, symptoms, environment, solution, safetyText].join('\n');
+    const all = [title, environment, solution, safetyText].join('\n');
     if (containsSecret(all)) throw fault(400, 'Remove identifying information and credentials from shared knowledge.');
     const h = store.dataFor(staff.companyId).handoffs.find((x) => x.id === body.handoffId && x.companyId === staff.companyId && x.chatbotId === botId(staff));
     const customer = h && store.db.prepare('SELECT name,email FROM accounts WHERE id=?').get(h.customerId);
     const names = customer ? [customer.name, customer.email] : [];
     const clean = (t) => scrubPII(t, { names }).text;
     const redactions = scrubPII(all, { names }).count;
+    // The searchable symptom text is derived, never typed: the customer's own original request, scrubbed. A legacy "symptoms"
+    // field from an old client is ignored, and a request that carries a credential contributes nothing but the title.
+    const issue = String(h?.context?.ticket?.issue || h?.summary || '').slice(0, 1000);
+    const symptoms = issue && !containsSecret(issue) ? clean(issue) : clean(title);
     const safety = normalizeSafety(safetyText);
     if (safety.noneIdentified) safety.reviewed = body.safetyReviewed === true;
     const applicability = normalizeApplicability({ ...(body.applicability || {}), environmentText: clean(environment) });
@@ -176,9 +179,23 @@ export function createLearning(store, memory, companies, config = {}, reuse, pro
     },
     assign(staff, body, operation) {
       if (body.confirmed !== true) throw fault(400, 'Confirm the assignment.');
+      // An empty assignee is a release to the queue. caseFor() has already limited the caller to the assignee or an owner.
+      const release = body.assignedTo === '' || body.assignedTo === null;
       return change(staff, operation, (data) => {
         const h = caseFor(data, staff, field(body.handoffId, 'case ID', 100), body.revision);
         if (h.status === 'Resolved') throw fault(409, 'This case is resolved.');
+        if (h.status === 'Awaiting confirmation') throw fault(409, 'A solution is waiting for the customer. The case can be reassigned once they answer.');
+        if (release) {
+          if (!h.assignedTo) throw fault(409, 'This case is not assigned to anyone.');
+          const now = new Date().toISOString(), row = rowFor(data, h, staff.provider);
+          h.assignedTo = null;
+          row[staff.provider === 'repair' ? 'assigned_to' : 'owner'] = staff.provider === 'it' ? 'IT service desk' : 'Device repair team';
+          h.status = 'Queued';
+          h.revision = (h.revision || 0) + 1;
+          setStatus(row, staff.provider, h.status, now);
+          event(data, h, 'release', 'The case was released to the queue.', now);
+          return { success: true, revision: h.revision, released: true };
+        }
         const target = field(body.assignedTo, 'specialist', 100);
         if (target !== staff.id && staff.role !== 'owner')
           throw fault(403, 'Only the owner can assign another specialist.');

@@ -37,8 +37,7 @@ export const DEMO_PLAYBOOKS = Object.freeze([
 export const SCRIPT = Object.freeze({
   userA: { description: 'My Demo Laptop X1 screen flickers right after startup. Restarting did not help.', device: 'Demo Laptop X1, firmware 4' },
   specialist: {
-    title: 'Demo X1 screen flicker after startup',
-    symptoms: 'Screen flickers right after startup',
+    title: 'Demo X1 screen flicker after startup',
     environment: 'Demo Laptop X1 firmware 4',
     steps: 'Fictional demo only: open Display Settings, change Refresh Mode from Adaptive to Fixed 60 Hz, then restart the laptop.',
     safety: 'None identified',
@@ -142,7 +141,7 @@ export function suggest(state, { description, device, triedIds = [] }) {
   const query = `${description}\n${device || ''}`;
   const facts = customerFacts(query, { device: device || '' });
   const pool = state.learned.filter((l) => l.status === 'active' && !triedIds.includes(l.id));
-  const docs = pool.map((l) => `${l.title} ${l.symptoms}`);
+  const docs = pool.map((l) => `${l.title}\n${l.symptoms}\n${l.steps}`);
   const raw = pool.length ? bm25Raw(docs, query) : [];
   const best = Math.max(0, ...raw.filter(Boolean));
   const qv = localEmbedding(query);
@@ -279,7 +278,7 @@ export function propose(state, input) {
   if (c.status !== 'queued') throw fault(409, 'Only cases in the specialist queue can receive a proposal.');
   if (input.confirmed !== true || input.reviewedForPrivacy !== true) throw fault(400, 'Confirm the passport and review it for private information.');
   const draft = {
-    title: text(input.title, 'title', 100), symptoms: text(input.symptoms, 'symptoms', 300), environment: text(input.environment, 'applicable environment', 200),
+    title: text(input.title, 'title', 100), symptoms: containsSecret(String(c.description || '')) ? '' : String(c.description || '').slice(0, 300), environment: text(input.environment, 'applicable environment', 200),
     steps: text(input.steps, 'solution steps', 600), safety: optional(input.safety, 'safety restrictions', 300),
   };
   if (containsSecret(Object.values(draft).join('\n'))) throw fault(400, 'Remove credentials and secrets.');
@@ -288,9 +287,10 @@ export function propose(state, input) {
   const clean = (t) => scrubPII(t, { names: [] });
   const scrubbed = Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, clean(v).text]));
   const redactions = Object.values(draft).reduce((n, v) => n + clean(v).count, 0);
+  if (!scrubbed.symptoms) scrubbed.symptoms = scrubbed.title; // never an invented customer quote: fall back to the title
   const noneSafety = /^none(?: identified)?\.?$/i.test(scrubbed.safety) || !scrubbed.safety;
   const completeness = passportCompleteness({
-    symptoms: scrubbed.symptoms, applicability: { environmentText: scrubbed.environment },
+    title: scrubbed.title, applicability: { environmentText: scrubbed.environment },
     safety: noneSafety ? { restrictions: [], noneIdentified: Boolean(scrubbed.safety), reviewed: input.safetyReviewed === true } : { restrictions: [{ text: scrubbed.safety }] },
     steps: [scrubbed.steps],
   });
@@ -328,7 +328,7 @@ export function confirm(state, { caseId, accepted, confirmed }) {
     cInit: p.cInit, successes: 0, failures: 0, consecutiveFailures: 0, status: 'active', sourceCaseId: c.id, createdAt: iso(),
     // Who actually taught this fix: the user whose own case received the specialist solution and confirmed it.
     originUser: c.user, confirmationUser: c.user, confirmationTime: iso(), verificationStatus: 'customer_confirmed',
-    vector: localEmbedding(`${p.title}\n${p.symptoms}`),
+    vector: localEmbedding(`${p.title}\n${p.symptoms}\n${p.steps}`),
   };
   state.learned.push(l);
   event(state, 'user_a_confirmed', `User ${c.user}`, '“It worked”: confirmed the specialist solution.', { caseId: c.id });

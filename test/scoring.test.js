@@ -24,7 +24,7 @@ test('C_init = 0.40*P_passport + 0.35*S_diag + 0.25*R_author, clamped', () => {
 
 test('P_passport awards 0.25 per adequately filled section; blank is not evidence', () => {
   const full = {
-    symptoms: 'Display flickers after startup',
+    title: 'Display flicker after startup',
     applicability: { environmentText: 'Model X firmware 4' },
     safety: { restrictions: [{ text: 'Do not use if battery is swollen' }] },
     steps: ['Open Display settings and select the Standard profile, then restart.'],
@@ -35,7 +35,8 @@ test('P_passport awards 0.25 per adequately filled section; blank is not evidenc
   assert.equal(passportCompleteness({ ...full, safety: { restrictions: [], noneIdentified: true, reviewed: true } }).score, 1);
   assert.equal(passportCompleteness({}).score, 0);
   assert.equal(passportCompleteness({ ...full, steps: ['ok'] }).score, 0.75);
-  assert.equal(passportCompleteness({ ...full, symptoms: 'bad' }).score, 0.75);
+  assert.equal(passportCompleteness({ ...full, title: 'x' }).score, 0.75, 'a missing title costs a quarter');
+  assert.equal(passportCompleteness({ ...full, symptoms: 'ignored, symptoms are derived server-side' }).score, 1, 'symptoms no longer count toward completeness');
 });
 
 test('R_author defaults: 0.85 verified import, 0.75 new staff, history when reliable', () => {

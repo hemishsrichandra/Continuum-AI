@@ -24,6 +24,17 @@ const patterns = [
   ['macos', new RegExp('\\b(?:macos|mac os|os x)\\s*(?:version\\s*)?' + OP + VALUE, 'gi')],
   ['ubuntu', new RegExp('\\bubuntu\\s*(?:version\\s*)?' + OP + VALUE, 'gi')],
   ['version', new RegExp('\\bversion\\s*' + OP + VALUE, 'gi')],
+  // Natural hardware names. A name like "MacBook Pro 16 M2" says what a fix was VERIFIED on, so it is "generic": a customer who
+  // only says "MacBook" is asked nothing and may see the fix with an advisory, while a different named device still conflicts.
+  ['model', /\b(macbook(?:\s+(?:pro|air))?(?:\s+\d{2})?(?:\s+m\d{1,2}(?:\s+(?:pro|max|ultra))?)?)\b/gi, true],
+  ['model', /\b(imac|mac\s+mini|mac\s+studio)\b/gi, true],
+  ['model', /\b(dell\s+(?:xps|latitude|inspiron|precision)(?:\s+\d{2,4})?)\b/gi, true],
+  ['model', /\b(thinkpad(?:\s+[a-z]\d{1,3}[a-z]?(?:\s+(?:carbon|yoga|gen\s*\d+))?)?)\b/gi, true],
+  ['model', /\b(iphone(?:\s+\d{1,2}(?:\s+(?:pro|max|plus|mini))*)?|ipad(?:\s+(?:pro|air|mini))?)\b/gi, true],
+  ['model', /\b(surface\s+(?:pro|laptop|go|book|studio)(?:\s+\d)?)\b/gi, true],
+  ['model', /\b(pixel\s+\d{1,2}(?:\s+(?:pro|xl|a))?)\b/gi, true],
+  ['model', /\b(galaxy\s+(?:s|a|z|note)\s?\d{1,2}(?:\s+(?:ultra|plus|fold|flip))?)\b/gi, true],
+  ['model', /\b((?:hp|lenovo)\s+(?:pavilion|envy|spectre|elitebook|probook|omen|ideapad|yoga|legion)(?:\s+(?=[a-z0-9-]*\d)[a-z0-9-]{1,6})?)\b/gi, true],
 ];
 const opNames = { '>=': 'gte', '<=': 'lte', '>': 'gt', '<': 'lt', '=': 'eq' };
 
@@ -53,10 +64,10 @@ export function extractMentions(text) {
   const input = String(text || '');
   const mentions = [];
   const spans = [];
-  for (const [key, pattern] of patterns) {
+  for (const [key, pattern, generic] of patterns) {
     for (const m of input.matchAll(pattern)) {
       if (key === 'version' && /(?:firmware|android|ios|ipados|windows|macos|ubuntu|os)\s*$/i.test(input.slice(0, m.index))) continue;
-      const value = (key === 'model' ? m[1] : m[2]).toLowerCase().replace(/[.,;:]+$/, '');
+      const value = (key === 'model' ? m[1] : m[2]).toLowerCase().replace(/[.,;:]+$/, '').replace(/\s+/g, ' ');
       if (key === 'model' && ['number', 'name', 'unknown', 'is', 'the'].includes(value)) continue;
       const clause = clauseBefore(input, m.index);
       // A device the customer HAD earlier is not their current environment.
@@ -73,7 +84,7 @@ export function extractMentions(text) {
           end += r.consumed || 0;
         }
       }
-      mentions.push({ key, value, op, ...(max && { max }), negated, start: m.index, end });
+      mentions.push({ key, value, op, ...(max && { max }), ...(generic && { generic: true }), negated, start: m.index, end });
       spans.push([m.index, end]);
     }
   }
@@ -97,7 +108,15 @@ export function compareVersions(a, b) {
 }
 /** match | conflict | unknown for an exact (prefix-aware) version/model value. */
 function valueMatch(key, expected, actual) {
-  if (key === 'model') return expected === actual ? 'match' : 'conflict';
+  if (key === 'model') {
+    if (expected === actual) return 'match';
+    const e = expected.split(' '), a = actual.split(' ');
+    if (e.length > 1 || a.length > 1) {
+      if (e.every((t) => a.includes(t))) return 'match'; // the customer is at least as specific as the fix
+      if (a.every((t) => e.includes(t))) return 'unknown'; // the customer named only the family ("MacBook")
+    }
+    return 'conflict';
+  }
   if (actual === expected || actual.startsWith(expected + '.')) return 'match';
   if (expected.startsWith(actual + '.')) return 'unknown';
   return 'conflict';
@@ -115,11 +134,12 @@ export function conditionsFromText(text) {
     }
     if (m.op === 'eq') {
       if (!byKey.has(m.key)) {
-        const c = { key: m.key, op: 'in', values: [], required: true };
+        const c = { key: m.key, op: 'in', values: [], required: true, ...(m.generic && { generic: true }) };
         byKey.set(m.key, c);
         conditions.push(c);
       }
       if (!byKey.get(m.key).values.includes(m.value)) byKey.get(m.key).values.push(m.value);
+      if (!m.generic) delete byKey.get(m.key).generic; // one explicit, non-generic value makes the whole condition mandatory
     } else {
       const c = { key: m.key, op: 'range', required: true };
       if (m.op === 'range') Object.assign(c, { min: m.value, max: m.max });
@@ -161,7 +181,7 @@ export function customerFacts(text = '', fields = {}) {
  * Any conflict makes a candidate ineligible regardless of its relevance score.
  */
 export function evaluateConditions(conditions = [], facts = {}) {
-  const matched = [], missing = [], conflicts = [];
+  const matched = [], missing = [], conflicts = [], missingConditions = [];
   const statedOs = OS_FAMILIES.filter((k) => facts[k]?.values.length);
   for (const c of conditions) {
     const key = String(c.key).toLowerCase();
@@ -174,12 +194,15 @@ export function evaluateConditions(conditions = [], facts = {}) {
         conflicts.push(label);
         continue;
       }
-      if (c.op === 'in' && values.length && values.every((v) => f.negated.includes(v))) {
+      // A denied family ("not a MacBook Pro") also denies a fix verified on a specific member of it ("MacBook Pro 16 M2").
+      const denied = (v) => f.negated.includes(v) || (key === 'model' && f.negated.some((n) => valueMatch('model', v, n) === 'unknown'));
+      if (c.op === 'in' && values.length && values.every(denied)) {
         conflicts.push(label);
         continue;
       }
       if (c.required === false) continue;
       missing.push(label);
+      missingConditions.push(c);
       continue;
     }
     if (c.op === 'not_in' || c.op === 'neq') {
@@ -190,6 +213,7 @@ export function evaluateConditions(conditions = [], facts = {}) {
     if (c.op === 'range') {
       if (f.values.some((v) => !/^\d+(?:\.\d+)*$/.test(v))) {
         missing.push(label);
+        missingConditions.push(c);
         continue;
       }
       const ok = f.values.every((v) => {
@@ -211,10 +235,10 @@ export function evaluateConditions(conditions = [], facts = {}) {
     const results = f.values.map((a) => (values.length ? values.map((e) => valueMatch(key, e, a)) : ['match']));
     if (results.some((r) => !r.includes('match') && !r.includes('unknown'))) conflicts.push(label);
     else if (results.every((r) => r.includes('match'))) matched.push(label);
-    else missing.push(label);
+    else { missing.push(label); missingConditions.push(c); }
   }
   const status = conflicts.length ? 'conflict' : missing.length ? 'unknown' : 'compatible';
-  return { status, matched, missing, conflicts };
+  return { status, matched, missing, conflicts, missingConditions };
 }
 
 export function describeCondition(c) {

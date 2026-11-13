@@ -6,7 +6,7 @@ import {failedResolutions} from './reuse.js';
 import {signatureOf, verificationOf, SOURCE_LABELS} from './passports.js';
 import {passportView} from './memory-pool.js';
 import {THRESHOLDS,compatibilityGate} from './scoring.js';
-import {customerFacts} from './applicability.js';
+import {customerFacts, extractMentions} from './applicability.js';
 import {customerAdvice} from './customer-advice.js';
 
 const now = () => new Date().toISOString();
@@ -17,7 +17,7 @@ const hasTopic = (text, topics) => {
 };
 // Customer-visible provenance without private customer details.
 const LABELS={specialist_confirmed:"Learned from a customer-confirmed specialist resolution",auto_published_overdue:"Specialist fix · UNCONFIRMED BY CUSTOMER",company_db_sync:"Imported from your company's support knowledge base",standard_playbook:"Standard playbook"};
-export const sourceInfo=(row,score)=>({id:row.id,origin:row.origin_type,verification:verificationOf(row),label:SOURCE_LABELS[verificationOf(row)]||LABELS[row.origin_type],version:row.version_number,customerConfirmed:Boolean(row.customer_confirmed),unconfirmed:row.origin_type==='auto_published_overdue'&&!row.customer_confirmed,title:row.title,...(score&&{score})});
+export const sourceInfo=(row,score,gate)=>({advisory:gate?.advisory||null,id:row.id,origin:row.origin_type,verification:verificationOf(row),label:SOURCE_LABELS[verificationOf(row)]||LABELS[row.origin_type],version:row.version_number,customerConfirmed:Boolean(row.customer_confirmed),unconfirmed:row.origin_type==='auto_published_overdue'&&!row.customer_confirmed,title:row.title,...(score&&{score})});
 const evidenceFor=(row,score)=>({id:row.id,resolutionId:row.id,kind:row.customer_confirmed?'verified_resolution':'company_memory',origin:row.origin_type,version:row.version_number,text:JSON.parse(row.steps_json).join(' '),
   ...(score&&{score}),passport:passportView(row,{internal:false})});
 export function createTroubleshooting(store, learning, reuse, providerActions, {memoryPool, followThrough} = {}) {
@@ -78,7 +78,8 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     // Marking a learned attempt and recording reuse are completed together below in processFeedback.
     return result;
   }
-  const envMention=/\b(?:model|firmware|windows|macos|ubuntu|android|ios|version)\s+[\w.-]+/i;
+  // Literal "model X / firmware 4" phrases, or any natural hardware name (MacBook Pro, Dell XPS, ThinkPad, iPhone, Galaxy, ...).
+  const envMention={test:(text)=>/\b(?:model|firmware|windows|macos|ubuntu|android|ios|version)\s+[\w.-]+/i.test(text||'') || extractMentions(String(text||'')).mentions.length>0};
   const savedContext=(p,t)=>{const row=sql.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(...args(p,t));return row?JSON.parse(row.context):{};};
   /** The earlier stated environment, if this message names a genuinely different device or version. */
   function environmentConflict(earlier,message,inputContext) {
@@ -106,7 +107,79 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
       excludeIds:new Set([...triedIds,...failedBefore.ids]),excludeSignatures:new Set([...triedSig,...failedBefore.signatures,...stdSig]),
       allowedOrigins:['specialist_confirmed','company_db_sync','auto_published_overdue']});
   }
+  const RICH_OUTCOMES=new Set(['not_applicable','unable_to_try','human_requested']);
+  /** A suggestion shown next to the best one: a preview only. It is not an attempt until the customer chooses it. */
+  function choiceView(c) {
+    const row=c.row,pct=Math.round((c.breakdown.S_hybrid||0)*100);
+    return {id:row.id,title:row.title,advice:customerAdvice(JSON.parse(row.steps_json).join(' ')),version:row.version_number,
+      source:sourceInfo(row,c.breakdown,c.gate),advisory:c.gate.advisory||null,
+      why:'Matched your description ('+pct+'% relevance)'+(c.gate.reasons?.length&&!c.gate.partial?'; fits '+c.gate.reasons.slice(0,2).join(', '):'')};
+  }
+  /** not_applicable / unable_to_try / human_requested: stored as a skipped attempt with a reason. None of them counts as a failed fix. */
+  async function richOutcome(p,body) {
+    authorize(p);
+    if(body.confirmed!==true) throw fault(400,'Confirm your answer.');
+    const a=sql.prepare('SELECT * FROM troubleshooting_attempts WHERE id=? AND company_id=? AND chatbot_id=? AND customer_id=?').get(body.attemptId,p.companyId,botId(p),p.id);
+    if(!a) throw fault(404,'Attempt not found in this workspace.');
+    const kind=body.outcome;
+    const result=sql.transaction(()=>{
+      const cur=sql.prepare('SELECT outcome,outcome_detail FROM troubleshooting_attempts WHERE id=?').get(a.id);
+      if(cur.outcome!=='pending') {
+        if(cur.outcome==='skipped' && cur.outcome_detail===kind) return {success:true,outcome:kind,repeated:true};
+        throw fault(409,'This outcome is already final.');
+      }
+      sql.prepare("UPDATE troubleshooting_attempts SET outcome='skipped',outcome_detail=?,outcome_at=? WHERE id=? AND outcome='pending'").run(kind,now(),a.id);
+      return {success:true,outcome:kind};
+    }).immediate();
+    if(result.repeated) return result;
+    ev(p,{id:a.ticket_id},'suggestion_'+kind,{source:a.source,sequence:a.sequence,memoryId:a.memory_id});
+    if(kind==='human_requested') {
+      const t=provider(store,p).ticket(a.ticket_id);
+      return {...result,handoff:human(p,t,'The customer asked for a person after a suggested fix.')};
+    }
+    return result;
+  }
+  /** The customer picks one of the suggestions shown together. It is re-validated against the current state before it counts as attempted. */
+  async function choose(p,body) {
+    authorize(p);
+    if(body.confirmed!==true) throw fault(400,'Confirm the suggestion you want to try.');
+    const t=provider(store,p).ticket(String(body.ticketId||''));
+    if(t.status==='Resolved' || t.handoffs?.some(h=>!['Resolved','Closed'].includes(h.status))) throw fault(409,'This request has changed. Refresh to see its current state.');
+    const rows=attempts(p,t),learned=rows.filter(a=>a.source==='learned');
+    if(rows.some(a=>a.source==='standard' && a.outcome==='pending')) throw fault(409,'Finish or skip the standard step first.');
+    if(learned.length>=THRESHOLDS.maxSuggestions) throw fault(409,'All three company suggestions have been tried.');
+    const prior=sql.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(...args(p,t));
+    const context=prior?JSON.parse(prior.context):{};
+    // A fresh, scored retrieval: a retired, edited, unsafe or no-longer-compatible suggestion cannot be chosen from a stale screen.
+    const retrieved=await nextSuggestion(p,t,context,'');
+    const pick=retrieved.eligible.find(x=>x.id===String(body.resolutionId||''));
+    if(!pick) throw fault(409,'That suggestion is no longer available. Ask again for current guidance.');
+    const row=pick.row,score={...pick.breakdown,backend:retrieved.backend,constraints:pick.gate.reasons},steps=JSON.parse(row.steps_json);
+    return sql.transaction(()=>{
+      authorize(p);
+      const latest=provider(store,p).ticket(t.id);
+      if(latest.status==='Resolved' || latest.handoffs.some(h=>!['Resolved','Closed'].includes(h.status))) throw fault(409,'This request has changed. Refresh to see its current state.');
+      const pending=attempts(p,t).find(a=>a.outcome==='pending');
+      if(pending) {
+        if(pending.source!=='learned') throw fault(409,'Finish or skip the standard step first.');
+        // The suggestion that was set aside was never tried: it is skipped, not failed.
+        sql.prepare("UPDATE troubleshooting_attempts SET outcome='skipped',outcome_detail='set_aside',outcome_at=? WHERE id=? AND outcome='pending'").run(now(),pending.id);
+        ev(p,t,'suggestion_set_aside',{sequence:pending.sequence,memoryId:pending.memory_id});
+      }
+      const sequence=attempts(p,t).filter(a=>a.source==='learned').length+1;
+      const exchangeId=randomUUID();
+      const use=reuse.recordMemory(p,t,row,exchangeId,now());
+      const a=saveAttempt(p,t,'learned',{id:row.id,title:row.title,steps:steps.join(' '),origin:row.origin_type,version:row.version_number},context,exchangeId,'pending',use?.id,{sequence,memoryId:row.id,score});
+      ev(p,t,'suggestion_chosen',{source:'learned',sequence,memoryId:row.id,origin:row.origin_type,version:row.version_number,sFinal:score.S_final});
+      return {id:exchangeId,title:row.title,reply:customerAdvice(steps.join(' ')),attempt:a,resolutionUse:use,evidence:[evidenceFor(row,score)],learnedSource:sourceInfo(row,score,pick.gate),
+        // The suggestions that are still untried stay on offer next to the one now being tried.
+        alternatives:retrieved.eligible.filter(x=>x.id!==pick.id).slice(0,THRESHOLDS.maxSuggestions-1).map(choiceView),workflow:{stage:'learned_pending',sequence}};
+    }).immediate();
+  }
   async function processFeedback(p,body) {
+    if(body.outcome==='worked') body={...body,worked:true}; else if(body.outcome==='did_not_work') body={...body,worked:false};
+    else if(body.outcome!==undefined && !RICH_OUTCOMES.has(body.outcome)) throw fault(400,'Choose a valid outcome.');
+    if(RICH_OUTCOMES.has(body.outcome)) return richOutcome(p,body);
     authorize(p);
     const a = sql.prepare('SELECT * FROM troubleshooting_attempts WHERE id=? AND company_id=? AND chatbot_id=? AND customer_id=?').get(body.attemptId,p.companyId,botId(p),p.id);
     if (!a) throw fault(404,'Attempt not found in this workspace.');
@@ -196,7 +269,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
         const hit=again?.eligible.find(x=>x.id===row.id);
         if(hit) return response(customerAdvice(JSON.parse(row.steps_json).join(' ')),{attempt:pending,resolutionUse:reuse.current(privateScope(p),pending.use_id),
           decision:{mode:'recommend',action:null},evidence:[evidenceFor(row,hit.breakdown)],
-          learnedSource:sourceInfo(row,hit.breakdown),
+          learnedSource:sourceInfo(row,hit.breakdown,hit.gate),
           trace:{knowledge:'Company memory',memory:'Operational workflow',recalled:1,learnedResolutions:1,elapsedMs:0},workflow:{stage:'learned_pending',sequence:pending.sequence}});
       }
       // Questions, reactions and preferences never finalize an outcome.
@@ -208,7 +281,9 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     if(inputContext && typeof inputContext==='object' && !Array.isArray(inputContext)) {
       for(const k of b.diagnosticSchema.map(f=>f.key)) if(typeof inputContext[k]==='string' && inputContext[k].trim() && inputContext[k].length<=1000) context[k]=inputContext[k].trim();
     }
-    if(!context.environment && envMention.test(t.title+' '+t.issue)) context.environment=t.title+' '+t.issue;
+    // The ticket's own device (title/device field) is the customer's default environment; later validated facts are never overwritten.
+    const seedText=[t.device,t.title,t.issue].filter(Boolean).join(' ');
+    if(!context.environment && envMention.test(seedText)) context.environment=seedText;
     if(envMention.test(message)) {
       // Never silently replace what the customer told us earlier. A genuinely different device or
       // version asks which one is right; an explicit answer through the form replaces it.
@@ -270,7 +345,8 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
         const steps=JSON.parse(row.steps_json);
         const sequence=learnedRows.length+1;
         const result=response(customerAdvice(steps.join(' ')),{decision:{mode:'recommend',action:null},evidence:[evidenceFor(row,score)],
-          learnedSource:sourceInfo(row,score),
+          learnedSource:sourceInfo(row,score,top.gate),
+          alternatives:preview?[]:retrieved.eligible.slice(1,THRESHOLDS.maxSuggestions).map(choiceView),
           trace:{knowledge:'Company memory ('+retrieved.backend+')',memory:'Operational workflow',learnedResolutions:1,recalled:retrieved.eligible.length,elapsedMs:0}});
         return sql.transaction(()=>{
           authorize(p);
@@ -290,5 +366,5 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const h=escalate(enabled?'No applicable reviewed fix after standard troubleshooting.':'Standard troubleshooting did not resolve the issue. AI memory is off.');
     return escalated(h);
   }
-  return {process,feedback:processFeedback,attempts};
+  return {process,feedback:processFeedback,choose,attempts};
 }
