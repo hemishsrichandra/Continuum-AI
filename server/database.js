@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { ensureBots, defaultBotId, knowledgeScope } from './chatbots.js';
 import { SCHEMA_V5, backfillV5, refreshFacets } from './passports.js';
+import { safeReceipt, sanitizeText } from './privacy-sanitizer.js';
 
 const collections = [
   'repair',
@@ -211,6 +212,7 @@ export class SqliteStore {
     this.migrateV5();
     this.migrateV6();
     this.migrateV7();
+    this.migrateV8();
     // Idempotent hardening: the case timeline is an audit trail and can only be appended to.
     this.db.exec(`
       CREATE TRIGGER IF NOT EXISTS case_events_append_only_update BEFORE UPDATE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
@@ -281,6 +283,21 @@ export class SqliteStore {
       if (!has('company_data_sources', 'authoritative_snapshot')) this.db.exec('ALTER TABLE company_data_sources ADD COLUMN authoritative_snapshot INTEGER NOT NULL DEFAULT 0');
       if (!has('company_data_sources', 'last_complete_sync_at')) this.db.exec('ALTER TABLE company_data_sources ADD COLUMN last_complete_sync_at TEXT');
       this.db.prepare('INSERT OR IGNORE INTO schema_migrations VALUES(7,?)').run(new Date().toISOString());
+    }).immediate();
+  }
+  // Migration 8: scrub verification evidence, provenance and review notes stored before receipts had a strict schema.
+  // Runs once; rewrites only rows whose stored text changes. None of these columns affects indexing.
+  migrateV8() {
+    if (this.db.prepare('SELECT 1 FROM schema_migrations WHERE version=8').get()) return;
+    this.db.transaction(() => {
+      const update = this.db.prepare('UPDATE memory_pool SET verification_evidence_json=?,provenance_json=?,review_note=? WHERE id=?');
+      for (const r of this.db.prepare('SELECT id,verification_evidence_json,provenance_json,review_note FROM memory_pool').all()) {
+        const evidence = JSON.stringify(safeReceipt('evidence', r.verification_evidence_json));
+        const provenance = JSON.stringify(safeReceipt('provenance', r.provenance_json));
+        const note = r.review_note ? sanitizeText(r.review_note).text : r.review_note;
+        if (evidence !== r.verification_evidence_json || provenance !== r.provenance_json || note !== r.review_note) update.run(evidence, provenance, note, r.id);
+      }
+      this.db.prepare('INSERT OR IGNORE INTO schema_migrations VALUES(8,?)').run(new Date().toISOString());
     }).immediate();
   }
   // Migration 6: per-service staff access, scheduled data-source sync columns and expression indexes for

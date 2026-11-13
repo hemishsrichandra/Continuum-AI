@@ -17,7 +17,7 @@ import {
 } from './scoring.js';
 import { conditionsFromText } from './applicability.js';
 import { dangerousInstructions } from './privacy.js';
-import { sanitizeForPublication } from './privacy-sanitizer.js';
+import { sanitizeForPublication, shapeEvidence, shapeProvenance } from './privacy-sanitizer.js';
 
 export const ORIGINS = ['standard_playbook', 'company_db_sync', 'specialist_confirmed', 'auto_published_overdue'];
 export const ORIGIN_LABELS = {
@@ -226,6 +226,11 @@ export function insertPassport(db, p) {
     ({ title, symptoms, steps, applicability, safety } = r.value);
     sanitized = r.count;
   }
+  // Receipts follow a strict schema too (see privacy-sanitizer.js): unknown keys are dropped, text is scrubbed, credentials rejected.
+  const failReceipt = (message) => Object.assign(new Error(message), { status: 400 });
+  const receipt = shapeEvidence(p.evidence || {}, { fault: failReceipt });
+  const lineage = shapeProvenance({ ...(p.provenance || {}), ...(sanitized && { sanitized }) }, { fault: failReceipt });
+  const receiptRedactions = receipt.count + lineage.count;
   const id = p.id || randomUUID();
   const searchable = `${title}\n${symptoms}`;
   const risks = dangerousInstructions(steps.join(' '));
@@ -251,8 +256,8 @@ export function insertPassport(db, p) {
     applicability_json: JSON.stringify(applicability),
     safety_restrictions_json: JSON.stringify(safety),
     steps_json: JSON.stringify(steps),
-    verification_evidence_json: JSON.stringify(p.evidence || {}),
-    provenance_json: JSON.stringify({ ...(p.provenance || {}), ...(sanitized && { sanitized }) }),
+    verification_evidence_json: JSON.stringify(receipt.value),
+    provenance_json: JSON.stringify({ ...lineage.value, ...(receiptRedactions && { receiptRedactions }) }),
     embedding_blob: vectorToBlob(localEmbedding(searchable + '\n' + steps.join(' '))),
     embedding_model: LOCAL_EMBEDDING_MODEL,
     initial_confidence_score: p.initialConfidence,

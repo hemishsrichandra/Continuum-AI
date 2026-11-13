@@ -30,7 +30,7 @@ import { localEmbedding, vectorToBlob, LOCAL_EMBEDDING_MODEL } from './scoring.j
 import { containsSecret, scrubPII, dangerousInstructions } from './privacy.js';
 import { customerFacts } from './applicability.js';
 import { field, json } from './requests.js';
-import { sanitizeDeep, isPersonalKey } from './privacy-sanitizer.js';
+import { sanitizeDeep, isPersonalKey, shapeEvidence, shapeProvenance } from './privacy-sanitizer.js';
 
 export const SOURCE_TYPES = ['csv_sync', 'sqlite', 'rest_api', 'postgres'];
 export const MAX_RECORDS = 2000;
@@ -378,7 +378,7 @@ export function createDataSources(store, delivery, config = {}, { drivers = {}, 
           status=?,flagged_reason=?,risk_level=?,verification_evidence_json=?,provenance_json=?,updated_at=? WHERE id=? AND company_id=?`)
           .run(next.title, next.symptoms_text, next.applicability_json, next.safety_restrictions_json, next.steps_json, rec.cInit.score,
             rec.hazards.length || awaiting ? 'flagged_for_review' : 'active', rec.hazards.length ? 'Imported instructions need review: ' + rec.hazards.join(', ') : awaiting ? 'Imported from a company database and waiting for approval' : null, rec.hazards.length ? 'high' : 'standard',
-            JSON.stringify(evidence), JSON.stringify({ cInit: rec.cInit, redactions: rec.redactions, hazards: rec.hazards, importedBy: actor, resyncedAt: now() }), now(), latest.id, companyId);
+            JSON.stringify(shapeEvidence(evidence).value), JSON.stringify(shapeProvenance({ cInit: rec.cInit, redactions: rec.redactions, hazards: rec.hazards, importedBy: actor, resyncedAt: now() }).value), now(), latest.id, companyId);
         // Content changed: refresh search terms and the local embedding (FTS is maintained by trigger).
         sql.prepare('UPDATE memory_pool SET search_terms=?,embedding_blob=?,embedding_model=? WHERE id=? AND company_id=?')
           .run([...tokens(`${p.title}\n${p.symptoms}`)].join(' '), vectorToBlob(localEmbedding(`${p.title}\n${p.symptoms}\n${stepsList(p.steps).join(' ')}`)), LOCAL_EMBEDDING_MODEL, latest.id, companyId);

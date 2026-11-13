@@ -29,6 +29,7 @@ import { containsSecret, scrubPII } from './privacy.js';
 import { createEmbeddingService } from './embedding-service.js';
 import { createVectorStore } from './vector-store.js';
 import { documentText } from './vector-index.js';
+import { safeReceipt, sanitizeText } from './privacy-sanitizer.js';
 
 const now = () => new Date().toISOString();
 const parse = (v, fallback) => {
@@ -41,8 +42,9 @@ const parse = (v, fallback) => {
 
 export function passportView(row, { internal = true } = {}) {
   if (!row) return null;
-  const evidence = parse(row.verification_evidence_json, {});
-  const provenance = parse(row.provenance_json, {});
+  // Re-applied on read: rows stored before the receipt policy existed can never re-expose raw values.
+  const evidence = safeReceipt('evidence', row.verification_evidence_json);
+  const provenance = safeReceipt('provenance', row.provenance_json);
   const unconfirmed = row.origin_type === 'auto_published_overdue' && !row.customer_confirmed;
   return {
     id: row.id,
@@ -69,7 +71,7 @@ export function passportView(row, { internal = true } = {}) {
     failures: row.reuse_failure_count,
     consecutiveFailures: row.consecutive_failures,
     flaggedReason: row.flagged_reason,
-    reviewNote: row.review_note,
+    reviewNote: row.review_note ? sanitizeText(row.review_note).text : row.review_note,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(internal && {
@@ -409,13 +411,15 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
   function review(staff, memoryId, { decision, note, confirmed, reviewRevision }) {
     if (confirmed !== true || !['keep', 'retire'].includes(decision)) throw fault(400, 'Confirm the review decision.');
     if (typeof note !== 'string' || !note.trim() || note.length > 1000) throw fault(400, 'Explain the review decision.');
+    const cleanNote = sanitizeText(note.trim());
+    if (cleanNote.secret) throw fault(400, 'Remove credentials, tokens and keys from review notes.');
     return sql.transaction(() => {
       const r = scoped(staff.companyId, staff.chatbotId, memoryId);
       if (!r) throw fault(404, 'Resolution not found.');
       if (r.status !== 'flagged_for_review') throw fault(409, 'This resolution no longer needs review.');
       if (reviewRevision !== undefined && reviewRevision !== r.reuse_failure_count) throw fault(409, 'Another failure report arrived. Refresh before completing the review.');
       sql.prepare('UPDATE memory_pool SET status=?,consecutive_failures=CASE WHEN ?=\'keep\' THEN 0 ELSE consecutive_failures END,locally_reviewed=1,review_note=?,flagged_reason=CASE WHEN ?=\'keep\' THEN NULL ELSE flagged_reason END,updated_at=? WHERE id=? AND company_id=?')
-        .run(decision === 'keep' ? 'active' : 'retired', decision, note.trim(), decision, now(), r.id, staff.companyId);
+        .run(decision === 'keep' ? 'active' : 'retired', decision, cleanNote.text, decision, now(), r.id, staff.companyId);
       sql.prepare("UPDATE follow_through_tasks SET status='completed',processed_at=?,outcome_json=? WHERE company_id=? AND memory_id=? AND task_type='failed_fix_review' AND status='pending'")
         .run(now(), JSON.stringify({ decision, note }), staff.companyId, r.id);
       return passportView(scoped(staff.companyId, staff.chatbotId, r.id));

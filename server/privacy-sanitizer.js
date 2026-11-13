@@ -65,7 +65,9 @@ export function sanitizeText(input, { names = [] } = {}) {
   for (const [kind, n] of Object.entries(scrubbed.redactions)) kinds[kind] = (kinds[kind] || 0) + n;
   const hasOpaque = Boolean(opaque?.length);
   const count = Object.values(kinds).reduce((a, b) => a + b, 0);
-  return { text, kinds, count, secret: credential || hasOpaque };
+  // Tokens, keys and credentialed URLs are secrets: callers reject them instead of storing a "redacted" placeholder.
+  const credentialKind = ['jwt', 'cloud-key', 'bearer', 'url-credentials'].some((k) => kinds[k]);
+  return { text, kinds, count, secret: credential || hasOpaque || credentialKind };
 }
 
 /**
@@ -73,7 +75,7 @@ export function sanitizeText(input, { names = [] } = {}) {
  * replaced outright. Bounded in depth, node count and string length so hostile input cannot exhaust the server.
  * `secret` is true when a credential-shaped value was seen: callers must reject or route for review, never publish.
  */
-export function sanitizeDeep(value, { names = [] } = {}) {
+export function sanitizeDeep(value, { names = [], keyRules = true } = {}) {
   const kinds = {};
   let nodes = 0;
   let secret = false;
@@ -87,7 +89,7 @@ export function sanitizeDeep(value, { names = [] } = {}) {
       return null;
     }
     if (v === null || v === undefined || typeof v === 'boolean' || typeof v === 'number') {
-      const kind = key ? kindOfKey(key) : null;
+      const kind = key && keyRules ? kindOfKey(key) : null;
       if (kind && typeof v === 'number') {
         add({ [kind]: 1 });
         return `[redacted ${kind}]`;
@@ -95,7 +97,7 @@ export function sanitizeDeep(value, { names = [] } = {}) {
       return v;
     }
     if (typeof v === 'string') {
-      const kind = key ? kindOfKey(key) : null;
+      const kind = key && keyRules ? kindOfKey(key) : null;
       if (kind && v.trim()) {
         add({ [kind]: 1 });
         if (kind === 'credential') secret = true;
@@ -145,4 +147,69 @@ export function sanitizeForPublication(value, { names = [], fault = (m) => new E
   if (r.secret) throw fault('Remove credentials, tokens and keys from shared knowledge.');
   if (r.truncated) throw fault('This knowledge entry is too large or too deeply nested to review. Shorten it.');
   return r;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Evidence and provenance: structured receipts attached to a Resolution Passport.
+//
+// They are NOT free-form. Only the keys below may be stored; each has a type and, for text, a length limit. Text goes through
+// the same scrubber as the passport body, identifiers must look like identifiers, credential-shaped values are rejected, and
+// anything unknown is dropped (and counted) instead of being serialised blindly. The same rules run when a receipt is written,
+// when it is read back (rows stored before this policy existed), and in the one-off clean-up migration.
+// ---------------------------------------------------------------------------------------------------------------------
+const ID_PATTERN = /^[A-Za-z0-9:_.\-]{1,200}$/;
+const EVIDENCE_SCHEMA = {
+  type: ['text', 60], sourceId: 'id', sourceType: ['text', 40], externalRecordId: ['text', 200], declaredVerified: 'bool', importedAt: 'time',
+  sourceUpdatedAt: 'time', customerConfirmed: 'bool', confirmedAt: 'time', label: ['text', 200], deadlineAt: 'time', publishedAt: 'time',
+  proposalId: 'id', handoffId: 'id', playbookId: ['text', 100], playbookVersion: 'num', revisedFrom: 'id', previousVersion: 'num', revisedBy: 'id',
+  reviewNote: ['text', 500], migratedFrom: ['text', 40], erasedSourceTicket: 'id', resolutionId: 'id',
+};
+const PROVENANCE_SCHEMA = {
+  cInit: 'deep', redactions: 'num', hazards: ['list', 60], importedBy: 'id', resyncedAt: 'time', retiredBy: ['text', 40], revisedAt: 'time',
+  autoPublished: 'deep', authorRole: ['text', 40], migratedAt: 'time', note: ['text', 300], origin: ['text', 100], sanitized: 'num', receiptRedactions: 'num',
+};
+function shape(input, schema, { fault }) {
+  const out = {};
+  let count = 0;
+  const dropped = [];
+  const text = (value, max) => {
+    const r = sanitizeText(String(value), {});
+    if (r.secret) throw fault('Remove credentials, tokens and keys from verification records.');
+    count += r.count;
+    return r.text.slice(0, max);
+  };
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  for (const [key, value] of Object.entries(source)) {
+    const rule = Object.hasOwn(schema, key) ? schema[key] : null;
+    if (!rule) { dropped.push(key); continue; }
+    if (value === null || value === undefined) continue;
+    const kind = Array.isArray(rule) ? rule[0] : rule;
+    if (kind === 'bool') { if (typeof value === 'boolean') out[key] = value; else dropped.push(key); }
+    else if (kind === 'num') { if (Number.isFinite(value)) out[key] = value; else dropped.push(key); }
+    else if (kind === 'time') { const t = typeof value === 'string' ? Date.parse(value) : NaN; if (Number.isFinite(t)) out[key] = new Date(t).toISOString(); else dropped.push(key); }
+    else if (kind === 'id') {
+      const v = String(value);
+      if (containsSecret(v) || sanitizeText(v).secret) throw fault('Remove credentials, tokens and keys from verification records.');
+      // An identifier that looks like personal data (an email, or a number as long as a phone number) is not stored as an identifier.
+      if (!ID_PATTERN.test(v) || /^\+?\d{10,15}$/.test(v)) { count += 1; out[key] = '[redacted id]'; } else out[key] = v;
+    } else if (kind === 'text') { if (typeof value === 'string' || typeof value === 'number') out[key] = text(value, rule[1]); else dropped.push(key); }
+    else if (kind === 'list') { if (Array.isArray(value)) out[key] = value.slice(0, 20).map((v) => text(v, rule[1])); else dropped.push(key); }
+    else if (kind === 'deep') {
+      // Receipt structures (confidence breakdowns, policy notes) have keys chosen by our own code, e.g. "P_passport" is a score,
+      // so key names are not treated as personal data here; every string value is still scrubbed and credentials rejected.
+      const r = sanitizeDeep(value, { keyRules: false });
+      if (r.secret) throw fault('Remove credentials, tokens and keys from verification records.');
+      count += r.count;
+      out[key] = r.value;
+    }
+  }
+  return { value: out, count, dropped };
+}
+export const shapeEvidence = (input, { fault = (m) => Object.assign(new Error(m), { status: 400 }) } = {}) => shape(input, EVIDENCE_SCHEMA, { fault });
+export const shapeProvenance = (input, { fault = (m) => Object.assign(new Error(m), { status: 400 }) } = {}) => shape(input, PROVENANCE_SCHEMA, { fault });
+/** Never throws: for reading rows that may pre-date the policy. Anything rejected is simply not returned. */
+export function safeReceipt(kind, json) {
+  let parsed = {};
+  try { parsed = JSON.parse(json || '{}'); } catch { return {}; }
+  try { return (kind === 'evidence' ? shapeEvidence : shapeProvenance)(parsed).value; } catch { return {}; }
 }
