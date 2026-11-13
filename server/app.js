@@ -16,6 +16,7 @@ import { createMemoryPool } from './memory-pool.js';
 import { createFollowThrough } from './follow-through.js';
 import { handleDemo, isDemoPath } from './demo-learning.js';
 import { createDataSources } from './data-sources.js';
+import { createShadow } from './shadow.js';
 import { createKnowledgeImport } from './knowledge-import.js';
 import { createPrivacyControls } from './privacy-controls.js';
 import { createEmbeddingService } from './embedding-service.js';
@@ -55,11 +56,12 @@ export function createHandler({ file, config = process.env, service, vectorClien
   const memoryPool = createMemoryPool(store, config, { embedding, vectors });
   const vectorIndex = createVectorIndex(store, { vectors, embedding });
   const dataSources = createDataSources(store, delivery, config);
+  const shadow = createShadow(store, memoryPool, config);
   const knowledgeImport = createKnowledgeImport(store, config, { fetchImpl: config.__knowledgeDraftFetch || null });
   const followThrough = createFollowThrough(store, { delivery, config });
   const reuse = createReuse(store, memory, providerActions, memoryPool);
-  const learning = createLearning(store, memory, companies, config, reuse, providerActions, { memoryPool, followThrough });
-  const troubleshooting = createTroubleshooting(store, learning, reuse, providerActions, { memoryPool, followThrough, suggestionMode: config.SUGGESTION_MODE ?? process.env.SUGGESTION_MODE, explainer: createFixExplainer(config, { fetchImpl: config.__explainFetch || null }) });
+  const learning = createLearning(store, memory, companies, config, reuse, providerActions, { memoryPool, followThrough, shadow });
+  const troubleshooting = createTroubleshooting(store, learning, reuse, providerActions, { memoryPool, followThrough, suggestionMode: config.SUGGESTION_MODE ?? process.env.SUGGESTION_MODE, shadow, explainer: createFixExplainer(config, { fetchImpl: config.__explainFetch || null }) });
   // Follow-through deadlines run on the integrations worker tick, not per web request.
   // Each task is an independent worker lane (own timeout, backoff and status): a slow database sync cannot block email, indexing or follow-through.
   delivery.register(() => followThrough.tick(), { name: 'follow-through', timeoutMs: 30000 });
@@ -70,7 +72,7 @@ export function createHandler({ file, config = process.env, service, vectorClien
     if (vectors.enabled && Date.now() - lastReconcile > 3600000) { lastReconcile = Date.now(); vectorIndex.markStale(); await vectorIndex.reconcileVectorIndex().catch(() => {}); }
   }, { name: 'knowledge-indexing', timeoutMs: 60000 });
   const privacy = createPrivacyControls(store, memory, config);
-  const systemHealth = createSystemHealth({ store, vectorIndex, privacy, delivery });
+  const systemHealth = createSystemHealth({ store, vectorIndex, privacy, delivery, dataSources });
   delivery.register(() => privacy.sweep(), { name: 'retention', timeoutMs: 30000 });
   delivery.register(() => privacy.processTasks(), { name: 'erasure', timeoutMs: 60000 });
   if (config.ENABLE_OUTBOX_WORKER === 'true') providerActions.start();
@@ -169,6 +171,10 @@ export function createHandler({ file, config = process.env, service, vectorClien
         limit(session.token_hash + ':connector', 10);
         if (await connector.handle(req, endpoint, session, write)) return;
       }
+      if (endpoint.includes('/api/company/shadow')) {
+        limit(session.token_hash + ':shadow', 30);
+        if (await shadow.handle(req, endpoint, session, write, { json })) return;
+      }
       if (endpoint.includes('/api/company/knowledge-lifecycle')) {
         limit(session.token_hash + ':lifecycle', 60);
         if (await dataSources.lifecycle.handle(req, endpoint, session, write, { json })) return;
@@ -223,6 +229,7 @@ export function createHandler({ file, config = process.env, service, vectorClien
   handler.vectors = vectors;
   handler.embedding = embedding;
   handler.dataSources = dataSources;
+  handler.shadow = shadow;
   handler.privacy = privacy;
   handler.followThrough = followThrough;
   handler.troubleshooting = troubleshooting;

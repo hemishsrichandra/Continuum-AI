@@ -57,7 +57,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     });
     let facts={};try{facts=JSON.parse(sql.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(...args(p,t))?.context||'{}');}catch{/* none */}
     const humanRequested=rows.some(a=>a.outcome_detail==='human_requested');
-    return {reason:clean(reason,200),trigger:humanRequested?'customer asked for a person':/safety|smoke|burning|hazard/i.test(reason)?'safety concern':rows.filter(a=>a.source==='learned').length>=THRESHOLDS.maxSuggestions?'three suggestions tried':'no suitable suggestion',
+    return {reason:clean(reason,200),trigger:humanRequested||/(?:human|person|specialist|agent)/i.test(reason)&&!/safety|smoke|burning|hazard/i.test(reason)?'customer asked for a person':/safety|smoke|burning|hazard/i.test(reason)?'safety concern':rows.filter(a=>a.source==='learned').length>=THRESHOLDS.maxSuggestions?'three suggestions tried':'no suitable suggestion',
       unresolvedQuestion:clean([t.title,t.issue].filter(Boolean).join(': '),400),customerProvided:Object.fromEntries(Object.entries(facts).filter(([,v])=>typeof v==='string').map(([k,v])=>[k,clean(v,160)])),tried,
       counts:{tried:tried.filter(x=>x.outcome!=='skipped').length,failed:tried.filter(x=>x.countedAsFailure).length,notApplicable:tried.filter(x=>x.outcome==='not_applicable').length,unableToTry:tried.filter(x=>x.outcome==='unable_to_try').length},createdAt:now()};
   }
@@ -262,6 +262,11 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
   }
   async function process(p,t,message,inputContext={},enabled=true,exchangeId=randomUUID(),preview=false) {
     authorize(p);
+    // Shadow mode (opt-in): rank in the background for evaluation. Fire-and-forget; it can neither delay nor alter this reply.
+    if(shadow&&!preview) {
+      const known=savedContext(p,t);
+      shadow.observe({companyId:p.companyId,chatbotId:botId(p),ticketId:t.id,text:[t.title,t.issue,message].join(' '),factsText:[t.title,t.issue,message,...Object.values(known)].join(' '),fields:known});
+    }
     const b=getBot(sql,p.companyId,botId(p));
     const response=(reply,extra={})=>({id:exchangeId,reply,model:'Support workflow',ticket:t,action:null,
       decision:{mode:'inform',action:null},evidence:[],retained:null,
@@ -423,5 +428,10 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const h=escalate(safetyBlocked?'A safety concern was reported, so no stored fix was suggested.':enabled?'No applicable reviewed fix after standard troubleshooting.':'Standard troubleshooting did not resolve the issue. AI memory is off.');
     return escalated(h);
   }
-  return {process,feedback:processFeedback,choose,attempts};
+  /** Attach the specialist brief to a case opened some other way (for example the customer reviewed and confirmed a prepared handoff). */
+  function attachBrief(p,handoffId,ticketId,reason) {
+    const brief=handoffBrief(p,provider(store,p).ticket(ticketId),reason);
+    store.updateFor(p.companyId,d=>{const h=d.handoffs.find(x=>x.id===handoffId&&x.companyId===p.companyId);if(h&&!h.brief) h.brief=brief;});
+  }
+  return {process,feedback:processFeedback,choose,attempts,attachBrief};
 }

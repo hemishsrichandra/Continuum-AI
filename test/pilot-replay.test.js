@@ -34,3 +34,34 @@ test('pilot replay: a problem never solved before cannot be matched and is count
   assert.ok(!r.top.some((x) => x.sim >= 0.5));
   await assert.rejects(pilotReplay({ tickets: tickets.slice(0, 10), warmup: 20 }), /at least/);
 });
+
+test('strict time-separated holdout: learns only from tickets before the cutoff, never from the evaluated ones, and labels the data', async () => {
+  const { summary, rows } = await pilotReplay({ tickets, warmup: 8, evaluateAfter: '2026-01-21', label: 'synthetic' });
+  assert.equal(summary.warmup, 20, 'twenty tickets were dated before the cutoff');
+  assert.equal(summary.replayed, 20);
+  assert.ok(rows.every((r) => r.knowledge === 20), 'the knowledge never grew while evaluating (no leakage from evaluated tickets)');
+  assert.match(summary.method, /strict holdout: learned only from tickets before 2026-01-21 \(20\)/);
+  assert.equal(summary.ordering, 'by ticket date');
+  assert.match(summary.dataLabel, /^SYNTHETIC DATA/);
+  assert.match(summary.dataLabel, /not evidence of quality on real tickets/);
+  const rolling = await pilotReplay({ tickets, warmup: 8, label: 'real' });
+  assert.match(rolling.summary.method, /rolling/);
+  assert.match(rolling.summary.dataLabel, /human_match/);
+});
+
+test('the replay reports coverage, escalation, abstention, incompatibility, safety errors and calibration; missing dates are called out', async () => {
+  const { summary } = await pilotReplay({ tickets, warmup: 8, label: 'synthetic' });
+  for (const k of ['suggestedRate', 'top1Rate', 'top3Rate', 'escalationRate', 'abstentionRate', 'incompatibleSuggestions', 'unsafeSuggestions']) assert.equal(typeof summary[k], 'number', k);
+  assert.equal(summary.incompatibleSuggestions, 0);
+  assert.equal(summary.unsafeSuggestions, 0);
+  assert.equal(summary.escalationRate, +(1 - summary.suggestedRate).toFixed(3), 'a ticket with no eligible suggestion would go to a specialist');
+  assert.equal(summary.calibration.bands.length, 5);
+  assert.equal(summary.calibration.bands.reduce((n, b) => n + b.suggestions, 0), summary.suggestedAny);
+  assert.match(summary.calibration.note, /not a probability/);
+  const undated = tickets.map((t, i) => (i === 3 ? { ...t, date: '' } : t));
+  const { summary: weak } = await pilotReplay({ tickets: undated, warmup: 8 });
+  assert.match(weak.ordering, /^FILE ORDER: 1 of 40 tickets have no date/);
+  await assert.rejects(pilotReplay({ tickets: undated, warmup: 8, evaluateAfter: '2026-01-21' }), /every ticket to have a date/);
+  await assert.rejects(pilotReplay({ tickets, warmup: 8, evaluateAfter: '2026-01-03' }), /needs at least 5|each side needs at least 5/);
+  await assert.rejects(pilotReplay({ tickets, warmup: 8, evaluateAfter: 'not a date' }), /must be a date/);
+});

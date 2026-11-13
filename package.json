@@ -28,7 +28,8 @@
     "seed:sample": "node scripts/seed-sample-company.js",
     "serve:sample": "node scripts/serve-sample.js",
     "load-test": "node scripts/load-test.js --out evaluation/load-results.json",
-    "rotate:key": "node scripts/rotate-integration-key.js"
+    "rotate:key": "node scripts/rotate-integration-key.js",
+    "test:browser": "node --import ./test/setup-windows-cleanup.js --test --test-concurrency=1 e2e/*.e2e.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
@@ -36,7 +37,8 @@
     "three": "0.172.0"
   },
   "devDependencies": {
-    "axe-core": "^4.10.3"
+    "axe-core": "^4.10.3",
+    "playwright-core": "1.65.0"
   },
   "optionalDependencies": {
     "pg": "8.20.0"

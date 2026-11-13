@@ -127,6 +127,8 @@ export function createActionRoutes(services) {
           const result = store.db
             .transaction(() => {
               const saved = db.commit(kind, data, ticketId, operation);
+              // The specialist gets the same brief however the case was opened: what is unresolved, what was tried and how it went.
+              if (kind === 'handoff') troubleshooting.attachBrief(profile, saved.id, ticketId, data.summary);
               if (kind === 'book' || kind === 'cancel') {
                 const booking = store.dataFor(profile.companyId).bookings.find(
                   (b) => b.id === (kind === 'cancel' ? saved.bookingId : saved.id),

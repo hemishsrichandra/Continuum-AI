@@ -74,7 +74,8 @@ The customer memory switch was removed from the workflow. Privacy is handled by 
 ## Operating notes
 
 * **Staff access:** owners can limit a specialist to specific services under *Company & team → Specialist service access*.
-* **Data sources:** an owner can set an automatic sync interval (1–720 h) per source; the worker runs due syncs.
+* **Data sources:** CSV, SQLite, PostgreSQL, MySQL/MariaDB, SQL Server and REST sources with resumable, bounded sync, incremental sync where the source can prove changes, per-source status and a scheduler. See [docs/KNOWLEDGE-SOURCES.md](docs/KNOWLEDGE-SOURCES.md) for supported connectors, sync semantics, review, shadow mode, tests and the manual pilot checklist.
+* **Suggestions:** up to three suggestions are shown and nothing counts as tried until the customer picks one (`SUGGESTION_MODE`).
 * **Customer data:** customers can download their data and remove their conversation content from the workspace sidebar. Optional retention (`RETENTION_*` in `.env.example`) is off by default.
 * **Measure on your own data:** `node scripts/evaluate.js --file my-cases.json` (and `--embeddings` for a live embedding model). See [evaluation/README.md](evaluation/README.md). The synthetic results in `STATUS.md` are not evidence of real-world accuracy.
 

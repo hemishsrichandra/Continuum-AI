@@ -171,3 +171,53 @@ test('the knowledge audit trail records lifecycle changes and is append-only', a
   const dump = JSON.stringify(s.w.db().prepare('SELECT * FROM knowledge_events').all());
   assert.ok(!/Update the firmware|antenna/.test(dump), 'the trail holds ids and reasons, never record text');
 });
+
+test('source health reaches the owner’s system status, and a failing source needs attention without leaking to other companies', async (t) => {
+  const s = await setup(t);
+  const bad = (await s.save('id,title,symptoms\nR-1,a,b\n')).data.source; // mapping needs a steps column the file lacks
+  assert.equal((await s.w.owner.api(`company/data-sources/${bad.id}/sync`, { confirmed: true })).status, 400);
+  const mine = (await s.w.owner.api('company/system-health')).data.summary;
+  assert.equal(mine.knowledgeSources.state, 'attention');
+  assert.equal(mine.knowledgeSources.failing, 1);
+  assert.equal(mine.tasks.state, 'attention');
+  const theirs = (await s.w.other.api('company/system-health')).data.summary;
+  assert.equal(theirs.knowledgeSources.total, 0);
+  assert.equal(theirs.knowledgeSources.state, 'ok');
+});
+
+test('migration 13 upgrades an existing sources table in place and keeps every source, its credentials and its history', async (t) => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { default: Database } = await import('better-sqlite3');
+  const { createHandler } = await import('../server/app.js');
+  const dir = await mkdtemp(join(tmpdir(), 'continuum-mig13-'));
+  t.after(() => rm(dir, { recursive: true, force: true }).catch(() => {}));
+  const file = join(dir, 'm.sqlite');
+  const w = await world(t, { file });
+  const bot = w.botOf(w.company);
+  const made = (await w.owner.api('company/data-sources', { confirmed: true, sourceType: 'csv_sync', chatbotId: bot, name: 'Old source', declaredVerified: true, fieldMapping: MAPPING, connection: { csv: csvOf(ROUTER) } })).data.source;
+  await w.owner.api(`company/data-sources/${made.id}/sync`, { confirmed: true });
+  const before = w.db().prepare('SELECT id,name,encrypted_connection_uri,field_mapping_json,last_synced_at FROM company_data_sources').get();
+  w.h.close();
+  // Put the table back the way version 12 left it: four source types, none of the new columns, migration 13 not recorded.
+  const raw = new Database(file);
+  raw.pragma('foreign_keys=OFF');
+  const rows = raw.prepare('SELECT * FROM company_data_sources').all();
+  raw.exec(`DROP TABLE company_data_sources; CREATE TABLE company_data_sources (id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id), chatbot_id TEXT NOT NULL, name TEXT NOT NULL, source_type TEXT NOT NULL CHECK(source_type IN ('sqlite','postgres','rest_api','csv_sync')), encrypted_connection_uri TEXT, field_mapping_json TEXT NOT NULL DEFAULT '{}', diagnostic_schema_json TEXT NOT NULL DEFAULT '[]', declared_verified INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'configured', last_synced_at TEXT, last_sync_result_json TEXT, last_error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, sync_interval_hours INTEGER, next_sync_at TEXT, authoritative_snapshot INTEGER NOT NULL DEFAULT 0, last_complete_sync_at TEXT, sync_cursor INTEGER);`);
+  const oldColumns = ['id', 'company_id', 'chatbot_id', 'name', 'source_type', 'encrypted_connection_uri', 'field_mapping_json', 'diagnostic_schema_json', 'declared_verified', 'status', 'last_synced_at', 'last_sync_result_json', 'last_error', 'created_at', 'updated_at', 'sync_interval_hours', 'next_sync_at', 'authoritative_snapshot', 'last_complete_sync_at', 'sync_cursor'];
+  for (const r of rows) raw.prepare(`INSERT INTO company_data_sources(${oldColumns.join(',')}) VALUES(${oldColumns.map(() => '?').join(',')})`).run(...oldColumns.map((c) => r[c]));
+  raw.prepare('DELETE FROM schema_migrations WHERE version=13').run();
+  raw.close();
+  const h = createHandler({ file, config: {} });
+  t.after(() => h.close());
+  const db = h.store.db;
+  const after = db.prepare('SELECT id,name,encrypted_connection_uri,field_mapping_json,last_synced_at FROM company_data_sources').get();
+  assert.deepEqual({ ...after }, { ...before }, 'the source, its sealed credentials and its mapping are untouched');
+  const columns = db.prepare('PRAGMA table_info(company_data_sources)').all().map((c) => c.name);
+  for (const c of ['sync_checkpoint_json', 'high_water_json', 'scan_generation', 'lease_until', 'stop_request', 'consecutive_failures', 'incremental_enabled', 'stale_after_days']) assert.ok(columns.includes(c), c);
+  db.prepare("INSERT INTO company_data_sources(id,company_id,chatbot_id,name,source_type,created_at,updated_at) VALUES('m1',?,?,'MySQL one','mysql','t','t')").run(w.company, bot);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM company_data_sources").get().n, 2, 'new source types are now accepted');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM schema_migrations WHERE version=13').get().n, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM memory_pool WHERE source_id=?").get(made.id).n, 1, 'imported knowledge is untouched');
+});
