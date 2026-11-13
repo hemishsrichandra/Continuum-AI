@@ -19,9 +19,30 @@ const announcer = document.querySelector('#announcer');
 // The server keeps its "Fictional demo only:" safety qualifier on every demo fix; here it is shown as a label so the
 // instruction itself reads cleanly. The qualifier is never dropped, only moved.
 const FICTIONAL = /^\s*Fictional demo only:\s*/i;
+// The demo server describes events in test terms ("User A", "demo memory"); visitors see the product's own words.
+const TIDY = [
+  // whole phrases first
+  [/No learned memory yet\. Learned memory: 0\.?/g, 'Nothing learned yet.'],
+  [/Empty demo session created\./g, 'Session started.'],
+  [/All demo cases, feedback and learned memory were cleared\./g, 'Everything was cleared.'],
+  [/Verified demo memory created from/g, 'Learned the fix from'],
+  [/verified demo memory created/gi, 'fix learned'],
+  [/\s*\(not a real company queue\)/g, ''],
+  [/Sent a Resolution Passport to/g, 'Sent a fix to'],
+  [/the hardcoded initial standard suggestion/g, 'the standard first step'],
+  [/initial standard suggestion/g, 'standard first step'],
+  // engineering counters and scores never reach the visitor
+  [/\s*Learned memory(?:: \d+| unchanged)\.?/g, ''],
+  [/\s*\((?:S_final|C_init) [\d.]+\)/g, ''],
+  // then single words
+  [/\bUser ([AB])\b/g, 'Customer $1'], [/\buser ([AB])\b/g, 'customer $1'],
+  [/\bdemo memory\b/gi, 'company knowledge'], [/\bdemo specialist\b/gi, 'specialist'], [/\bdemo-only\b/gi, ''],
+  [/^system$/i, 'Continuum'], [/Resolution Passport/g, 'fix'], [/\s{2,}/g, ' '],
+];
+const tidy = (v) => TIDY.reduce((text, [from, to]) => text.replace(from, to), String(v ?? '').replace(FICTIONAL, '')).trim();
 const stepsHtml = (text) => {
   const t = String(text ?? '');
-  return `${FICTIONAL.test(t) ? '<span class="pill demo-fiction">Fictional demo</span>' : ''}<p class="steps">${q(t.replace(FICTIONAL, ''))}</p>`;
+  return `<p class="steps">${q(t.replace(FICTIONAL, ''))}</p>`;
 };
 const store = {
   get() { try { return sessionStorage.getItem(KEY); } catch { return null; } },
@@ -96,8 +117,8 @@ function chain() {
 function meter() {
   const grew = state.learnedCount > lastCount;
   lastCount = state.learnedCount;
-  return `<section class="demo-meter" aria-labelledby="meter-title"><div><span class="demo-count${state.learnedCount ? ' learned' : ''}${grew ? '' : ''}" aria-hidden="true">${state.learnedCount}</span><span class="demo-count-label" id="meter-title">LEARNED MEMORY</span></div>
-    <div>${chain()}<p class="demo-progress${guided ? ' guided' : ''}" role="status">${guided ? `<b>Step ${guided.step} of ${guided.total}</b> ${q(guided.text)}` : q(state.summary.line)}</p>${guided?.step ? `<div class="demo-row demo-guide"><button class="button primary small" data-act="${guided.step === guided.total ? 'stop' : 'next'}" ${busy ? 'disabled' : ''}>${guided.step === guided.total ? 'Finish' : 'Next step →'}</button>${guided.step < guided.total ? '<button class="button small" data-act="stop">Stop</button>' : ''}</div>` : ''}</div></section>`;
+  return `<section class="demo-meter" aria-labelledby="meter-title"><div><span class="demo-count${state.learnedCount ? ' learned' : ''}${grew ? '' : ''}" aria-hidden="true">${state.learnedCount}</span><span class="demo-count-label" id="meter-title">FIXES LEARNED</span></div>
+    <div>${chain()}<p class="demo-progress${guided ? ' guided' : ''}" role="status">${guided ? `<b>Step ${guided.step} of ${guided.total}</b> ${q(guided.text)}` : q(tidy(state.summary.line))}</p>${guided?.step ? `<div class="demo-row demo-guide"><button class="button primary small" data-act="${guided.step === guided.total ? 'stop' : 'next'}" ${busy ? 'disabled' : ''}>${guided.step === guided.total ? 'Finish' : 'Next step →'}</button>${guided.step < guided.total ? '<button class="button small" data-act="stop">Stop</button>' : ''}</div>` : ''}</div></section>`;
 }
 const attemptCard = (c) => {
   const a = c.attempts.find((x) => x.outcome === 'pending');
@@ -105,20 +126,20 @@ const attemptCard = (c) => {
     const learned = a.source === 'learned';
     const x = a.explanation;
     return `<div class="demo-card ${learned ? 'learned' : 'standard'}">
-      <span class="pill ${learned ? 'green' : 'blue'}">${q(learned ? a.label : 'Initial standard suggestion')}</span>
+      <span class="pill ${learned ? 'green' : 'blue'}">${q(learned ? tidy(a.label) : 'Standard first step')}</span>
       ${learned ? '<span class="pill green">✓ Verified · confirmed by the original customer</span>' : ''}
       ${stepsHtml(a.steps)}
-      ${learned ? `<details><summary>Why this was recommended</summary><p>${q(x.why)}</p><dl><dt>Constraints matched</dt><dd>${q(x.constraintsMatched.join('; '))}</dd><dt>Meaning match</dt><dd>${q(x.scores.cosine)}</dd><dt>Keyword match</dt><dd>${q(x.scores.normBm25)}</dd><dt>Combined match</dt><dd>${q(x.scores.S_hybrid)}</dd><dt>Compatibility</dt><dd>${q(x.scores.S_compat)}</dd><dt>Reliability</dt><dd>${q(x.scores.W_reliability)}</dd><dt>Overall score</dt><dd>${q(x.scores.S_final)} (needs ≥ ${q(x.threshold)})</dd></dl><p>${q(x.retrieval)}</p></details>` : '<small>Hardcoded demo playbook. This is not learned memory.</small>'}
+      ${learned ? `<details><summary>Why this was recommended</summary><p>${q(x.why)}</p><dl><dt>Constraints matched</dt><dd>${q(x.constraintsMatched.join('; '))}</dd><dt>Meaning match</dt><dd>${q(x.scores.cosine)}</dd><dt>Keyword match</dt><dd>${q(x.scores.normBm25)}</dd><dt>Combined match</dt><dd>${q(x.scores.S_hybrid)}</dd><dt>Compatibility</dt><dd>${q(x.scores.S_compat)}</dd><dt>Reliability</dt><dd>${q(x.scores.W_reliability)}</dd><dt>Overall score</dt><dd>${q(x.scores.S_final)} (needs ≥ ${q(x.threshold)})</dd></dl><p>${q(x.retrieval)}</p></details>` : '<small>Standard first step from the company’s playbook.</small>'}
       <div class="demo-row"><button class="button success small" data-act="feedback" data-case="${q(c.id)}" data-worked="true" ${busy ? 'disabled' : ''}>It worked</button><button class="button small" data-act="feedback" data-case="${q(c.id)}" data-worked="false" ${busy ? 'disabled' : ''}>Still need help</button></div></div>`;
   }
   if (c.status === 'needs_info')
-    return `<div class="demo-card waiting"><p>${q(c.clarification)}</p><form class="demo-form" data-form="device" data-case="${q(c.id)}"><label>Device and version<input name="device" required maxlength="200" value="${q(c.user === 'B' ? state.script.userB.device : state.script.userA.device)}"></label><button class="button small" ${busy ? 'disabled' : ''}>Continue</button></form></div>`;
-  if (c.status === 'queued') return `<div class="demo-card waiting"><span class="pill">With the demo specialist</span><p>Your case moved to the demo-only specialist queue. It is not a real company queue.</p></div>`;
+    return `<div class="demo-card waiting"><p>${q(tidy(c.clarification))}</p><form class="demo-form" data-form="device" data-case="${q(c.id)}"><label>Device and version<input name="device" required maxlength="200" value="${q(c.user === 'B' ? state.script.userB.device : state.script.userA.device)}"></label><button class="button small" ${busy ? 'disabled' : ''}>Continue</button></form></div>`;
+  if (c.status === 'queued') return `<div class="demo-card waiting"><span class="pill">With a specialist</span><p>A specialist has your case and will send you a fix here.</p></div>`;
   if (c.status === 'proposal_sent' && c.proposal)
     return `<div class="demo-card learned"><span class="pill blue">Specialist proposal</span>${stepsHtml(c.proposal.steps)}<small>Nothing is learned until you confirm the outcome.</small><div class="demo-row"><button class="button success small" data-act="confirm" data-case="${q(c.id)}" data-accepted="true" ${busy ? 'disabled' : ''}>It worked</button><button class="button small" data-act="confirm" data-case="${q(c.id)}" data-accepted="false" ${busy ? 'disabled' : ''}>Still need help</button></div></div>`;
   if (c.status === 'resolved') {
     const used = [...c.attempts].reverse().find((x) => x.outcome === 'succeeded');
-    return `<div class="demo-card resolved"><span class="pill green">Resolved · you confirmed it worked</span>${used?.source === 'learned' ? '<p>Resolved with the fix ' + q((used.label || 'learned earlier').replace(/^Learned/, 'learned')) + '.</p>' : c.proposal?.status === 'confirmed' ? '<p>Resolved with the specialist’s solution. Continuum learned it.</p>' : '<p>Resolved with the initial standard suggestion.</p>'}</div>`;
+    return `<div class="demo-card resolved"><span class="pill green">Resolved · you confirmed it worked</span>${used?.source === 'learned' ? '<p>Resolved with the fix ' + q(tidy(used.label || 'learned earlier').replace(/^Learned/, 'learned')) + '.</p>' : c.proposal?.status === 'confirmed' ? '<p>Resolved with the specialist’s solution. Continuum learned it.</p>' : '<p>Resolved with the initial standard suggestion.</p>'}</div>`;
   }
   return '';
 };
@@ -129,13 +150,13 @@ function customerPanel(user) {
   const d = drafts[user] || { description: '', device: '' };
   const open = latest && !['resolved'].includes(latest.status);
   return `<section class="demo-panel${guided && activeTab === user ? ' is-focus' : ''}" id="panel-${user}" data-hidden="${activeTab !== user}" aria-labelledby="h-${user}">
-    <div class="demo-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="role">CUSTOMER VIEW</span></div><div><h2 id="h-${user}">User ${user}${user === 'A' ? ' · teaches' : ' · benefits'}</h2></div>
+    <div class="demo-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="role">CUSTOMER VIEW</span></div><div><h2 id="h-${user}">Customer ${user}</h2><p class="demo-role">${user === 'A' ? 'Reports the problem first' : 'Has the same problem later'}</p></div>
     ${open ? '' : `<form class="demo-form" data-form="issue" data-user="${user}">
       <label>What is going wrong?<textarea name="description" required maxlength="500" placeholder="Describe the problem">${q(d.description)}</textarea></label>
       <label>Device and version<input name="device" maxlength="200" placeholder="e.g. Demo Laptop X1, firmware 4" value="${q(d.device)}"></label>
-      <div class="demo-row"><button class="button primary small" ${busy ? 'disabled' : ''}>Report issue</button><button type="button" class="button small" data-act="fill" data-user="${user}" data-which="script">Use script text</button>${user === 'B' ? '<button type="button" class="button small" data-act="fill" data-user="B" data-which="incompatible">Try an incompatible device</button>' : ''}</div>
-      <p class="demo-script">${user === 'A' ? 'Script: a flickering screen on a fictional laptop.' : 'Script: the same problem in different words. Learned fixes from other demo sessions are never visible here.'}</p></form>`}
-    ${cases.length ? cases.slice(-2).map((c) => `<div class="demo-thread"><div class="bubble customer">${q(c.description)}</div><small class="demo-device">${q(c.device || 'No device given')} · ${q(c.id)}</small><div class="assistant-response"><span class="assistant-mark" aria-hidden="true">∿</span><div class="answer-content">${attemptCard(c)}${c.attempts.filter((a) => a.outcome === 'failed').map((a) => `<p class="demo-script">✗ ${a.source === 'learned' ? 'Learned fix' : 'Initial standard suggestion'}: still need help</p>`).join('')}</div></div></div>`).join('') : '<div class="demo-empty"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H8l-4 4z"/></svg><div><b>No conversation yet</b><span>Describe a problem above, or press “Use script text” to fill it in.</span></div></div>'}
+      <div class="demo-row"><button class="button primary small" ${busy ? 'disabled' : ''}>Report issue</button><button type="button" class="button small" data-act="fill" data-user="${user}" data-which="script">Fill in an example</button>${user === 'B' ? '<button type="button" class="button small" data-act="fill" data-user="B" data-which="incompatible">Try an incompatible device</button>' : ''}</div>
+      <p class="demo-script">${user === 'A' ? 'Example: a laptop screen that flickers after startup.' : 'Example: the same problem, described in different words.'}</p></form>`}
+    ${cases.length ? cases.slice(-2).map((c) => `<div class="demo-thread"><div class="bubble customer">${q(c.description)}</div><small class="demo-device">${q(c.device || 'No device given')} · ${q(c.id)}</small><div class="assistant-response"><span class="assistant-mark" aria-hidden="true">∿</span><div class="answer-content">${attemptCard(c)}${c.attempts.filter((a) => a.outcome === 'failed').map((a) => `<p class="demo-script">✗ ${a.source === 'learned' ? 'Learned fix' : 'Initial standard suggestion'}: still need help</p>`).join('')}</div></div></div>`).join('') : '<div class="demo-empty"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H8l-4 4z"/></svg><div><b>No conversation yet</b><span>Describe a problem above, or choose “Fill in an example”.</span></div></div>'}
   </section>`;
 }
 function specialistPanel() {
@@ -143,19 +164,19 @@ function specialistPanel() {
   const target = queued.find((c) => c.status === 'queued') || null;
   const d = drafts.S || {};
   return `<section class="demo-panel specialist${guided && activeTab === 'S' ? ' is-focus' : ''}" id="panel-S" data-hidden="${activeTab !== 'S'}" aria-labelledby="h-S">
-    <div class="demo-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="role">SPECIALIST CONSOLE · DEMO ONLY</span></div><div><h2 id="h-S">Demo specialist queue</h2></div>
-    ${queued.length ? queued.map((c) => `<div class="demo-card ${c.status === 'queued' ? 'waiting' : ''}"><span class="pill">${c.status === 'queued' ? 'Waiting for a specialist' : 'Sent to User ' + q(c.user) + ' · awaiting confirmation'}</span><p><b>User ${q(c.user)}:</b> ${q(c.description)}</p><small>${q(c.device || 'No device given')}</small>${c.attempts.map((a) => `<p class="demo-script">${a.outcome === 'failed' ? '✗' : '•'} Tried: ${q(a.source === 'learned' ? 'learned fix' : 'initial standard suggestion')} — ${q(a.steps)}</p>`).join('')}</div>`).join('') : '<div class="demo-empty"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12h4l2 3h4l2-3h4M5 5h14l1 7v7H4v-7z"/></svg><div><b>Nothing waiting</b><span>A case arrives here when a customer says “Still need help”.</span></div></div>'}
-    ${target ? `<form class="demo-form" data-form="propose" data-case="${q(target.id)}"><h3>Resolution Passport for ${q(target.id)}</h3>
+    <div class="demo-bar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="role">SPECIALIST CONSOLE</span></div><div><h2 id="h-S">Specialist queue</h2></div>
+    ${queued.length ? queued.map((c) => `<div class="demo-card ${c.status === 'queued' ? 'waiting' : ''}"><span class="pill">${c.status === 'queued' ? 'Waiting for a specialist' : 'Sent to Customer ' + q(c.user) + ' · waiting for their answer'}</span><p><b>Customer ${q(c.user)}:</b> ${q(c.description)}</p><small>${q(c.device || 'No device given')}</small>${c.attempts.map((a) => `<p class="demo-script">${a.outcome === 'failed' ? '✗' : '•'} Tried: ${q(a.source === 'learned' ? 'learned fix' : 'initial standard suggestion')} — ${q(a.steps)}</p>`).join('')}</div>`).join('') : '<div class="demo-empty"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12h4l2 3h4l2-3h4M5 5h14l1 7v7H4v-7z"/></svg><div><b>Nothing waiting</b><span>A case arrives here when a customer says “Still need help”.</span></div></div>'}
+    ${target ? `<form class="demo-form" data-form="propose" data-case="${q(target.id)}"><h3>Write the fix</h3>
       <label>Title<input name="title" required maxlength="100" value="${q(d.title || '')}"></label>
       
       <label>Applies to (device and version)<input name="environment" required maxlength="200" value="${q(d.environment || '')}"></label>
       <label>Solution steps<textarea name="steps" required maxlength="600">${q(d.steps || '')}</textarea></label>
       <label>Safety restrictions<input name="safety" maxlength="300" value="${q(d.safety ?? '')}" placeholder="None identified"></label>
       <label class="check"><input type="checkbox" name="reviewedForPrivacy" ${d.reviewed ? 'checked' : ''} required> I tested these steps and removed personal information and secrets.</label>
-      <div class="demo-row"><button type="button" class="button small" data-act="fill" data-user="S">Use scripted solution</button><button type="button" class="button small" data-act="preview">Preview passport</button><button class="button primary small" ${busy ? 'disabled' : ''}>Send to User ${q(target.user)}</button></div>
-      ${previewData ? `<div class="demo-card"><b>Passport preview</b><p>${q(previewData.passport.title)}</p>${stepsHtml(previewData.passport.steps)}<small>${previewData.redactions ? `${previewData.redactions} personal detail${previewData.redactions === 1 ? '' : 's'} removed before saving` : 'No personal details found'}</small><details class="demo-tech"><summary>Technical details</summary><small>Starting confidence ${q(previewData.cInit.score)} = 0.40 × passport ${q(previewData.cInit.components.P_passport)} + 0.35 × diagnosis ${q(previewData.cInit.components.S_diag)} + 0.25 × author ${q(previewData.cInit.components.R_author)}</small></details></div>` : ''}
+      <div class="demo-row"><button type="button" class="button small" data-act="fill" data-user="S">Fill in an example fix</button><button type="button" class="button small" data-act="preview">Preview</button><button class="button primary small" ${busy ? 'disabled' : ''}>Send to Customer ${q(target.user)}</button></div>
+      ${previewData ? `<div class="demo-card"><b>Preview</b><p>${q(previewData.passport.title)}</p>${stepsHtml(previewData.passport.steps)}<small>${previewData.redactions ? `${previewData.redactions} personal detail${previewData.redactions === 1 ? '' : 's'} removed before saving` : 'No personal details found'}</small><details class="demo-tech"><summary>Technical details</summary><small>Starting confidence ${q(previewData.cInit.score)} = 0.40 × passport ${q(previewData.cInit.components.P_passport)} + 0.35 × diagnosis ${q(previewData.cInit.components.S_diag)} + 0.25 × author ${q(previewData.cInit.components.R_author)}</small></details></div>` : ''}
     </form>` : ''}
-    <div><h3>Verified demo memory (this session)</h3>${state.learned.length ? state.learned.map((l) => `<div class="demo-card learned"><span class="pill green">✓ ${q(l.provenance)}</span><p><b>${q(l.title)}</b></p>${stepsHtml(l.steps)}<small>Applies to ${q(l.applicability)} · safety: ${q(l.safety)}</small><small>${l.successes ? `Worked for ${l.successes} customer${l.successes === 1 ? '' : 's'}` : 'Not reused yet'}${l.failures ? ` · failed ${l.failures}×` : ''} · ${l.status === 'active' ? 'In use' : q(l.status)}</small><details class="demo-tech"><summary>Technical details</summary><small>Starting confidence ${q(l.cInit.score)} · reliability ${q(l.reliability)}</small></details></div>`).join('') : '<div class="demo-empty"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3zM9.5 20h5"/></svg><div><b>Nothing learned yet</b><span>A fix is learned only after the customer confirms it worked.</span></div></div>'}</div>
+    <div><h3>Company knowledge</h3>${state.learned.length ? state.learned.map((l) => `<div class="demo-card learned"><span class="pill green">✓ ${q(tidy(l.provenance))}</span><p><b>${q(l.title)}</b></p>${stepsHtml(l.steps)}<small>Applies to ${q(l.applicability)} · safety: ${q(l.safety)}</small><small>${l.successes ? `Worked for ${l.successes} customer${l.successes === 1 ? '' : 's'}` : 'Not reused yet'}${l.failures ? ` · failed ${l.failures}×` : ''} · ${l.status === 'active' ? 'In use' : q(l.status)}</small><details class="demo-tech"><summary>Technical details</summary><small>Starting confidence ${q(l.cInit.score)} · reliability ${q(l.reliability)}</small></details></div>`).join('') : '<div class="demo-empty"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3zM9.5 20h5"/></svg><div><b>Nothing learned yet</b><span>A fix is learned only after the customer confirms it worked.</span></div></div>'}</div>
   </section>`;
 }
 function beforeAfter() {
@@ -163,28 +184,29 @@ function beforeAfter() {
   const b = state.cases.find((c) => c.user === 'B');
   if (!a?.attempts[0] || !b?.attempts[0]) return '';
   const label = (t) => (t.source === 'learned' ? t.label || 'Learned from a confirmed specialist resolution' : 'Initial standard suggestion');
-  return `<section aria-labelledby="ba"><h2 id="ba">Before and after</h2><div class="demo-before-after"><div><b>BEFORE LEARNING · USER A SAW</b>${q(label(a.attempts[0]))}: ${q(a.attempts[0].steps.replace(FICTIONAL, ''))}</div><div><b>AFTER LEARNING · USER B SAW</b>${q(label(b.attempts[0]))}: ${q(b.attempts[0].steps.replace(FICTIONAL, ''))}</div></div></section>`;
+  return `<section aria-labelledby="ba"><h2 id="ba">Before and after</h2><div class="demo-before-after"><div><b>BEFORE · CUSTOMER A GOT</b>${q(tidy(label(a.attempts[0])))}: ${q(a.attempts[0].steps.replace(FICTIONAL, ''))}</div><div><b>AFTER · CUSTOMER B GOT</b>${q(tidy(label(b.attempts[0])))}: ${q(b.attempts[0].steps.replace(FICTIONAL, ''))}</div></div></section>`;
 }
 function timeline() {
   const key = new Set(['memory_learned', 'user_b_benefited', 'learned_suggestion_shown']);
-  return `<section aria-labelledby="tl"><h2 id="tl">Event timeline</h2><ol class="demo-timeline">${state.events.map((e) => `<li class="${key.has(e.kind) ? 'key' : ''}"><span class="n">${e.id}</span><div><span class="who">${q(e.who.toUpperCase())}</span>${q(e.detail)}</div><time datetime="${q(e.at)}">${q(new Date(e.at).toLocaleTimeString())} · memory ${e.learnedCount}</time></li>`).join('')}</ol></section>`;
+  return `<details class="demo-log"><summary>Activity log <span>${state.events.length} events</span></summary><ol class="demo-timeline">${state.events.map((e) => `<li class="${key.has(e.kind) ? 'key' : ''}"><span class="n">${e.id}</span><div><span class="who">${q(tidy(e.who).toUpperCase())}</span>${q(tidy(e.detail))}</div><time datetime="${q(e.at)}">${q(new Date(e.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</time></li>`).join('')}</ol></details>`;
 }
 function render() {
   if (!state) return;
   const keepFocus = document.activeElement?.closest?.('form')?.dataset;
   app.innerHTML = `<div class="wrap">
-    <div class="demo-hero"><span class="eyebrow">INTERACTIVE LEARNING DEMO</span><h1>One customer teaches. The next one benefits.</h1>
-      <p class="lead">Follow User A’s problem to a specialist, watch the confirmed fix become verified demo memory, then see User B receive it. This session is empty, private to this tab and resettable.</p>
-      <div class="demo-actions"><button class="button primary" data-act="guided" ${busy || guided ? 'disabled' : ''}>Run guided scenario</button><button class="button" data-act="reset" ${busy || guided ? 'disabled' : ''}>Reset demo</button><small>Reset clears everything learned in this session, so User B can no longer receive A’s fix.</small></div></div>
+    <p class="demo-sample"><span class="status-dot"></span>Sample company · Everything here stays in this browser tab</p>
+    <div class="demo-hero"><span class="eyebrow">SEE IT LEARN</span><h1>One customer teaches. The next one benefits.</h1>
+      <p class="lead">Follow Customer A’s problem to a specialist, watch the confirmed fix become company knowledge, then see Customer B get it straight away.</p>
+      <div class="demo-actions"><button class="button primary" data-act="guided" ${busy || guided ? 'disabled' : ''}>Play the walkthrough</button><button class="button" data-act="reset" ${busy || guided ? 'disabled' : ''}>Start over</button><small>Takes about two minutes. Start over any time.</small></div></div>
     ${error ? `<p class="demo-error" role="alert">${q(error)}</p>` : ''}
     ${meter()}
-    <div class="demo-tabs" role="tablist" aria-label="Choose a view">${[['A', 'User A'], ['S', 'Company'], ['B', 'User B']].map(([k, n]) => `<button role="tab" id="tab-${k}" aria-selected="${activeTab === k}" aria-controls="panel-${k}" data-act="tab" data-tab="${k}">${n}</button>`).join('')}</div>
+    <div class="demo-tabs" role="tablist" aria-label="Choose a view">${[['A', 'Customer A'], ['S', 'Specialist'], ['B', 'Customer B']].map(([k, n]) => `<button role="tab" id="tab-${k}" aria-selected="${activeTab === k}" aria-controls="panel-${k}" data-act="tab" data-tab="${k}">${n}</button>`).join('')}</div>
     <div class="demo-grid">${customerPanel('A')}${specialistPanel()}${customerPanel('B')}</div>
     ${beforeAfter()}
-    <p class="demo-summary${state.summary.userBBenefited ? '' : ' pending'}" role="status">${q(state.summary.line)}</p>
+    <p class="demo-summary${state.summary.userBBenefited ? '' : ' pending'}" role="status">${q(tidy(state.summary.line))}</p>
     ${state.summary.userBBenefited && !guided ? '<section class="demo-finish" aria-labelledby="finish-title"><div><span class="eyebrow">THAT’S THE WHOLE LOOP</span><h2 id="finish-title">Imagine this with your team’s real fixes.</h2><p>Every confirmed fix becomes an answer for the next customer, private to your company. We’ll walk you through it with your own support scenarios.</p></div><div class="demo-row"><a class="button primary" href="/book-a-session">Book a 30-minute walkthrough <span aria-hidden="true">→</span></a><a class="button" href="/pricing">See early-access pricing</a></div></section>' : ''}
     ${timeline()}
-    <p class="demo-footer-note">Starting suggestions come from two hardcoded demo playbooks. The only learned fix is the one User A confirms in this session. Retrieval here uses a local, offline concept embedding plus BM25 over this session only; compatibility (device, version, safety) is checked separately from similarity.</p></div>`;
+    <p class="demo-footer-note">The first suggestion always comes from the company’s standard playbook. Customer B only receives a fix that Customer A confirmed, and only after it passes the device, version and safety checks.</p></div>`;
   if (keepFocus?.form) app.querySelector(`[data-form="${keepFocus.form}"] textarea, [data-form="${keepFocus.form}"] input`)?.focus?.({ preventScroll: true });
 }
 
@@ -209,7 +231,7 @@ app.addEventListener('submit', async (event) => {
     if (done) drafts[user] = null;
   } else if (form.dataset.form === 'device') await act('customer/device', { caseId: form.dataset.case, device: v.device }, 'Device details added.');
   else if (form.dataset.form === 'propose') {
-    const done = await act('specialist/propose', { caseId: form.dataset.case, ...v, reviewedForPrivacy: form.elements.reviewedForPrivacy.checked, safetyReviewed: true, confirmed: true }, 'Resolution Passport sent to the customer.');
+    const done = await act('specialist/propose', { caseId: form.dataset.case, ...v, reviewedForPrivacy: form.elements.reviewedForPrivacy.checked, safetyReviewed: true, confirmed: true }, 'Fix sent to the customer.');
     if (done) { drafts.S = null; previewData = null; }
   }
 });
@@ -235,8 +257,8 @@ app.addEventListener('click', async (event) => {
     return;
   }
   if (act_ === 'feedback') await act('customer/feedback', { caseId: el.dataset.case, worked: el.dataset.worked === 'true', confirmed: true }, 'Answer recorded.');
-  if (act_ === 'confirm') await act('customer/confirm', { caseId: el.dataset.case, accepted: el.dataset.accepted === 'true', confirmed: true }, el.dataset.accepted === 'true' ? 'Confirmed. Learned memory updated.' : 'Recorded. Nothing was learned.');
-  if (act_ === 'reset') { guided = null; previewData = null; drafts.A = drafts.B = drafts.S = null; lastCount = 0; await act('reset', {}, 'Demo reset. Learned memory: 0.'); }
+  if (act_ === 'confirm') await act('customer/confirm', { caseId: el.dataset.case, accepted: el.dataset.accepted === 'true', confirmed: true }, el.dataset.accepted === 'true' ? 'Confirmed. Continuum learned this fix.' : 'Recorded. Nothing was learned.');
+  if (act_ === 'reset') { guided = null; previewData = null; drafts.A = drafts.B = drafts.S = null; lastCount = 0; await act('reset', {}, 'Reset. Nothing learned yet.'); }
   if (act_ === 'guided') await runGuided();
   if (act_ === 'next' || act_ === 'stop') advance?.(act_ === 'next');
 });
@@ -252,6 +274,8 @@ async function runGuided() {
     guided = { step, total, text };
     render();
     announcer.textContent = `Step ${step} of ${total}: ${text}`;
+    // bring the step text and its controls into view when the walkthrough starts
+    if (step === 1) app.querySelector('.demo-meter')?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     app.querySelector('[data-act="next"]')?.focus({ preventScroll: true });
     return new Promise((resolve) => { advance = resolve; }).then((go) => { advance = null; if (!go) throw new Error('stopped'); });
   };
@@ -262,18 +286,18 @@ async function runGuided() {
     const S = state.script;
     must(await act('customer/issue', { user: 'A', ...S.userA }));
     const a = state.cases.find((c) => c.user === 'A');
-    await pause(1, 'User A reported a flickering screen and got the standard first suggestion.', 'A');
+    await pause(1, 'Customer A reported a flickering screen and got the standard first step.', 'A');
     must(await act('customer/feedback', { caseId: a.id, worked: false, confirmed: true }));
-    await pause(2, 'It didn’t help. User A chose “Still need help”, so the case went to the specialist.', 'S');
+    await pause(2, 'It didn’t help. Customer A chose “Still need help”, so the case went to a specialist.', 'S');
     must(await act('specialist/propose', { caseId: a.id, ...S.specialist, reviewedForPrivacy: true, safetyReviewed: true, confirmed: true }));
-    await pause(3, 'The specialist wrote a fix and sent it to User A. Nothing is learned yet.', 'A');
+    await pause(3, 'The specialist wrote a fix and sent it to Customer A. Nothing is learned yet.', 'A');
     must(await act('customer/confirm', { caseId: a.id, accepted: true, confirmed: true }));
-    await pause(4, 'User A confirmed “It worked”. Only now does Continuum learn it: memory 0 → 1.', 'S');
+    await pause(4, 'Customer A confirmed “It worked”. Only now does Continuum learn the fix.', 'S');
     must(await act('customer/issue', { user: 'B', ...S.userB }));
     const b = state.cases.find((c) => c.user === 'B');
-    await pause(5, 'User B described the same problem in different words and got A’s verified fix straight away.', 'B');
+    await pause(5, 'Customer B described the same problem in different words and got the verified fix straight away.', 'B');
     if (b?.attempts.some((x) => x.source === 'learned')) must(await act('customer/feedback', { caseId: b.id, worked: true, confirmed: true }));
-    await pause(6, 'User B confirmed it worked. One customer taught Continuum, and the next one benefited.', 'B');
+    await pause(6, 'Customer B confirmed it worked. One customer taught Continuum, and the next one benefited.', 'B');
   } catch (e) {
     if (e.message !== 'stopped') error = e.message;
   } finally {

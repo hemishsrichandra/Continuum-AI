@@ -1,6 +1,9 @@
 import {staffAccountControls, bindStaffAccount} from './staff-account.js';
 import { request, escapeHtml as q, formatDate } from './client.js';
 import { confirmDialog, noteDialog } from './form-kit.js';
+import { toast, emptyState } from './toast.js';
+// Results show as a toast; the old line stays as a screen-reader-only record of the last result.
+const say = (text, isError = false) => { const line = document.querySelector('#operator-result'); if (line) line.textContent = text; toast(text, { tone: isError ? 'error' : 'success' }); };
 const pct = (n) => (n === null || n === undefined ? '—' : Math.round(n * 100) + '%');
 const minutes = (ms) => (ms === null || ms === undefined ? '—' : ms < 3600000 ? Math.round(ms / 60000) + ' min' : (ms / 3600000).toFixed(1) + ' h');
 const verification = (p) => p.verification === 'customer_confirmed' ? '<span class="pill green">✓ Confirmed by the original customer</span>'
@@ -15,7 +18,7 @@ function dashboard(d) {
   if (!d) return '<p class="muted">Results are unavailable right now.</p>';
   const sc = (value, label, cls = '', note = '') => `<div class="stat-card ${cls}"><b>${q(value)}</b><span>${q(label)}</span>${note ? `<small>${q(note)}</small>` : ''}</div>`;
   const t = (value, label, cls = '', note = '') => `<div class="dash-stat ${cls}"><b>${q(value)}</b>${q(label)}${note ? `<small>${q(note)}</small>` : ''}</div>`;
-  return `<section class="panel content-panel" aria-labelledby="intel"><h2 id="intel">How support is going</h2>${d.empty ? '<p class="muted">No activity yet. Figures appear after customers use this service.</p>' : ''}<div class="stat-row">${selfServiceCard(d, sc)}${sc(d.knowledge.flaggedForReview, 'Paused for review', d.knowledge.flaggedForReview ? 'warn' : '', d.knowledge.flaggedForReview ? 'Needs a decision from you' : 'Nothing waiting')}${sc(d.followThrough.slaBreaches, 'Cases past deadline', d.followThrough.slaBreaches ? 'warn' : '', 'Picked up within ' + d.followThrough.slaHours + ' h')}${sc(d.knowledge.customerConfirmedFixes, 'Fixes customers confirmed', 'ok', 'Trusted company knowledge')}</div>
+  return `<section class="panel content-panel" aria-labelledby="intel"><h2 id="intel">How support is going</h2>${d.empty ? emptyState({ icon: 'chart', title: 'No activity yet', hint: 'Figures appear here once customers start using this service.' }) : ''}<div class="stat-row">${selfServiceCard(d, sc)}${sc(d.knowledge.flaggedForReview, 'Paused for review', d.knowledge.flaggedForReview ? 'warn' : '', d.knowledge.flaggedForReview ? 'Needs a decision from you' : 'Nothing waiting')}${sc(d.followThrough.slaBreaches, 'Cases past deadline', d.followThrough.slaBreaches ? 'warn' : '', 'Picked up within ' + d.followThrough.slaHours + ' h')}${sc(d.knowledge.customerConfirmedFixes, 'Fixes customers confirmed', 'ok', 'Trusted company knowledge')}</div>
     ${topFixes(d)}
     <details class="infra more-figures"><summary>More figures</summary><div class="dash-grid">
     ${t(d.knowledge.autoPublishedUnconfirmed, 'Fixes not yet confirmed', d.knowledge.autoPublishedUnconfirmed ? 'warn' : '', 'Never counted as confirmed')}
@@ -98,7 +101,7 @@ export async function mountOperator() {
     const caseBadges = (h) => `${h.urgent ? '<span class="pill warn">Urgent</span>' : ''}${h.ownerReview ? '<span class="pill blue">Owner review</span>' : ''}`;
     const caseRank = (h) => (['Resolved', 'Closed'].includes(h.status) ? 4 : 0) + (h.urgent ? 0 : 1) + (h.ownerReview ? 0 : 1);
     const caseList = () => `<nav class="case-list" aria-label="Cases"><ul>${[...data.cases].sort((a, b) => caseRank(a) - caseRank(b)).map((h) => `<li><button type="button" class="case-pick" data-case-pick="${q(h.id)}"><b>${q(h.context?.ticket?.title || h.ticketId)}</b><span class="case-meta"><span class="pill">${q(h.status)}</span>${caseBadges(h)}</span><small>${q(data.staff.find((x) => x.id === h.assignedTo)?.name || 'Unassigned')}</small></button></li>`).join('')}</ul></nav>`;
-    app.innerHTML = `<section class="wrap section"><div class="console-head"><span class="eyebrow">${data.role === 'owner' ? 'OWNER' : 'SPECIALIST'} · ${data.provider === 'it' ? 'IT INCIDENTS' : 'DEVICE REPAIR'}</span><h1>${q(data.chatbot.name)}</h1></div><p id="operator-result" role="status"></p><div class="console-shell"><nav class="console-side" aria-label="Console sections"><span class="side-title">${data.role === 'owner' ? 'OWNER' : 'SPECIALIST'}</span><button type="button" data-nav="overview">Overview</button><button type="button" data-nav="cases">Cases${openCases ? ` <span class="badge">${openCases}</span>` : ''}</button><button type="button" data-nav="knowledge">Knowledge${needsYou ? ` <span class="badge">${needsYou}</span>` : ''}</button>${data.role === 'owner' ? '<span class="side-title">COMPANY</span><a href="/team">Team and data sources</a>' : ''}<span class="side-title">YOU</span>${staffAccountControls}<button type="button" id="refresh-queue">Refresh</button></nav><div class="console-main"><div data-section="overview">${healthPanel(health)}${reviewPanel()}${dashboard(intel)}${queue(data.followThrough)}</div><div data-section="cases" hidden><section class="panel content-panel" aria-labelledby="open-req"><h2 id="open-req">Open customer requests</h2><p class="muted">Every request in this service, including ones not yet escalated to a specialist.</p>${(data.requests || []).length ? `<div class="table-scroll"><table><thead><tr><th>Request</th><th>Customer</th><th>Status</th><th>Opened</th><th>Troubleshooting so far</th></tr></thead><tbody>${data.requests.map((x) => `<tr><td><b>${q(x.title)}</b><br><small>${q(x.ticketId)}</small></td><td>${q(x.customer)}</td><td>${q(x.status)}</td><td>${q(formatDate(x.createdAt, true))}</td><td>${x.attempts.length ? x.attempts.map((a) => q(a.source + (a.source === 'learned' ? ' #' + a.sequence : '') + ': ' + a.outcome)).join('<br>') : 'Nothing suggested yet'}</td></tr>`).join('')}</tbody></table></div>` : '<p>No open requests outside the specialist queue.</p>'}</section><h2>Cases for specialists</h2>${data.cases.length ? '<div class="case-shell">' + caseList() + '<div class="case-detail-area">' : ''}${
+    app.innerHTML = `<section class="wrap section"><div class="console-head"><span class="eyebrow">${data.role === 'owner' ? 'OWNER' : 'SPECIALIST'} · ${data.provider === 'it' ? 'IT INCIDENTS' : 'DEVICE REPAIR'}</span><h1>${q(data.chatbot.name)}</h1></div><p id="operator-result" class="sr-only"></p><div class="console-shell"><nav class="console-side" aria-label="Console sections"><span class="side-title">${data.role === 'owner' ? 'OWNER' : 'SPECIALIST'}</span><button type="button" data-nav="overview">Overview</button><button type="button" data-nav="cases">Cases${openCases ? ` <span class="badge">${openCases}</span>` : ''}</button><button type="button" data-nav="knowledge">Knowledge${needsYou ? ` <span class="badge">${needsYou}</span>` : ''}</button>${data.role === 'owner' ? '<span class="side-title">COMPANY</span><a href="/team">Team and data sources</a>' : ''}<span class="side-title">YOU</span>${staffAccountControls}<button type="button" id="refresh-queue">Refresh</button></nav><div class="console-main"><div data-section="overview">${healthPanel(health)}${reviewPanel()}${dashboard(intel)}${queue(data.followThrough)}</div><div data-section="cases" hidden><section class="panel content-panel" aria-labelledby="open-req"><h2 id="open-req">Open customer requests</h2><p class="muted">Every request in this service, including ones not yet escalated to a specialist.</p>${(data.requests || []).length ? `<div class="table-scroll"><table><thead><tr><th>Request</th><th>Customer</th><th>Status</th><th>Opened</th><th>Troubleshooting so far</th></tr></thead><tbody>${data.requests.map((x) => `<tr><td><b>${q(x.title)}</b><br><small>${q(x.ticketId)}</small></td><td>${q(x.customer)}</td><td>${q(x.status)}</td><td>${q(formatDate(x.createdAt, true))}</td><td>${x.attempts.length ? x.attempts.map((a) => q(a.source + (a.source === 'learned' ? ' #' + a.sequence : '') + ': ' + a.outcome)).join('<br>') : 'Nothing suggested yet'}</td></tr>`).join('')}</tbody></table></div>` : '<p>No open requests outside the specialist queue.</p>'}</section><h2>Cases for specialists</h2>${data.cases.length ? '<div class="case-shell">' + caseList() + '<div class="case-detail-area">' : ''}${
       data.cases
         .map((h) => {
           const current = data.resolutions.find((r) => r.id === h.resolutionId);
@@ -117,8 +120,8 @@ export async function mountOperator() {
             ${canWork ? `<div class="case-panel" data-case-panel="progress" hidden>${formStart(h, 'progress')}<label>Status<select name="status"><option>In progress</option><option>Waiting for parts</option><option>Awaiting customer</option></select></label><label>Expected completion<input name="eta" type="date" value="${q(h.context?.ticket?.eta || '')}"></label><label>Priority<select name="priority"><option>Normal</option><option>High</option><option>Urgent</option></select></label><label>Customer-visible update<textarea name="note" required maxlength="2000"></textarea></label><label>Troubleshooting step (optional)<textarea name="step" maxlength="1000"></textarea></label><label>Step outcome<select name="stepOutcome"><option value="attempted">Attempted</option><option value="failed">Failed</option><option value="succeeded">Succeeded</option></select></label><button class="button">Save progress</button>${error}</form></div>` : ''}
             ${canPropose ? `<div class="case-panel" data-case-panel="propose" hidden>${formStart(h, 'resolve')}<label>Reusable title<input name="title" required maxlength="100"></label><label>Applicable product and versions<input name="environment" required maxlength="500"></label><label>Verified solution steps<textarea name="solution" required maxlength="2000"></textarea></label><label>Safety restrictions (or “None identified”)<input name="safety" maxlength="1000" placeholder="None identified"></label><label class="privacy-check"><input type="checkbox" name="safetyReviewed"> I reviewed safety: any restriction above is complete (needed for “None identified” to count).</label><label>Risk level<select name="riskLevel"><option value="standard">Standard</option><option value="high">High risk: never auto-published</option></select></label><label class="privacy-check"><input type="checkbox" name="reviewedForPrivacy" required> I tested these steps and removed personal information and secrets.</label><div class="actions"><button type="button" class="button small" data-preview>Preview scrubbed passport</button><button class="button primary">Send solution for customer confirmation</button></div><div data-preview-result role="status"></div>${error}</form></div>` : ''}</article>`;
         })
-        .join('') || '<p>No specialist cases yet.</p>'
-    }${data.cases.length ? '</div></div>' : ''}</div><div data-section="knowledge" hidden><h2 id="passports">Fixes this service can recommend</h2><p class="muted">Each fix shows where it came from and whether a customer has confirmed it.</p><div class="auth-tabs filter-tabs" role="group" aria-label="Filter fixes">${[['use', 'In use', data.passports.filter((p) => p.status === 'active').length], ['needs', 'Needs you', needsYou], ['older', 'Older versions', data.passports.filter((p) => !['active', 'flagged_for_review'].includes(p.status)).length]].map(([k, label, n]) => `<button type="button" data-fix-filter="${k}">${label} <span class="count">${n}</span></button>`).join('')}</div>${data.passports.filter((p) => p.origin !== 'standard_playbook' || p.status !== 'superseded').map((p) => passportCard(p, data.chatbot.id)).join('') || '<p>No passports yet.</p>'}</div></div></div></section>`;
+        .join('') || emptyState({ icon: 'inbox', title: 'The queue is clear', hint: 'Cases arrive here when a customer asks for a person or a suggested fix does not help.' })
+    }${data.cases.length ? '</div></div>' : ''}</div><div data-section="knowledge" hidden><h2 id="passports">Fixes this service can recommend</h2><p class="muted">Each fix shows where it came from and whether a customer has confirmed it.</p><div class="auth-tabs filter-tabs" role="group" aria-label="Filter fixes">${[['use', 'In use', data.passports.filter((p) => p.status === 'active').length], ['needs', 'Needs you', needsYou], ['older', 'Older versions', data.passports.filter((p) => !['active', 'flagged_for_review'].includes(p.status)).length]].map(([k, label, n]) => `<button type="button" data-fix-filter="${k}">${label} <span class="count">${n}</span></button>`).join('')}</div>${data.passports.filter((p) => p.origin !== 'standard_playbook' || p.status !== 'superseded').map((p) => passportCard(p, data.chatbot.id)).join('') || emptyState({ icon: 'book', title: 'No fixes in the library yet', hint: 'A fix is added when a customer confirms a specialist’s solution, or when you import articles and past tickets.', action: '<a class="button small" href="/team#knowledge">Import knowledge</a>' })}</div></div></div></section>`;
     bindStaffAccount(app);
     // One section at a time: Overview, Cases or Knowledge (kept in the address so Back and bookmarks work).
     const sections = ['overview', 'cases', 'knowledge'];
@@ -155,9 +158,9 @@ export async function mountOperator() {
       try {
         await request('operator/flag?chatbotId=' + encodeURIComponent(data.chatbot.id), { body: { handoffId: b.dataset.caseId, revision: Number(b.dataset.revision), [review ? 'ownerReview' : 'urgent']: on, ...(note ? { note } : {}), confirmed: true } });
         await mountOperator();
-        document.querySelector('#operator-result').textContent = review ? (on ? 'The owner has been asked to review this case.' : 'Owner review closed.') : (on ? 'Case marked urgent.' : 'Urgent flag removed.');
+        say(review ? (on ? 'The owner has been asked to review this case.' : 'Owner review closed.') : (on ? 'Case marked urgent.' : 'Urgent flag removed.'));
       } catch (e) {
-        document.querySelector('#operator-result').textContent = e.message;
+        say(e.message, true);
         b.disabled = false;
       }
     }));
@@ -203,7 +206,7 @@ export async function mountOperator() {
             body: { ...Object.fromEntries(new FormData(form)), id: form.dataset.revise, version: Number(form.dataset.version), reviewedForPrivacy: form.elements.reviewedForPrivacy.checked, confirmed: true },
           });
           await mountOperator();
-          document.querySelector('#operator-result').textContent = 'Revised version published. The previous version is kept as history.';
+          say('Revised version published. The previous version is kept as history.');
         } catch (e) {
           const alert = form.querySelector('[role=alert]');
           alert.hidden = false;
@@ -260,7 +263,7 @@ export async function mountOperator() {
             key: form.dataset.key,
           });
           await mountOperator();
-          document.querySelector('#operator-result').textContent = 'Case update saved.';
+          say('Case update saved.');
         } catch (e) {
           const p = form.querySelector('[role=alert]');
           p.hidden = false;
@@ -278,7 +281,7 @@ export async function mountOperator() {
           });
           await mountOperator();
         } catch (e) {
-          document.querySelector('#operator-result').textContent = e.message;
+          say(e.message, true);
           button.disabled = false;
         }
       }),
