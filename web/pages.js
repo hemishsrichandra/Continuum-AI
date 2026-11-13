@@ -49,11 +49,11 @@ function home() {
 
   <section class="wrap proof reveal" aria-labelledby="proof-title"><h2 id="proof-title" class="sr-only">Evidence</h2>
     <dl class="proof-stats">
-      <div><dt>Reworded problems matched to the right fix</dt><dd>87–90%</dd></div>
-      <div><dt>Wrong or unsafe suggestions in negative checks</dt><dd>0</dd></div>
-      <div><dt>Automated tests on every change</dt><dd>350+</dd></div>
+      <div><dt>Unsafe or wrong-device suggestions in our safety checks</dt><dd>0</dd></div>
+      <div><dt>Checks every fix passes before it is shown: device, version and safety rules</dt><dd>3</dd></div>
+      <div><dt>Automated tests run on every change</dt><dd>350+</dd></div>
     </dl>
-    <p class="proof-note">Measured on synthetic support cases written after the system was built. These are product checks, not customer results. <a href="/about">How we measure</a></p>
+    <p class="proof-note">Measured on synthetic support cases. These are product checks, not customer results. <a href="/security">How suggestions are kept safe</a></p>
     <ul class="trust-badges" aria-label="Built-in safeguards">
       <li>${ic('⛨')}Knowledge isolated per company</li>
       <li>${ic('◈')}Personal details removed before reuse</li>
