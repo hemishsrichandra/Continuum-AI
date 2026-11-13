@@ -17,23 +17,22 @@
 /* One signature motion (the learning loop) stays; the floating chips are still. */
 .fx-chip { animation: none; }
 
-/* ------------------------------------------------------------------------------------------ evidence strip */
-.proof { padding-block: 10px 30px; }
-.proof-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 0; border: 1px solid var(--line); border-radius: 20px; background: var(--glass); overflow: hidden; }
-.proof-stats > div { padding: 24px 26px; display: flex; flex-direction: column-reverse; gap: 6px; }
-.proof-stats > div + div { border-left: 1px solid var(--line); }
-.proof-stats dd { margin: 0; font: 600 clamp(32px, 4vw, 46px)/1 'Space Grotesk', sans-serif; letter-spacing: -.04em; color: var(--text); }
-.proof-stats dt { font-size: 14px; color: var(--text-2); }
-.proof-note { margin: 12px 4px 0; font-size: 13px; color: var(--text-3); }
-.proof-note a, .trust-badges a { color: var(--atext); text-decoration: underline; text-underline-offset: 3px; }
-.trust-badges { list-style: none; padding: 0; margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 10px; }
-.trust-badges li { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass-2); font-size: 13px; color: var(--text-2); }
-.trust-badges a { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
-.trust-badges a:hover { text-decoration: underline; }
-@media (max-width: 760px) {
-  .proof-stats { grid-template-columns: minmax(0, 1fr); }
-  .proof-stats > div + div { border-left: 0; border-top: 1px solid var(--line); }
-}
+/* ------------------------------------------------------------------------------------------ guarantee bar (home) */
+.guarantees { padding-block: 6px 34px; }
+.guarantee-bar { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 20px; background: var(--glass); overflow: hidden; }
+.guarantee-bar li { display: flex; gap: 14px; align-items: flex-start; padding: 22px 22px; }
+.guarantee-bar li + li { border-left: 1px solid var(--line); }
+.guarantee-bar svg { width: 22px; height: 22px; flex: none; margin-top: 2px; fill: none; stroke: var(--atext); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.guarantee-bar b { display: block; font: 600 16px 'Space Grotesk', sans-serif; letter-spacing: -.02em; color: var(--text); margin-bottom: 3px; }
+.guarantee-bar span { font-size: 14px; color: var(--text-2); line-height: 1.45; }
+@media (max-width: 960px) { .guarantee-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); } .guarantee-bar li:nth-child(3) { border-left: 0; } .guarantee-bar li:nth-child(n+3) { border-top: 1px solid var(--line); } }
+@media (max-width: 560px) { .guarantee-bar { grid-template-columns: minmax(0, 1fr); } .guarantee-bar li + li { border-left: 0; border-top: 1px solid var(--line); } }
+
+/* "Sample workspace" tag on product previews */
+.product-preview { position: relative; }
+.has-sample-tag { position: relative; }
+.sample-tag { position: absolute; top: -12px; right: 22px; z-index: 5; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  color: var(--text-2); background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow); pointer-events: none; }
 
 /* ------------------------------------------------------------------------------------------ pricing hints */
 .hint { position: relative; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 8px; border-radius: 50%;
@@ -132,3 +131,27 @@ dialog.palette::backdrop { background: rgba(10, 4, 6, .5); backdrop-filter: blur
 #palette-list [aria-selected=true] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--atext); }
 .palette-group { padding: 10px 12px 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); font-weight: 700; }
 .palette-empty { margin: 0; padding: 18px 20px; color: var(--text-3); font-size: 14px; }
+
+/* ------------------------------------------------------------------------------------------ demo: product-grade framing */
+.demo-sample { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 18px; padding: 6px 12px; border-radius: 999px; font-size: 13px; color: var(--text-2);
+  border: 1px solid var(--line); background: var(--glass-2); }
+.demo-role { margin: 2px 0 0; font-size: 13px; color: var(--text-3); }
+.demo-log { margin-top: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--glass); }
+.demo-log summary { cursor: pointer; padding: 14px 18px; font: 600 15px 'Space Grotesk', sans-serif; display: flex; justify-content: space-between; align-items: center; gap: 12px; list-style: none; }
+.demo-log summary::-webkit-details-marker { display: none; }
+.demo-log summary::after { content: "+"; font-size: 18px; color: var(--text-3); }
+.demo-log[open] summary::after { content: "−"; }
+.demo-log summary span { margin-left: auto; font: 500 13px 'DM Sans', sans-serif; color: var(--text-3); }
+.demo-log .demo-timeline { margin: 0; padding: 0 14px 14px; }
+
+/* ------------------------------------------------------------------------------------------ legal: dated, status in fine print */
+.legal-updated { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--text-3); }
+.legal-status { margin-top: 32px; }
+
+/* ------------------------------------------------------------------------------------------ footer: readable sizes */
+.footer-top p { font-size: 14px; }
+.footer-top nav, .footer-legal { font-size: 14px !important; }
+.footer-bottom { font-size: 13px; }
+@media (max-width: 760px) { .footer-top nav, .footer-legal { font-size: 14px !important; } .footer-bottom { font-size: 12px; } }
+
+.demo-meter { scroll-margin-top: 96px; }
