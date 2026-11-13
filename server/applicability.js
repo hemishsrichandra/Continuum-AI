@@ -5,7 +5,7 @@
 // never used here: a candidate is compatible only when its explicit conditions
 // are satisfied by facts the customer actually stated.
 
-export const OS_FAMILIES = ['android', 'ios', 'windows', 'macos', 'ubuntu'];
+export const OS_FAMILIES = ['android', 'ios', 'windows', 'macos', 'ubuntu', 'linux'];
 // A negation only counts when it directly governs the mention: the negative word followed by at most
 // a few filler words ("not a Model X", "do not have a Model X", "isn't the Model X"). A negative word that
 // merely appears earlier in the clause ("the inbox never updates, Model Y firmware 9") does not negate it.
@@ -34,6 +34,8 @@ const patterns = [
   ['model', /\b(surface\s+(?:pro|laptop|go|book|studio)(?:\s+\d)?)\b/gi, true],
   ['model', /\b(pixel\s+\d{1,2}(?:\s+(?:pro|xl|a))?)\b/gi, true],
   ['model', /\b(galaxy\s+(?:s|a|z|note)\s?\d{1,2}(?:\s+(?:ultra|plus|fold|flip))?)\b/gi, true],
+  // Linux has no version number worth matching here: mentioning it is a family-level fact, and Ubuntu implies it (see customerFacts).
+  ['linux', /\b(linux)\b/gi, true, 'any'],
   ['model', /\b((?:hp|lenovo)\s+(?:pavilion|envy|spectre|elitebook|probook|omen|ideapad|yoga|legion)(?:\s+(?=[a-z0-9-]*\d)[a-z0-9-]{1,6})?)\b/gi, true],
 ];
 const opNames = { '>=': 'gte', '<=': 'lte', '>': 'gt', '<': 'lt', '=': 'eq' };
@@ -64,19 +66,20 @@ export function extractMentions(text) {
   const input = String(text || '');
   const mentions = [];
   const spans = [];
-  for (const [key, pattern, generic] of patterns) {
+  for (const [key, pattern, generic, fixed] of patterns) {
     for (const m of input.matchAll(pattern)) {
       if (key === 'version' && /(?:firmware|android|ios|ipados|windows|macos|ubuntu|os)\s*$/i.test(input.slice(0, m.index))) continue;
-      const value = (key === 'model' ? m[1] : m[2]).toLowerCase().replace(/[.,;:]+$/, '').replace(/\s+/g, ' ');
+      let value = (fixed || (key === 'model' || key === 'category' ? m[1] : m[2])).toLowerCase().replace(/[.,;:]+$/, '').replace(/\s+/g, ' ');
+      if (key === 'category') value = { notebook: 'laptop', smartphone: 'phone' }[value] || value;
       if (key === 'model' && ['number', 'name', 'unknown', 'is', 'the'].includes(value)) continue;
       const clause = clauseBefore(input, m.index);
       // A device the customer HAD earlier is not their current environment.
       if (HISTORICAL.test(clause)) continue;
       const negated = NEGATION_BEFORE.test(clause.trim() + ' ');
-      let op = key === 'model' ? 'eq' : opNames[m[1]] || rangeBefore(clause) || 'eq';
+      let op = key === 'model' || key === 'category' || fixed ? 'eq' : opNames[m[1]] || rangeBefore(clause) || 'eq';
       let max;
       let end = m.index + m[0].length;
-      if (key !== 'model' && op === 'eq') {
+      if (key !== 'model' && key !== 'category' && !fixed && op === 'eq') {
         const r = rangeAfter(input, end);
         if (r) {
           op = r.op;
@@ -172,6 +175,8 @@ export function customerFacts(text = '', fields = {}) {
     })
     .join('\n');
   for (const m of extractMentions(String(text) + '\n' + structuredText).mentions) add(m.key, m.value, m.negated);
+  // Ubuntu is Linux: a customer who says Ubuntu has also said Linux.
+  if (facts.ubuntu?.values.length && !facts.linux?.values.length) { facts.linux ||= { values: [], negated: [] }; facts.linux.values.push('any'); }
   return facts;
 }
 
@@ -183,6 +188,8 @@ export function customerFacts(text = '', fields = {}) {
 export function evaluateConditions(conditions = [], facts = {}) {
   const matched = [], missing = [], conflicts = [], missingConditions = [];
   const statedOs = OS_FAMILIES.filter((k) => facts[k]?.values.length);
+  // A customer who only says "Linux" has not contradicted a fix for one distribution (Ubuntu): that is unknown, not a conflict.
+  const onlyGenericLinux = statedOs.length === 1 && statedOs[0] === 'linux';
   for (const c of conditions) {
     const key = String(c.key).toLowerCase();
     const f = facts[key] || { values: [], negated: [] };
@@ -190,7 +197,7 @@ export function evaluateConditions(conditions = [], facts = {}) {
     const values = (c.values || []).map((v) => String(v).toLowerCase());
     if (!f.values.length) {
       // A different operating-system family is an explicit environment conflict.
-      if (OS_FAMILIES.includes(key) && c.op !== 'not_in' && statedOs.length && !statedOs.includes(key)) {
+      if (OS_FAMILIES.includes(key) && c.op !== 'not_in' && statedOs.length && !statedOs.includes(key) && !(key === 'ubuntu' && onlyGenericLinux)) {
         conflicts.push(label);
         continue;
       }

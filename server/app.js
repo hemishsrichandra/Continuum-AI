@@ -23,6 +23,7 @@ import { createFollowThrough } from './follow-through.js';
 import { intelligenceFor } from './intelligence.js';
 import { handleDemo, isDemoPath } from './demo-learning.js';
 import { createDataSources } from './data-sources.js';
+import { createKnowledgeImport } from './knowledge-import.js';
 import { createPrivacyControls } from './privacy-controls.js';
 import { createEmbeddingService } from './embedding-service.js';
 import { createVectorStore } from './vector-store.js';
@@ -45,7 +46,7 @@ export function createHandler({ file, config = process.env, service, vectorClien
   config.APP_URL = appUrl.origin;
   const store = new Store(file);
   const delivery = createIntegrations(store, config);
-  const companies = createCompanies(store, config);
+  const companies = createCompanies(store, config, delivery);
   const connector = createConnector(store, delivery, config);
   const auth = createAuth(store, config, delivery, companies);
   if (config.ENABLE_OUTBOX_WORKER === 'true') delivery.start();
@@ -56,6 +57,7 @@ export function createHandler({ file, config = process.env, service, vectorClien
   const memoryPool = createMemoryPool(store, config, { embedding, vectors });
   const vectorIndex = createVectorIndex(store, { vectors, embedding });
   const dataSources = createDataSources(store, delivery, config);
+  const knowledgeImport = createKnowledgeImport(store, config, { fetchImpl: config.__knowledgeDraftFetch || null });
   const followThrough = createFollowThrough(store, { delivery, config });
   const reuse = createReuse(store, memory, providerActions, memoryPool);
   const learning = createLearning(store, memory, companies, config, reuse, providerActions, { memoryPool, followThrough });
@@ -250,6 +252,10 @@ export function createHandler({ file, config = process.env, service, vectorClien
       if (endpoint.includes('/api/company/data-sources')) {
         limit(session.token_hash + ':datasource', 30);
         if (await dataSources.handle(req, endpoint, session, write)) return;
+      }
+      if (endpoint.includes('/api/company/knowledge-import')) {
+        limit(session.token_hash + ':knowledge-import', 20);
+        if (await knowledgeImport.handle(req, endpoint, session, write)) return;
       }
       if (await companies.handle(req, endpoint, session, write)) return;
       const staff = companies.staff(profile);

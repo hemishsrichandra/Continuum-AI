@@ -622,6 +622,7 @@ dialog::backdrop { background: rgba(12,5,8,.72); }
 .alt-choice p { margin: 0; } .alt-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
 .alt-choice small { color: var(--text-2); } .alt-choice .button { justify-self: start; }
 .more-outcomes { flex-basis: 100%; } .more-outcomes summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
+
 /* ------------------------------------------------------------------------------------------ hero graphic placement
    The constellation sits in its own column and never runs behind the headline or the buttons. Below 1000px there is no
    room for a second column, so it becomes a faint backdrop instead. */
@@ -637,3 +638,14 @@ dialog::backdrop { background: rgba(12,5,8,.72); }
 .story3d { height: 300vh; }
 .story-card > * { opacity: var(--c, 1); transition: opacity .3s ease; }
 @media (max-width: 900px), (prefers-reduced-motion: reduce) { .story3d { height: auto; } }
+
+/* Free-text knowledge import (team → Knowledge) */
+.stack-form { display: grid; gap: 14px; }
+.form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+@media (max-width: 700px) { .form-row { grid-template-columns: minmax(0, 1fr); } }
+.segmented { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin: 0; display: grid; gap: 6px; }
+.segmented legend { padding: 0 6px; color: var(--text-2); font-size: 14px; }
+.segmented label { display: flex; gap: 8px; align-items: center; font-weight: 500; }
+.import-drafts { display: grid; gap: 12px; max-height: 70vh; overflow-y: auto; padding-right: 4px; }
+.import-drafts .card { display: grid; gap: 10px; }
+.top-fixes { margin: 0; padding-left: 20px; display: grid; gap: 6px; }

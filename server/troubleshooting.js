@@ -7,6 +7,7 @@ import {signatureOf, verificationOf, SOURCE_LABELS} from './passports.js';
 import {passportView} from './memory-pool.js';
 import {THRESHOLDS,compatibilityGate} from './scoring.js';
 import {customerFacts, extractMentions} from './applicability.js';
+import {normalizeQuery} from './query-normalizer.js';
 import {customerAdvice} from './customer-advice.js';
 
 const now = () => new Date().toISOString();
@@ -20,7 +21,7 @@ const LABELS={specialist_confirmed:"Learned from a customer-confirmed specialist
 export const sourceInfo=(row,score,gate)=>({advisory:gate?.advisory||null,id:row.id,origin:row.origin_type,verification:verificationOf(row),label:SOURCE_LABELS[verificationOf(row)]||LABELS[row.origin_type],version:row.version_number,customerConfirmed:Boolean(row.customer_confirmed),unconfirmed:row.origin_type==='auto_published_overdue'&&!row.customer_confirmed,title:row.title,...(score&&{score})});
 const evidenceFor=(row,score)=>({id:row.id,resolutionId:row.id,kind:row.customer_confirmed?'verified_resolution':'company_memory',origin:row.origin_type,version:row.version_number,text:JSON.parse(row.steps_json).join(' '),
   ...(score&&{score}),passport:passportView(row,{internal:false})});
-export function createTroubleshooting(store, learning, reuse, providerActions, {memoryPool, followThrough} = {}) {
+export function createTroubleshooting(store, learning, reuse, providerActions, {memoryPool, followThrough, queryProvider = null} = {}) {
   const sql = store.db;
   function authorize(p) {
     if(!p.demo && !sql.prepare("SELECT 1 FROM company_memberships WHERE company_id=? AND account_id=? AND role='customer' AND status='active'").get(p.companyId,p.id))
@@ -79,7 +80,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     return result;
   }
   // Literal "model X / firmware 4" phrases, or any natural hardware name (MacBook Pro, Dell XPS, ThinkPad, iPhone, Galaxy, ...).
-  const envMention={test:(text)=>/\b(?:model|firmware|windows|macos|ubuntu|android|ios|version)\s+[\w.-]+/i.test(text||'') || extractMentions(String(text||'')).mentions.length>0};
+  const envMention={test:(text)=>/\b(?:model|firmware|windows|macos|ubuntu|android|ios|version)\s+[\w.-]+/i.test(text||'') || extractMentions(String(text||'')).mentions.some(m=>!['category','linux'].includes(m.key))}; // a bare "laptop" or "Linux" is not a device model
   const savedContext=(p,t)=>{const row=sql.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(...args(p,t));return row?JSON.parse(row.context):{};};
   /** The earlier stated environment, if this message names a genuinely different device or version. */
   function environmentConflict(earlier,message,inputContext) {
@@ -103,9 +104,18 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const stdFix=std?JSON.parse(std.snapshot):null;
     const stdSig=stdFix?.steps?[signatureOf([stdFix.steps])]:[];
     const query=[t.title,t.issue,message,...Object.values(context)].join('\n');
-    return memoryPool.retrieve({companyId:p.companyId,chatbotId:botId(p),text:messageOnly&&message.trim()?message:query,factsText:query,fields:context,
+    // Semantic search runs on the de-noised symptom text; compatibility and safety keep using the customer's own words (factsText).
+    const norm=message.trim()?await normalizeQuery(message,{provider:queryProvider}):null;
+    const searchMessage=norm?norm.retrievalText:message;
+    // The request's own description is just as noisy as a chat message, so it is de-noised the same way.
+    const issueNorm=t.issue?await normalizeQuery(t.issue,{provider:queryProvider}):null;
+    const contextNorm=await Promise.all(Object.values(context).map(async (v)=>typeof v==='string'&&v.length>40?(await normalizeQuery(v,{provider:queryProvider})).retrievalText:v));
+    const searchQuery=[t.title,issueNorm?issueNorm.retrievalText:t.issue,searchMessage,...contextNorm].join('\n');
+    const found=await memoryPool.retrieve({companyId:p.companyId,chatbotId:botId(p),text:messageOnly&&searchMessage.trim()?searchMessage:searchQuery,factsText:query,fields:context,
       excludeIds:new Set([...triedIds,...failedBefore.ids]),excludeSignatures:new Set([...triedSig,...failedBefore.signatures,...stdSig]),
       allowedOrigins:['specialist_confirmed','company_db_sync','auto_published_overdue']});
+    if(norm) found.normalized={method:norm.method,symptoms:norm.symptoms,components:norm.components,urgency:norm.urgency,ms:norm.ms,fallbackReason:norm.fallbackReason||null};
+    return found;
   }
   const RICH_OUTCOMES=new Set(['not_applicable','unable_to_try','human_requested']);
   /** A suggestion shown next to the best one: a preview only. It is not an attempt until the customer chooses it. */

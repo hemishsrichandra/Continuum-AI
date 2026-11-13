@@ -6,7 +6,7 @@ import { syncPlaybooks } from './passports.js';
 
 export const tokenHash = (value) => createHash('sha256').update(value).digest('hex');
 const secret = () => randomBytes(24).toString('base64url');
-export function createCompanies(store, config) {
+export function createCompanies(store, config, delivery = null) {
   const sql = store.db;
   function registration(body, email) {
     if (body.invitation) {
@@ -39,6 +39,15 @@ export function createCompanies(store, config) {
     sql.prepare('INSERT INTO companies VALUES(?,?,NULL,?)').run(companyId, name, Date.now());
     ensureBots(sql, companyId);
     return { companyId, role: 'owner', provider: body.provider };
+  }
+  /** Queue the invitation email (only when the owner chose to send it). Returns whether it was queued. */
+  function emailInvite(companyId, to, url, expiresAt) {
+    const company = sql.prepare('SELECT name FROM companies WHERE id=?').get(companyId)?.name || 'a company';
+    return Boolean(delivery?.queueEmail({
+      id: 'invite-' + randomUUID(), scope: 'company-invite', to, expiresAt,
+      subject: `You are invited to join ${company} on Continuum`,
+      text: `You have been invited to join ${company} on Continuum.\n\nOpen this private link to create your account (it works only for this email address and expires in 48 hours):\n${url}\n\nIf you were not expecting this, you can ignore this message.`,
+    }));
   }
   function staff(profile) {
     if (!profile || profile.demo) return null;
@@ -185,11 +194,13 @@ export function createCompanies(store, config) {
       return true;
     }
     if (endpoint === 'POST /api/company/invitations/resend') {
+      // Nothing is emailed unless the owner asks for it AND the server has email configured.
       const body = await json(req);
       if (body.confirmed !== true) throw fault(400, 'Confirm sending a new invitation. The previous link stops working.');
       const email = field(body.email, 'email', 254).toLowerCase();
       const previous = sql.prepare('SELECT role,provider FROM invitations WHERE company_id=? AND email=? AND consumed_at IS NULL ORDER BY expires_at DESC LIMIT 1').get(companyId, email);
       if (!previous) throw fault(404, 'There is no unused invitation for that email address. Create a new one instead.');
+      if (body.sendEmail === true && !delivery?.emailConfigured) throw fault(400, 'Email is not set up on this server. Copy the link and share it instead.');
       const token = secret(), now = Date.now(), expiresAt = now + 48 * 3600000;
       sql.transaction(() => {
         // Only one live link per person: the old one is removed the moment the new one exists.
@@ -197,12 +208,14 @@ export function createCompanies(store, config) {
         sql.prepare('INSERT INTO invitations VALUES(?,?,?,?,?,?,NULL)').run(tokenHash(token), companyId, email, previous.provider, previous.role, expiresAt);
         store.update((data) => data.audit.push({ id: randomUUID(), scope: `company:${companyId}`, kind: 'invitation_resent', email, authorId: session.account_id, createdAt: new Date().toISOString() }));
       }).immediate();
-      send(201, { url: config.APP_URL + '/desk#invite=' + token, expiresAt });
+      const url = config.APP_URL + '/desk#invite=' + token;
+      send(201, { url, expiresAt, emailed: body.sendEmail === true ? emailInvite(companyId, email, url, expiresAt) : false });
       return true;
     }
     if (endpoint === 'GET /api/company') {
       send(200, {
         company: sql.prepare('SELECT id,name FROM companies WHERE id=?').get(companyId),
+        emailConfigured: Boolean(delivery?.emailConfigured),
         members: sql
           .prepare('SELECT a.id,a.name,a.email,m.role,m.provider,m.status FROM accounts a JOIN company_memberships m ON m.account_id=a.id WHERE m.company_id=? ORDER BY a.name')
           .all(companyId),
@@ -235,12 +248,14 @@ export function createCompanies(store, config) {
         !['repair', 'it'].includes(body.provider)
       )
         throw fault(400, 'Choose a valid email, role, and schema adapter.');
+      if (body.sendEmail === true && !delivery?.emailConfigured) throw fault(400, 'Email is not set up on this server. Copy the link and share it instead.');
       const token = secret(),
         expiresAt = Date.now() + 48 * 3600000;
       sql
         .prepare('INSERT INTO invitations VALUES(?,?,?,?,?,?,NULL)')
         .run(tokenHash(token), companyId, email, body.provider, body.role, expiresAt);
-      send(201, { url: config.APP_URL + '/desk#invite=' + token, expiresAt });
+      const url = config.APP_URL + '/desk#invite=' + token;
+      send(201, { url, expiresAt, emailed: body.sendEmail === true ? emailInvite(companyId, email, url, expiresAt) : false });
       return true;
     }
     if (endpoint === 'POST /api/company/revoke-staff') {
