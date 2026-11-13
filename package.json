@@ -21,7 +21,9 @@
     "chroma:start": "chroma run --path ./data/chroma --host 127.0.0.1 --port 8000",
     "index": "node scripts/vector-admin.js",
     "benchmark": "node --import ./test/setup-windows-cleanup.js scripts/benchmark-rag.js --out evaluation/benchmark-results.json",
-    "test:chroma": "node --import ./test/setup-windows-cleanup.js --test test/chroma-live.test.js"
+    "test:chroma": "node --import ./test/setup-windows-cleanup.js --test test/chroma-live.test.js",
+    "verify:chroma": "node --import ./test/setup-windows-cleanup.js scripts/verify-chroma-live.js",
+    "benchmark:semantic": "node --import ./test/setup-windows-cleanup.js scripts/benchmark-semantic.js --out evaluation/semantic-results.json"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

@@ -110,4 +110,16 @@ Dark-first design with a light theme, glass surfaces, and 3D used only where it 
 
 **Verified:** `npm test` 272 tests, 271 passed, 0 failed, 1 skipped; `npm run test:http` passes with the new assets. axe (WCAG A/AA) reported **0 violations** on Home, Product, How it works, Pricing, Team and the console's Overview, Cases and Knowledge in dark, and on Pricing and all three console sections in light. Axe found four real contrast problems, which were fixed; the light-theme Home page had one of them (step numbers) and was **not re-scanned** after the fix. No horizontal overflow at 375 px on Home, Pricing, the console and the demo. The guided demo still runs end to end.
 
-**Not verified / limits:** the customer workspace and the sign-in screen were checked visually but not scanned with axe in both themes; the Cases and Knowledge sections were not exercised with many cases; there is no automated browser test (all UI checks were manual); WebGL performance on low-end devices was not measured; the 3D scene adds about 175 KB gzipped of JavaScript, loaded only on Home and Demo.
+**Not verified / limits:** axe was run on Home (scrolled through every section, both themes), the sign-in screen and the customer workspace in both themes and reported 0 violations once animations had settled (a scan taken 150 ms after switching theme caught colours mid-transition; that is a measurement artefact, and the one real finding, story steps dimmed with opacity, is fixed). Other pages were scanned in earlier rounds, not re-scanned here; this is not screen-reader or cross-browser certification. the Cases and Knowledge sections were not exercised with many cases; there is no automated browser test (all UI checks were manual); WebGL performance on low-end devices was not measured; the 3D scene adds about 175 KB gzipped of JavaScript, loaded only on Home and Demo.
+
+## Latest audit fixes (branch `feature/audit-fixes-final`)
+
+Built on the UI redesign and the SQLite + ChromaDB work. Details and the F-01 to F-08 table: [UPGRADE-AUDIT.md](UPGRADE-AUDIT.md). Privacy policy: [PRIVACY.md](PRIVACY.md).
+
+**Fixed (with regression tests):** private-address bypass in the IP validator (F-01); personal data in passport evidence and provenance (F-02); stale vector-index worker overwriting newer state (F-03); applicability and safety edits not triggering reindexing (F-04); embedding responses mapped by order (F-05). The live verification also found and fixed a privacy gap in single-request erasure.
+
+**Verification:** run on a clean clone with `npm ci`: `npm test` **303 tests: 302 pass, 1 skipped (a Windows symlink case), 0 fail**; live ChromaDB test, demos and HTTP check pass; `npm run verify:chroma` 10/10 on a real ChromaDB including a real outage and, after a real server restart, persisted vectors; two real worker processes (one killed mid-job) leave a consistent index.
+
+**Measured, and not as good as earlier numbers suggested:** the default offline embedding scores recall@3 of about 0.03-0.09 on a held-out paraphrase set (the earlier ~0.9 figures used in-vocabulary paraphrases). It never recommended anything unsafe (0/18). The neural comparison is **blocked** (the configured endpoint, Groq, has no embeddings API), so no neural default has been chosen.
+
+**Not done:** neural embedding comparison; `docker-compose.yml` run; splitting `app.js` (F-08, deferred); an automated browser test suite (axe scans are manual and dev-only).

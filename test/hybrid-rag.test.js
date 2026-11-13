@@ -71,7 +71,7 @@ test('privacy: raw customer details are never sent to an external embedding prov
   const bodies = [];
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     bodies.push(String(options.body));
-    return Response.json({ data: JSON.parse(options.body).input.map(() => ({ embedding: [1, 0, 0] })) });
+    return Response.json({ data: JSON.parse(options.body).input.map((_, i) => ({ index: i, embedding: [1, 0, 0] })) });
   });
   const w = await world(t, { config: { OPENAI_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
   seedFlicker(w);
@@ -199,7 +199,7 @@ test('a new embedding model gets its own collection; vectors of different models
   seedFlicker(w);
   await w.h.vectorIndex.drain();
   assert.equal(fake.state.collections.size, 1);
-  const next = createEmbeddingService({ EMBEDDING_MODEL: 'next-model', OPENAI_API_KEY: 'k' }, { fetchImpl: async (u, o) => Response.json({ data: JSON.parse(o.body).input.map(() => ({ embedding: [0.2, 0.9, 0.1, 0.4] })) }) });
+  const next = createEmbeddingService({ EMBEDDING_MODEL: 'next-model', OPENAI_API_KEY: 'k' }, { fetchImpl: async (u, o) => Response.json({ data: JSON.parse(o.body).input.map((_, i) => ({ index: i, embedding: [0.2, 0.9, 0.1, 0.4] })) }) });
   const upgraded = createVectorIndex(w.h.store, { vectors: w.h.vectors, embedding: next });
   assert.ok(upgraded.markStale() >= 1, 'vectors made by the old model are stale');
   const r = await upgraded.drain();

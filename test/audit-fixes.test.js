@@ -135,7 +135,7 @@ test('F16: a remote embedding service returning inconsistent dimensions is ignor
   let n = 0;
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     const input = JSON.parse(options.body).input;
-    return Response.json({ data: input.map((x, i) => ({ embedding: (n++ % 2 ? [1, 0] : [1, 0, 0]) })) });
+    return Response.json({ data: input.map((x, i) => ({ index: i, embedding: (n++ % 2 ? [1, 0] : [1, 0, 0]) })) });
   });
   t.mock.method(console, 'warn', () => {});
   const w = await world(t, { config: { OPENAI_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
