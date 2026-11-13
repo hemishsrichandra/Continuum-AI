@@ -195,7 +195,7 @@ test('a configured remote embedding backend is used for semantic matches without
     // Both the passport and the paraphrase land on the same direction; invoices elsewhere.
     return Response.json({ data: input.map((x, i) => ({ index: i, embedding: /invoice/i.test(x) ? [0, 0, 1] : /Standard playbook/i.test(x) ? [0, 1, 0] : [1, 0, 0] })) });
   });
-  const w = await world(t, { config: { OPENAI_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
+  const w = await world(t, { config: { EMBEDDING_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
   w.seed(w.company, { title: FOUR[0][0], symptoms: FOUR[0][1], steps: [FOUR[0][2]] });
   const near = await w.h.memoryPool.retrieve({ companyId: w.company, chatbotId: w.botOf(w.company), text: 'A strobing panel appears as the computer wakes. Model X firmware 4' });
   assert.equal(near.backend, 'test-embedding');
@@ -207,7 +207,7 @@ test('a configured remote embedding backend is used for semantic matches without
 
 test('embedding backend failure falls back to the offline representation', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => { throw new Error('offline'); });
-  const w = await world(t, { config: { OPENAI_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
+  const w = await world(t, { config: { EMBEDDING_API_KEY: 'synthetic', EMBEDDING_MODEL: 'test-embedding' } });
   w.seed(w.company, { title: FOUR[0][0], symptoms: FOUR[0][1], steps: [FOUR[0][2]] });
   const out = await w.h.memoryPool.retrieve({ companyId: w.company, chatbotId: w.botOf(w.company), text: ISSUE });
   assert.equal(out.backend, 'local-hashed-concepts-v2');

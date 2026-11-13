@@ -15,7 +15,7 @@ export const resolutionSignature = (r) =>
 const concepts = [
   ['display', /\b(screen|monitor|display|panel|picture|image|visuals?)\b/g],
   ['flicker', /\b(flicker\w*|flash\w*|blink\w*|strob\w*|shimmer\w*|jitter\w*|jittery|puls(?:e|es|ing)|alternat\w*|unsteady|glitch\w*)\b/g],
-  ['startup', /\b(startup|boot\w*|start[ -]?up|power[ -]?on|powers? on|switch(?:ed|es|ing)? on|turn(?:ed|s|ing)? on)\b/g],
+  ['startup', /\b(startup|boot\w*|start[ -]?up|power[ -]?on|powers? on|(?:switch|turn)(?:ed|es|s|ing)? (?:(?:it|them|this|that|the \w+|my \w+) )?on)\b/g],
   ['laptop', /\b(notebook|laptop)\b/g],
   ['network', /\b(wi[ -]?fi|wireless|internet|network|connectivity|link)\b/g],
   ['offline', /\b(offline|disconnected|unavailable|no connection|not connecting)\b/g],
@@ -23,7 +23,7 @@ const concepts = [
   ['drain', /\b(drain\w*|deplet\w*|discharg\w*|plummet\w*|runs? (?:down|out)|loses? (?:its |their |the |my )?(?:charge|power)|falls? (?:unusually |very |far |too )?(?:fast|quickly|rapidly)|(?:much )?sooner than)\b/g, 'drain battery'],
   ['rapid', /\b(rapid\w*|fast|quick\w*|swift\w*)\b/g],
   ['battery', /\b(battery|charge|charging|energy)\b/g],
-  ['disconnect', /\b(disconnect\w*|dropping|drops|cut(?:s|ting)? out|vanish\w*|kicked off|rejoin\w*|intermittent\w*|loses? (?:its |the |my )?(?:connection|link|signal))\b/g],
+  ['disconnect', /\b(disconnect\w*|dropping|drops|cut(?:s|ting)? out|vanish\w*|kicked off|rejoin\w*|intermittent\w*|(?:loses?|losing|lost)\s+(?:(?:its|the|my|our|their)\s+)?(?:network\s+)?(?:connection|link|signal))\b/g],
   ['login', /\b(sign[ -]?in|log[ -]?in|authenticat\w*|credentials?)\b/g],
   ['rejected', /\b(refus\w*|reject\w*|declin\w*|denied|denies|turns? down|not accept\w*|fails?|failed|failing|failure)\b/g],
   // More specific phrases come first so "no sound" is not consumed by the plain "sound" rule.

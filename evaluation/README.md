@@ -63,11 +63,11 @@ The harness uses the real registration, handoff, confirmation and retrieval flow
 
 ## Evaluate with a real embedding model
 
-Offline retrieval uses a local concept embedding. To measure a real embedding model (OpenAI-compatible `/embeddings`), set `EMBEDDING_MODEL` and `OPENAI_API_KEY` (and `OPENAI_BASE_URL` if needed) and add `--embeddings`:
+Offline retrieval uses a local concept embedding. To measure a real embedding model (OpenAI-compatible `/embeddings`), set `EMBEDDING_MODEL` and `EMBEDDING_API_KEY` (and `EMBEDDING_BASE_URL` if needed) and add `--embeddings`:
 
 ```sh
-EMBEDDING_MODEL=text-embedding-3-small OPENAI_API_KEY=... node scripts/evaluate.js --validation --embeddings
-EMBEDDING_MODEL=... OPENAI_API_KEY=... node scripts/evaluate.js --file my-cases.json --embeddings
+EMBEDDING_MODEL=text-embedding-3-small EMBEDDING_API_KEY=... node scripts/evaluate.js --validation --embeddings
+EMBEDDING_MODEL=... EMBEDDING_API_KEY=... node scripts/evaluate.js --file my-cases.json --embeddings
 ```
 
 This sends the stored fix text and the query wording to your embedding provider, so only use it with data you may share with that provider. It fails loudly if the variables are missing, and the report records which model was used. It has **not** been run against a live provider in this repository (only against a mock), so compare it against the offline numbers before relying on it.

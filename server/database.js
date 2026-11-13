@@ -216,6 +216,8 @@ export class SqliteStore {
     this.migrateV9();
     this.migrateV10();
     this.migrateV11();
+    this.migrateV12();
+    this.migrateV13();
     // Idempotent hardening: the case timeline is an audit trail and can only be appended to.
     this.db.exec(`
       CREATE TRIGGER IF NOT EXISTS case_events_append_only_update BEFORE UPDATE ON case_events BEGIN SELECT RAISE(ABORT,'case_events is append-only'); END;
@@ -295,6 +297,90 @@ export class SqliteStore {
   // Migration 10: why an attempt was skipped (not_applicable, unable_to_try, human_requested, set_aside). Additive and idempotent.
   // Migration 11: websites an owner approved for REST knowledge sources, per company (in addition to the server-wide
   // DATA_SOURCE_ALLOWED_ORIGINS). The network guard still refuses private, loopback and link-local addresses.
+  // Migration 12: near-miss memory. When a customer says a suggested fix did not help, WHY and in WHICH context (device / version
+  // facts only, never the customer's identity or free text beyond a short sanitized note) is kept so later ranking can demote a fix
+  // for customers in a similar situation while leaving it alone for everyone else. Additive and idempotent.
+  migrateV12() {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS fix_near_misses (
+      id TEXT PRIMARY KEY, company_id TEXT NOT NULL, chatbot_id TEXT NOT NULL, memory_id TEXT NOT NULL, ticket_id TEXT,
+      reason TEXT NOT NULL, detail TEXT, facts_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS fix_near_misses_memory ON fix_near_misses(company_id, memory_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS fix_near_misses_once ON fix_near_misses(company_id, memory_id, ticket_id);`);
+    // A company created by scripts/seed-sample-company.js is marked so every figure shown for it is labelled as synthetic.
+    // Covers the pool-size count and candidate scans that filter by origin as well (index-only, no table visit per row).
+    this.db.exec('CREATE INDEX IF NOT EXISTS memory_pool_scope_origin ON memory_pool(company_id, chatbot_id, status, origin_type)');
+    this.db.exec('CREATE TABLE IF NOT EXISTS sample_companies (company_id TEXT PRIMARY KEY REFERENCES companies(id))');
+    this.db.prepare('INSERT OR IGNORE INTO schema_migrations VALUES(12,?)').run(new Date().toISOString());
+  }
+  // Migration 13: resumable, incremental source sync (checkpoints, high-water marks, leases, per-run history), MySQL/MariaDB, SQL Server and
+  // streamed CSV-file source types, structured compatibility fields, an append-only knowledge audit trail, cross-source conflicts and
+  // opt-in shadow evaluation. Additive and idempotent: the sources table is rebuilt only to widen its source_type CHECK.
+  migrateV13() {
+    const has = (table, column) => this.db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+    this.db.transaction(() => {
+      const ddl = this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='company_data_sources'").get()?.sql || '';
+      if (ddl && !ddl.includes("'mysql'")) {
+        const old = this.db.prepare('PRAGMA table_info(company_data_sources)').all().map((c) => c.name);
+        this.db.exec(`
+          CREATE TABLE company_data_sources_v13 (
+            id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id), chatbot_id TEXT NOT NULL,
+            name TEXT NOT NULL, source_type TEXT NOT NULL CHECK(source_type IN ('sqlite','postgres','rest_api','csv_sync','csv_file','mysql','mssql')),
+            encrypted_connection_uri TEXT, field_mapping_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(field_mapping_json)),
+            diagnostic_schema_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(diagnostic_schema_json)),
+            declared_verified INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'configured',
+            last_synced_at TEXT, last_sync_result_json TEXT, last_error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            sync_interval_hours INTEGER CHECK(sync_interval_hours IS NULL OR sync_interval_hours BETWEEN 1 AND 720), next_sync_at TEXT,
+            authoritative_snapshot INTEGER NOT NULL DEFAULT 0, last_complete_sync_at TEXT, sync_cursor INTEGER,
+            FOREIGN KEY(company_id,chatbot_id) REFERENCES chatbots(company_id,id));
+        `);
+        const shared = old.filter((c) => has('company_data_sources_v13', c));
+        this.db.exec(`INSERT INTO company_data_sources_v13(${shared.join(',')}) SELECT ${shared.join(',')} FROM company_data_sources; DROP TABLE company_data_sources; ALTER TABLE company_data_sources_v13 RENAME TO company_data_sources;
+          CREATE INDEX IF NOT EXISTS data_source_company ON company_data_sources(company_id);
+          CREATE INDEX IF NOT EXISTS data_source_due ON company_data_sources(next_sync_at) WHERE sync_interval_hours IS NOT NULL;`);
+      }
+      const add = (table, column, type) => { if (!has(table, column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`); };
+      add('company_data_sources', 'sync_checkpoint_json', 'TEXT');
+      add('company_data_sources', 'high_water_json', 'TEXT');
+      add('company_data_sources', 'scan_generation', 'INTEGER NOT NULL DEFAULT 0');
+      add('company_data_sources', 'lease_until', 'INTEGER');
+      add('company_data_sources', 'stop_request', 'TEXT');
+      add('company_data_sources', 'consecutive_failures', 'INTEGER NOT NULL DEFAULT 0');
+      add('company_data_sources', 'incremental_enabled', 'INTEGER NOT NULL DEFAULT 0');
+      add('company_data_sources', 'last_full_sync_at', 'TEXT');
+      add('company_data_sources', 'stale_after_days', 'INTEGER');
+      add('company_data_sources', 'last_scheduled_at', 'TEXT');
+      add('memory_pool', 'source_scan', 'INTEGER');
+      add('memory_pool', 'problem_key', 'TEXT');
+      this.db.exec('CREATE INDEX IF NOT EXISTS memory_pool_problem_key ON memory_pool(company_id, chatbot_id, problem_key) WHERE problem_key IS NOT NULL');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS source_sync_runs (
+          id TEXT PRIMARY KEY, company_id TEXT NOT NULL, source_id TEXT NOT NULL, mode TEXT NOT NULL, trigger_kind TEXT NOT NULL DEFAULT 'manual',
+          status TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, resumed INTEGER NOT NULL DEFAULT 0, result_json TEXT, error TEXT);
+        CREATE INDEX IF NOT EXISTS source_sync_runs_source ON source_sync_runs(company_id, source_id, started_at);
+        CREATE TABLE IF NOT EXISTS knowledge_events (
+          id TEXT PRIMARY KEY, company_id TEXT NOT NULL, chatbot_id TEXT, memory_id TEXT, source_id TEXT, kind TEXT NOT NULL, actor TEXT,
+          detail_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(detail_json)), created_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS knowledge_events_memory ON knowledge_events(company_id, memory_id, created_at);
+        CREATE INDEX IF NOT EXISTS knowledge_events_company ON knowledge_events(company_id, created_at);
+        CREATE TRIGGER IF NOT EXISTS knowledge_events_append_only_update BEFORE UPDATE ON knowledge_events BEGIN SELECT RAISE(ABORT,'knowledge_events is append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS knowledge_events_append_only_delete BEFORE DELETE ON knowledge_events BEGIN SELECT RAISE(ABORT,'knowledge_events is append-only'); END;
+        CREATE TABLE IF NOT EXISTS knowledge_conflicts (
+          id TEXT PRIMARY KEY, company_id TEXT NOT NULL, chatbot_id TEXT NOT NULL, memory_a TEXT NOT NULL, memory_b TEXT NOT NULL, kind TEXT NOT NULL,
+          reason TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','resolved')), resolution TEXT, note TEXT,
+          created_at TEXT NOT NULL, resolved_at TEXT, resolved_by TEXT, UNIQUE(company_id, memory_a, memory_b));
+        CREATE INDEX IF NOT EXISTS knowledge_conflicts_open ON knowledge_conflicts(company_id, chatbot_id, status);
+        CREATE TABLE IF NOT EXISTS shadow_settings (
+          company_id TEXT NOT NULL, chatbot_id TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, changed_by TEXT, changed_at TEXT NOT NULL,
+          PRIMARY KEY(company_id, chatbot_id));
+        CREATE TABLE IF NOT EXISTS shadow_runs (
+          id TEXT PRIMARY KEY, company_id TEXT NOT NULL, chatbot_id TEXT NOT NULL, ticket_id TEXT NOT NULL, query_chars INTEGER NOT NULL,
+          top_json TEXT NOT NULL CHECK(json_valid(top_json)), eligible INTEGER NOT NULL, withheld INTEGER NOT NULL, latency_ms INTEGER NOT NULL,
+          backend TEXT, error TEXT, created_at TEXT NOT NULL, agreement REAL, compared_at TEXT);
+        CREATE INDEX IF NOT EXISTS shadow_runs_scope ON shadow_runs(company_id, chatbot_id, created_at);
+      `);
+      this.db.prepare('INSERT OR IGNORE INTO schema_migrations VALUES(13,?)').run(new Date().toISOString());
+    }).immediate();
+  }
   migrateV11() {
     this.db.exec(`CREATE TABLE IF NOT EXISTS company_source_origins (
       company_id TEXT NOT NULL REFERENCES companies(id), origin TEXT NOT NULL, added_by TEXT NOT NULL, added_at TEXT NOT NULL,

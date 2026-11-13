@@ -649,3 +649,31 @@ dialog::backdrop { background: rgba(12,5,8,.72); }
 .import-drafts { display: grid; gap: 12px; max-height: 70vh; overflow-y: auto; padding-right: 4px; }
 .import-drafts .card { display: grid; gap: 10px; }
 .top-fixes { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+/* Dashboard: repeat problems and stale fixes */
+.repeat-panel, .stale-panel { margin-top: 18px; }
+.repeat-compare { display: flex; align-items: stretch; gap: 14px; flex-wrap: wrap; }
+.repeat-compare .dash-stat { flex: 1 1 180px; }
+.repeat-arrow { align-self: center; font-size: 1.6rem; color: var(--text-2); }
+
+/* Customer progress: tried A, trying B, a specialist is next */
+.progress-tracker { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.progress-tracker ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.progress-tracker li { display: grid; gap: 2px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line-2, var(--line)); font-size: .85rem; min-width: 110px; }
+.progress-tracker li span { color: var(--text-2); font-size: .78rem; }
+.progress-tracker .pt-succeeded { border-color: var(--accent, #3fb68b); }
+.progress-tracker .pt-pending { border-color: var(--text); }
+.progress-tracker .pt-failed { opacity: .85; }
+.progress-tracker .pt-next, .progress-tracker .pt-skipped { opacity: .7; border-style: dashed; }
+.progress-tracker p { margin: 8px 0 0; font-size: .85rem; }
+.why-fits { margin: 8px 0 0; font-size: .92rem; }
+.why-failed select { max-width: 100%; margin: 6px 0; }
+
+/* Guided tour */
+.tour-launch { position: fixed; left: 16px; bottom: 16px; z-index: 40; box-shadow: var(--shadow); }
+.tour-launch.is-new { outline: 2px solid var(--accent, currentColor); outline-offset: 2px; }
+.tour-card { position: fixed; left: 16px; bottom: 64px; z-index: 41; width: min(360px, calc(100vw - 32px)); padding: 16px 18px; border-radius: 16px; background: var(--surface); color: var(--text); border: 1px solid var(--line-2); box-shadow: var(--shadow); display: grid; gap: 8px; }
+.tour-card h2 { margin: 0; font-size: 1.1rem; }
+.tour-card p { margin: 0; color: var(--text-2); }
+.tour-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.tour-target { outline: 3px solid var(--accent, #3fb68b); outline-offset: 4px; border-radius: 8px; }

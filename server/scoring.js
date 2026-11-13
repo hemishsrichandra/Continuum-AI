@@ -2,7 +2,7 @@
 //
 // Pure module: no database, network or model access. Shared by the main
 // application's retriever (server/memory-pool.js) and by the isolated learning
-// demo (server/demo-learning.js). All formulas are documented in ARCHITECTURE.md
+// demo (server/demo-learning.js). All formulas are documented in docs/ARCHITECTURE.md
 // and unit-tested in test/scoring.test.js.
 import { tokens, conceptTokens, compatibility } from './context.js';
 import { evaluateConditions, conditionsFromText, describeCondition } from './applicability.js';
@@ -193,10 +193,37 @@ export function needsReviewFlag({ consecutiveFailures = 0, cInit = 0, successes 
 // - optional (required:false) conditions scale 0.7 + 0.3*fraction matched
 // - any conflict / safety restriction hit -> ineligible
 // - unknown required facts -> withheld (clarify), never compatible by default
-export function compatibilityGate({ applicability = {}, safety = {}, facts = {}, text = '', fields = {} }) {
+// Structured catalogue fields an import can carry. They are matched against what the customer stated (a diagnostic field, or the model /
+// product / category appearing in their own words). Which values exist is entirely the tenant's data: nothing here names a category.
+const STRUCTURED_KEYS = new Set(['model', 'product_family', 'problem_category']);
+const slugOf = (v) => String(v).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const STRUCTURED_LABELS = { model: 'model', product_family: 'product family', problem_category: 'problem category' };
+/** Facts the customer implied without a keyword ("my Acme X100 stopped charging" names the model) and slug-normalised family/category values. */
+function withStructuredFacts(conditions, facts, text) {
+  let out = facts;
+  const haystack = ' ' + String(text || '').toLowerCase().replace(/[^\p{L}\p{N}.+]+/gu, ' ').replace(/\s+/g, ' ') + ' ';
+  for (const c of conditions) {
+    const key = String(c.key).toLowerCase();
+    if (!STRUCTURED_KEYS.has(key) || c.op !== 'in') continue;
+    if (key !== 'model' && facts[key]?.values.length) {
+      out = out === facts ? { ...facts } : out;
+      out[key] = { ...facts[key], values: facts[key].values.map(slugOf) };
+    }
+    if (out[key]?.values.length) continue;
+    const hit = (c.values || []).find((v) => {
+      const needle = (key === 'model' ? String(v) : String(v).replace(/-/g, ' ')).toLowerCase().trim();
+      return needle.length >= 2 && haystack.includes(' ' + needle + ' ');
+    });
+    if (hit) { out = out === facts ? { ...facts } : out; out[key] = { values: [String(hit).toLowerCase()], negated: facts[key]?.negated || [] }; }
+  }
+  return out;
+}
+export function compatibilityGate({ applicability = {}, safety = {}, facts: statedFacts = {}, text = '', fields = {} }) {
   const conditions = Array.isArray(applicability.conditions) ? applicability.conditions : [];
+  const facts = withStructuredFacts(conditions, statedFacts, text);
   const required = conditions.filter((c) => c.required !== false);
-  const optional = conditions.filter((c) => c.required === false);
+  const softStructured = conditions.filter((c) => c.required === false && STRUCTURED_KEYS.has(String(c.key).toLowerCase()));
+  const optional = conditions.filter((c) => c.required === false && !STRUCTURED_KEYS.has(String(c.key).toLowerCase()));
   const evaluation = evaluateConditions(required, facts);
   const missingConditions = [...(evaluation.missingConditions || [])];
   let unparsedMissing = [];
@@ -225,8 +252,28 @@ export function compatibilityGate({ applicability = {}, safety = {}, facts = {},
     const o = evaluateConditions(optional.map((c) => ({ ...c, required: true })), facts);
     compat = 0.7 + (0.3 * o.matched.length) / optional.length;
   }
-  const reasons = [...evaluation.matched, ...(applicability.environmentText ? ['environment: ' + applicability.environmentText] : [])];
-  return { eligible: true, status: 'compatible', compat: round(compat), reasons, evaluation };
+  // A soft structured field (the problem category) only counts when the customer's side is known: matching it helps, a different stated
+  // value lowers the score a little, and an unknown value changes nothing. It can never make a fix ineligible.
+  const structuredReport = [];
+  const softReasons = [];
+  if (softStructured.length) {
+    let known = 0, matchedSoft = 0;
+    for (const c of softStructured) {
+      const e = evaluateConditions([{ ...c, required: true }], facts);
+      const label = STRUCTURED_LABELS[String(c.key).toLowerCase()] || c.key;
+      const status = e.status === 'compatible' ? 'matched' : e.status === 'conflict' ? 'different' : 'not stated';
+      structuredReport.push({ field: label, status, values: c.values || [] });
+      if (status !== 'not stated') known++;
+      if (status === 'matched') { matchedSoft++; softReasons.push(`${label}: ${(c.values || []).join(' or ')}`); }
+    }
+    if (known) compat *= 0.7 + (0.3 * matchedSoft) / known;
+  }
+  for (const c of required) {
+    const key = String(c.key).toLowerCase();
+    if (STRUCTURED_KEYS.has(key)) structuredReport.push({ field: STRUCTURED_LABELS[key], status: 'matched', values: c.values || [] });
+  }
+  const reasons = [...evaluation.matched, ...softReasons, ...(applicability.environmentText ? ['environment: ' + applicability.environmentText] : [])];
+  return { eligible: true, status: 'compatible', compat: round(compat), reasons, evaluation, ...(structuredReport.length && { structured: structuredReport }) };
 }
 
 /**

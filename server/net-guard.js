@@ -192,3 +192,29 @@ export async function resolvePostgresDestination(uri, { allowedHosts, allowedPor
     tls: sslmode !== 'disable',
   };
 }
+
+/**
+ * Validate a MySQL/MariaDB or SQL Server destination the same way as PostgreSQL: the connection string is parsed, only `sslmode` is accepted,
+ * host and port must be on the server owner's allowlists, and the name must resolve to public addresses only. `label`, `hostsVar` and
+ * `portsVar` only shape the error messages so each database names its own setting.
+ */
+export async function resolveDatabaseDestination(uri, { label, protocols, defaultPort, hostsVar, portsVar, allowedHosts, allowedPorts, allowLoopback = false, resolver = dnsLookup } = {}) {
+  let url;
+  try {
+    url = new URL(String(uri));
+  } catch {
+    throw deny(`Enter a valid ${label} connection string.`);
+  }
+  if (!protocols.includes(url.protocol)) throw deny(`Enter a ${protocols[0]}// connection string.`);
+  for (const key of url.searchParams.keys()) if (key !== 'sslmode') throw deny(`The connection option “${key}” is not allowed.`);
+  const host = decodeURIComponent(url.hostname);
+  if (!host || host.startsWith('/') || host.includes('\0')) throw deny('A database host name is required.');
+  const port = Number(url.port) || defaultPort;
+  if (!allowedHosts.has(host.toLowerCase())) throw deny(`The server owner must allow this database host in ${hostsVar} before it can be used.`);
+  if (!allowedPorts.has(port)) throw deny(`The server owner must allow this database port in ${portsVar} before it can be used.`);
+  const addresses = await resolveAllowed(url.hostname, { allowLoopback, resolver });
+  const sslmode = url.searchParams.get('sslmode') || 'require';
+  if (!['require', 'verify-full', 'disable'].includes(sslmode)) throw deny('sslmode must be require or verify-full.');
+  if (sslmode === 'disable' && !allowLoopback) throw deny('Encrypted (TLS) connections are required.');
+  return { host, address: addresses[0].address, port, user: decodeURIComponent(url.username), password: decodeURIComponent(url.password), database: decodeURIComponent(url.pathname.replace(/^\//, '')), tls: sslmode !== 'disable' };
+}

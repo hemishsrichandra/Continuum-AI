@@ -179,7 +179,7 @@ test('production data never appears in the demo and the main database is never t
   t.mock.method(globalThis, 'fetch', async (...args) => { calls.push(String(args[0])); throw new Error('network is forbidden in the demo'); });
   const touched = [];
   const service = new Proxy({ configured: true }, { get: (target, prop) => (prop in target ? target[prop] : (...args) => { touched.push(String(prop)); throw new Error('memory service is forbidden in the demo'); }) });
-  const w = await world(t, { config: { OPENAI_API_KEY: 'synthetic', EMBEDDING_MODEL: 'e', RESEND_API_KEY: 'x', EMAIL_FROM: 'a@b.c' } });
+  const w = await world(t, { config: { EMBEDDING_API_KEY: 'synthetic', OPENAI_API_KEY: 'synthetic', EMBEDDING_MODEL: 'e', RESEND_API_KEY: 'x', EMAIL_FROM: 'a@b.c' } });
   w.seed(w.company, { title: 'PRODUCTION SECRET FIX', symptoms: 'Display flickers after startup', steps: ['PRODUCTION-ONLY steps for display flicker.'] });
   const customer = await w.customer('realcustomer');
   await w.ticket(customer, ISSUE);

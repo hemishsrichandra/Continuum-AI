@@ -4,7 +4,7 @@
 //   C. Chroma + neural        (ChromaDB index, a real OpenAI-compatible embedding model) - only when configured
 //
 //   node scripts/benchmark-semantic.js [--chroma http://127.0.0.1:8000] [--out file.json]
-//   Neural row: set EMBEDDING_MODEL and OPENAI_API_KEY (and OPENAI_BASE_URL if not OpenAI) in the environment or .env. It sends only the
+//   Neural row: set EMBEDDING_MODEL and EMBEDDING_API_KEY (and EMBEDDING_BASE_URL if not OpenAI) in the environment or .env. It sends only the
 //   synthetic texts in evaluation/semantic-corpus.js to the provider, through the privacy boundary.
 //
 // Metrics: Recall@3 on paraphrases, "unsafe/incompatible recommendation rate" (a recommendation where none is allowed: wrong device,
@@ -21,7 +21,7 @@ if (existsSync('.env')) process.loadEnvFile('.env');
 const arg = (name, fallback) => { const i = process.argv.indexOf('--' + name); return i > 0 ? process.argv[i + 1] : fallback; };
 const CHROMA = arg('chroma', process.env.CHROMA_URL || 'http://127.0.0.1:8000');
 const OUT = arg('out', null);
-const neuralConfigured = Boolean(process.env.EMBEDDING_MODEL && process.env.OPENAI_API_KEY);
+const neuralConfigured = Boolean(process.env.EMBEDDING_MODEL && process.env.EMBEDDING_API_KEY);
 const chromaUp = await fetch(CHROMA + '/api/v2/heartbeat', { signal: AbortSignal.timeout(1500) }).then((r) => r.ok).catch(() => false);
 const q = (list, p) => { const s = [...list].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : null; };
 const round = (n, d = 1) => (n === null ? null : Math.round(n * 10 ** d) / 10 ** d);
@@ -32,7 +32,7 @@ async function runSystem(name, { chroma, neural }) {
   const namespace = 'sem_' + Math.random().toString(36).slice(2, 8);
   const config = {
     ...(chroma ? { VECTOR_STORE: 'chroma', CHROMA_URL: CHROMA, VECTOR_NAMESPACE: namespace } : {}),
-    ...(neural ? { EMBEDDING_MODEL: process.env.EMBEDDING_MODEL, OPENAI_API_KEY: process.env.OPENAI_API_KEY, ...(process.env.OPENAI_BASE_URL && { OPENAI_BASE_URL: process.env.OPENAI_BASE_URL }), ...(process.env.EMBEDDING_DIMENSIONS && { EMBEDDING_DIMENSIONS: process.env.EMBEDDING_DIMENSIONS }) } : {}),
+    ...(neural ? { EMBEDDING_MODEL: process.env.EMBEDDING_MODEL, EMBEDDING_API_KEY: process.env.EMBEDDING_API_KEY, ...(process.env.EMBEDDING_BASE_URL && { EMBEDDING_BASE_URL: process.env.EMBEDDING_BASE_URL }), ...(process.env.EMBEDDING_DIMENSIONS && { EMBEDDING_DIMENSIONS: process.env.EMBEDDING_DIMENSIONS }) } : {}),
   };
   const w = await world({ after: (fn) => cleanup.push(fn) }, { config, file: join(dir, 'sem.sqlite') });
   const bot = w.botOf(w.company);
@@ -81,11 +81,11 @@ else report.systems.push({ system: 'B. Chroma + local vectors', skipped: `Chroma
 // Probe the embedding endpoint first: if it cannot serve embeddings the row is reported as not run, never scored on the offline fallback.
 async function neuralProbe() {
   const { createEmbeddingService } = await import('../server/embedding-service.js');
-  const svc = createEmbeddingService({ EMBEDDING_MODEL: process.env.EMBEDDING_MODEL, OPENAI_API_KEY: process.env.OPENAI_API_KEY, ...(process.env.OPENAI_BASE_URL && { OPENAI_BASE_URL: process.env.OPENAI_BASE_URL }), ...(process.env.EMBEDDING_DIMENSIONS && { EMBEDDING_DIMENSIONS: process.env.EMBEDDING_DIMENSIONS }) });
+  const svc = createEmbeddingService({ EMBEDDING_MODEL: process.env.EMBEDDING_MODEL, EMBEDDING_API_KEY: process.env.EMBEDDING_API_KEY, ...(process.env.EMBEDDING_BASE_URL && { EMBEDDING_BASE_URL: process.env.EMBEDDING_BASE_URL }), ...(process.env.EMBEDDING_DIMENSIONS && { EMBEDDING_DIMENSIONS: process.env.EMBEDDING_DIMENSIONS }) });
   try { await svc.embedDocuments(['connectivity check']); return null; } catch (e) { return e.message; }
 }
-const host = process.env.OPENAI_BASE_URL ? new URL(process.env.OPENAI_BASE_URL).host : 'api.openai.com';
-if (!neuralConfigured) report.systems.push({ system: 'C. Chroma + neural embeddings', skipped: 'not run: set EMBEDDING_MODEL and OPENAI_API_KEY' });
+const host = process.env.EMBEDDING_BASE_URL ? new URL(process.env.EMBEDDING_BASE_URL).host : 'api.openai.com';
+if (!neuralConfigured) report.systems.push({ system: 'C. Chroma + neural embeddings', skipped: 'not run: set EMBEDDING_MODEL and EMBEDDING_API_KEY' });
 else if (!chromaUp) report.systems.push({ system: 'C. Chroma + neural embeddings', skipped: `ChromaDB not reachable at ${CHROMA}` });
 else {
   const problem = await neuralProbe();

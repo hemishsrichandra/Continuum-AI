@@ -55,8 +55,9 @@ let error = '';
 let activeTab = 'A';
 let guided = null; // { step, total, text }
 let previewData = null;
+let compared = null; // last keyword-vs-meaning comparison
 let lastCount = 0;
-const drafts = { A: null, B: null, S: null };
+const drafts = { A: null, B: null, S: null, C: null };
 
 async function call(method, route, body) {
   const headers = { ...(sessionId && { 'X-Demo-Session': sessionId }), ...(body && { 'Content-Type': 'application/json' }) };
@@ -179,6 +180,17 @@ function specialistPanel() {
     <div><h3>Company knowledge</h3>${state.learned.length ? state.learned.map((l) => `<div class="demo-card learned"><span class="pill green">✓ ${q(tidy(l.provenance))}</span><p><b>${q(l.title)}</b></p>${stepsHtml(l.steps)}<small>Applies to ${q(l.applicability)} · safety: ${q(l.safety)}</small><small>${l.successes ? `Worked for ${l.successes} customer${l.successes === 1 ? '' : 's'}` : 'Not reused yet'}${l.failures ? ` · failed ${l.failures}×` : ''} · ${l.status === 'active' ? 'In use' : q(l.status)}</small><details class="demo-tech"><summary>Technical details</summary><small>Starting confidence ${q(l.cInit.score)} · reliability ${q(l.reliability)}</small></details></div>`).join('') : '<div class="demo-empty"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3zM9.5 20h5"/></svg><div><b>Nothing learned yet</b><span>A fix is learned only after the customer confirms it worked.</span></div></div>'}</div>
   </section>`;
 }
+function compareCard() {
+  if (!state.learnedCount) return '';
+  const presets = ['The monitor of my Demo Laptop X1 keeps blinking whenever it boots.', 'My Demo Laptop X1 display shimmers when I switch it on.', 'My Demo Laptop X1 keyboard has a sticky key.'];
+  const c = compared;
+  const side = (title, kind, r, sub) => `<div class="cmp-side ${r.found ? 'hit' : 'miss'}"><span class="eyebrow">${title}</span><p class="cmp-verdict"><span aria-hidden="true">${r.found ? '✓' : '✕'}</span> ${r.found ? 'Found: ' + q(r.title) : 'Nothing found'}</p><small>${sub}</small></div>`;
+  const kw = c && side('KEYWORD SEARCH', 'keyword', c.keyword, c.keyword.found ? 'Matched on the words: ' + q(c.keyword.matchedWords.join(', ')) : 'None of the problem words match.' + (c.keyword.deviceWordsOnly.length ? ' Only the device name matched (' + q(c.keyword.deviceWordsOnly.join(', ')) + '), which says nothing about the problem.' : ''));
+  const mm = c && side('MEANING SEARCH', 'meaning', c.meaning, c.meaning.found ? 'Matched on meaning: ' + q(c.meaning.matchedConcepts.map((x) => x).join(', ') || 'overall similarity') + '. Device and safety checks passed.' : 'No stored fix fits this problem, so nothing is suggested.');
+  return `<section class="demo-compare" aria-labelledby="cmp-title"><div><span class="eyebrow">WHY IT FINDS THE FIX</span><h2 id="cmp-title">Same problem, different words</h2><p class="lead">Try describing the problem Customer A fixed in new words. Keyword search needs the same words; Continuum matches on meaning.</p></div>
+    <form class="demo-form" data-form="compare"><label>Describe the problem in your own words<input name="description" required maxlength="300" value="${q(drafts.C || presets[0])}"></label><div class="demo-row"><button class="button primary small" ${busy ? 'disabled' : ''}>Compare searches</button>${presets.map((p, i) => `<button type="button" class="button small" data-act="cmp-preset" data-text="${q(p)}">${['Blinking on boot', 'Shimmers on switch-on', 'Unrelated: sticky key'][i]}</button>`).join('')}</div></form>
+    ${c ? `<div class="cmp-grid" role="status" aria-live="polite">${kw}${mm}</div><small class="muted">${q(c.embedding)}</small>` : '<p class="muted">Pick an example or type your own, then compare.</p>'}</section>`;
+}
 function beforeAfter() {
   const a = state.cases.find((c) => c.user === 'A');
   const b = state.cases.find((c) => c.user === 'B');
@@ -203,6 +215,7 @@ function render() {
     <div class="demo-tabs" role="tablist" aria-label="Choose a view">${[['A', 'Customer A'], ['S', 'Specialist'], ['B', 'Customer B']].map(([k, n]) => `<button role="tab" id="tab-${k}" aria-selected="${activeTab === k}" aria-controls="panel-${k}" data-act="tab" data-tab="${k}">${n}</button>`).join('')}</div>
     <div class="demo-grid">${customerPanel('A')}${specialistPanel()}${customerPanel('B')}</div>
     ${beforeAfter()}
+    ${compareCard()}
     <p class="demo-summary${state.summary.userBBenefited ? '' : ' pending'}" role="status">${q(tidy(state.summary.line))}</p>
     ${state.summary.userBBenefited && !guided ? '<section class="demo-finish" aria-labelledby="finish-title"><div><span class="eyebrow">THAT’S THE WHOLE LOOP</span><h2 id="finish-title">Imagine this with your team’s real fixes.</h2><p>Every confirmed fix becomes an answer for the next customer, private to your company. We’ll walk you through it with your own support scenarios.</p></div><div class="demo-row"><a class="button primary" href="/book-a-session">Book a 30-minute walkthrough <span aria-hidden="true">→</span></a><a class="button" href="/pricing">See early-access pricing</a></div></section>' : ''}
     ${timeline()}
@@ -220,12 +233,16 @@ app.addEventListener('input', (event) => {
   const v = formValues(form);
   if (form.dataset.form === 'issue') drafts[form.dataset.user] = { description: v.description || '', device: v.device || '' };
   if (form.dataset.form === 'propose') drafts.S = { ...v, reviewed: form.elements.reviewedForPrivacy.checked };
+  if (form.dataset.form === 'compare') drafts.C = v.description || '';
 });
 app.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.target;
   const v = formValues(form);
-  if (form.dataset.form === 'issue') {
+  if (form.dataset.form === 'compare') {
+    const done = await act('compare', { description: v.description, device: state.script.userB.device }, 'Comparison ready.');
+    if (done?.comparison) { compared = done.comparison; render(); }
+  } else if (form.dataset.form === 'issue') {
     const user = form.dataset.user;
     const done = await act('customer/issue', { user, description: v.description, device: v.device }, 'Issue reported.');
     if (done) drafts[user] = null;
@@ -256,9 +273,10 @@ app.addEventListener('click', async (event) => {
     if (done?.preview) { previewData = done; render(); }
     return;
   }
+  if (act_ === 'cmp-preset') { drafts.C = el.dataset.text; const done = await act('compare', { description: el.dataset.text, device: state.script.userB.device }, 'Comparison ready.'); if (done?.comparison) { compared = done.comparison; render(); } return; }
   if (act_ === 'feedback') await act('customer/feedback', { caseId: el.dataset.case, worked: el.dataset.worked === 'true', confirmed: true }, 'Answer recorded.');
   if (act_ === 'confirm') await act('customer/confirm', { caseId: el.dataset.case, accepted: el.dataset.accepted === 'true', confirmed: true }, el.dataset.accepted === 'true' ? 'Confirmed. Continuum learned this fix.' : 'Recorded. Nothing was learned.');
-  if (act_ === 'reset') { guided = null; previewData = null; drafts.A = drafts.B = drafts.S = null; lastCount = 0; await act('reset', {}, 'Reset. Nothing learned yet.'); }
+  if (act_ === 'reset') { compared = null; drafts.C = null; guided = null; previewData = null; drafts.A = drafts.B = drafts.S = null; lastCount = 0; await act('reset', {}, 'Reset. Nothing learned yet.'); }
   if (act_ === 'guided') await runGuided();
   if (act_ === 'next' || act_ === 'stop') advance?.(act_ === 'next');
 });

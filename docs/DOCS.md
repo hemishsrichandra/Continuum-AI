@@ -1,9 +1,9 @@
 # Documentation index
 
-**Start here:** [README.md](README.md) (setup and run), [STATUS.md](STATUS.md) (what works, what was measured, what is not done), [V3-LEDGER.md](V3-LEDGER.md) (the latest requirement-by-requirement status).
+**Start here:** [README.md](../README.md) (setup and run), [STATUS.md](STATUS.md) (what works, what was measured, what is not done), [V3-LEDGER.md](V3-LEDGER.md) (the latest requirement-by-requirement status).
 
 ## Product and architecture
-[ARCHITECTURE.md](ARCHITECTURE.md), [IMPLEMENTATION.md](IMPLEMENTATION.md), [COMPANY-INTERFACE.md](COMPANY-INTERFACE.md), [PROVIDER-GATEWAY.md](PROVIDER-GATEWAY.md), [SEMANTIC-SEARCH.md](SEMANTIC-SEARCH.md) (search quality, measured), [PRIVACY.md](PRIVACY.md) (what is kept and erased), [SETUP.md](SETUP.md).
+[ARCHITECTURE.md](ARCHITECTURE.md), [IMPLEMENTATION.md](IMPLEMENTATION.md), [COMPANY-INTERFACE.md](COMPANY-INTERFACE.md), [PROVIDER-GATEWAY.md](PROVIDER-GATEWAY.md), [SEMANTIC-SEARCH.md](SEMANTIC-SEARCH.md) (search quality, measured), [PRIVACY.md](PRIVACY.md) (what is kept and erased), [SETUP.md](../SETUP.md).
 
 ## Demos and guides
 [DEMO_GUIDE.md](DEMO_GUIDE.md), [LEARNING-DEMO.md](LEARNING-DEMO.md), [MULTI-COMPANY.md](MULTI-COMPANY.md), [JUDGE-DEMO.md](JUDGE-DEMO.md), [JUDGING-PACK.md](JUDGING-PACK.md), [USER-PILOT.md](USER-PILOT.md). The rough design previews are in `design-preview/` (`index.html` is the first mock, `palettes.html` compares the palettes).

@@ -126,24 +126,32 @@ export function initJourney() {
   const root = document.querySelector('#journey');
   if (!root) return;
   const nodes = [...root.querySelectorAll('.node')], count = root.querySelector('#j-count'), caption = root.querySelector('#j-caption');
-  const words = ['Customer A reports a flickering screen.', 'The standard suggestion fails, so a specialist writes a fix.', 'Customer A confirms it worked. Memory goes from 0 to 1.', 'Customer B reports a similar problem and receives A’s verified fix.'];
+  const words = ['Customer A’s screen flickers. The standard first step does not help.', 'A specialist solves it and writes the fix.', 'Customer A confirms it worked. Memory goes from 0 to 1.', 'Customer B describes the same problem in different words and is helped instantly by A’s verified fix.'];
+  const toggle = root.querySelector('#j-toggle');
   const show = (upTo) => {
     nodes.forEach((n, i) => n.classList.toggle('on', i <= upTo));
     count.textContent = upTo >= 2 ? '1' : '0';
     count.classList.toggle('up', upTo >= 2);
     caption.textContent = upTo >= 0 ? words[upTo] : words[0];
   };
-  if (reduce || !('IntersectionObserver' in window)) { show(3); return; }
-  let visible = false, step = -1, timer = null;
+  if (reduce || !('IntersectionObserver' in window)) { show(3); toggle?.remove(); return; }
+  let visible = false, step = -1, timer = null, paused = false;
   const tick = () => {
     timer = null;
-    if (!visible || document.hidden) return;
+    if (!visible || document.hidden || paused) return;
     // after the last step, hold for a moment, then start again from an empty state
     step = step >= 3 ? -1 : step + 1;
     show(step);
     timer = setTimeout(tick, step === 3 ? 3200 : step === -1 ? 700 : 1700);
   };
-  const resume = () => { if (!timer && visible && !document.hidden) tick(); };
+  const resume = () => { if (!timer && visible && !document.hidden && !paused) tick(); };
+  // WCAG 2.2.2: moving content that lasts more than five seconds can be paused. Pausing shows the finished story.
+  toggle?.addEventListener('click', () => {
+    paused = !paused;
+    toggle.setAttribute('aria-pressed', String(paused));
+    toggle.textContent = paused ? 'Play animation' : 'Pause animation';
+    if (paused) { clearTimeout(timer); timer = null; show(3); } else { step = -1; resume(); }
+  });
   new IntersectionObserver((e) => { visible = e[0].isIntersecting; resume(); }, { threshold: 0.3 }).observe(root);
   document.addEventListener('visibilitychange', resume);
   show(-1);

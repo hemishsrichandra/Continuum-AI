@@ -2,6 +2,7 @@
 // Imported and standard content is never counted as a learned success, and
 // overdue auto-published fixes are always reported separately from
 // customer-confirmed ones.
+import { staleFixes } from './stale-fixes.js';
 const mean = (xs) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
 
 export function intelligenceFor(store, companyId, { at = Date.now(), slaHours = 8, chatbotId = null } = {}) {
@@ -80,6 +81,22 @@ export function intelligenceFor(store, companyId, { at = Date.now(), slaHours = 
     solvedAfterSpecialist: tickets.filter((t) => handedOff.has(t.ticket_id)).length,
     deflectionRate: tickets.length ? Math.round((solvedAlone / tickets.length) * 1000) / 1000 : null,
   };
+  // Repeat problems: the same kind of request, before and after the company had learned fixes. The split point is the moment the
+  // company's first reusable fix existed; every request is placed on one side by when its first suggestion was shown. Only an explicit
+  // customer "It worked" with no specialist hand-off counts as solved without a specialist. The two groups are different requests, so this is a
+  // before/after comparison, not a controlled experiment, and the console says so.
+  const firstFix = sql.prepare(`SELECT MIN(created_at) at FROM memory_pool WHERE company_id=? AND ${inBots} AND origin_type IN ('specialist_confirmed','auto_published_overdue')`).get(companyId, ...botList).at;
+  const firstTouch = sql.prepare(`SELECT ticket_id, MIN(created_at) at, MAX(outcome='succeeded') solved FROM troubleshooting_attempts WHERE company_id=? AND ${inBots} AND source IN ('standard','learned') GROUP BY ticket_id`).all(companyId, ...botList);
+  const phase = (rows) => ({ requests: rows.length, solvedWithoutSpecialist: rows.filter((t) => t.solved && !handedOff.has(t.ticket_id)).length });
+  const rate = (p) => ({ ...p, rate: p.requests ? Math.round((p.solvedWithoutSpecialist / p.requests) * 1000) / 1000 : null });
+  const repeatProblems = {
+    firstLearnedFixAt: firstFix || null,
+    baseline: rate(phase(firstFix ? firstTouch.filter((t) => t.at < firstFix) : firstTouch)),
+    after: rate(phase(firstFix ? firstTouch.filter((t) => t.at >= firstFix) : [])),
+    synthetic: Boolean(sql.prepare('SELECT 1 x FROM sample_companies WHERE company_id=?').get(companyId)),
+  };
+  repeatProblems.liftPoints = repeatProblems.baseline.rate !== null && repeatProblems.after.rate !== null ? Math.round((repeatProblems.after.rate - repeatProblems.baseline.rate) * 100) : null;
+  const stale = staleFixes(store, companyId, { chatbotId, at });
   // The fixes that solved the most customer problems, with their failures shown beside them.
   const topFixes = sql.prepare(`SELECT id,title,origin_type,customer_confirmed,reuse_success_count successes,reuse_failure_count failures FROM memory_pool WHERE company_id=? AND ${inBots} AND status='active' AND reuse_success_count>0 ORDER BY reuse_success_count DESC, reuse_failure_count ASC LIMIT 5`)
     .all(companyId, ...botList).map((r) => ({ id: r.id, title: r.title, origin: r.origin_type, customerConfirmed: Boolean(r.customer_confirmed), successes: r.successes, failures: r.failures }));
@@ -92,6 +109,8 @@ export function intelligenceFor(store, companyId, { at = Date.now(), slaHours = 
     resolutions,
     reuse,
     selfService,
+    repeatProblems,
+    staleFixes: stale,
     topFixes,
     followThrough,
     responseTimes: {
@@ -103,6 +122,7 @@ export function intelligenceFor(store, companyId, { at = Date.now(), slaHours = 
       'Standard playbooks and imported records are not counted as learned successes.',
       'Overdue auto-published fixes are UNCONFIRMED BY CUSTOMER and are reported separately.',
       '“Solved without a specialist” counts requests where a customer said a suggested fix worked and no specialist was involved, out of the requests where a fix was suggested. Requests where the customer never answered are not counted as solved.',
+      '“Repeat problems” compares requests before and after your first reusable fix existed. They are different requests, so it shows direction, not proof of cause.',
       'Figures come from this company’s own records; synthetic tests do not represent real business impact.',
     ],
   };

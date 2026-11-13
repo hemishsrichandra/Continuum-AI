@@ -9,6 +9,8 @@ import {THRESHOLDS,compatibilityGate} from './scoring.js';
 import {customerFacts, extractMentions} from './applicability.js';
 import {normalizeQuery} from './query-normalizer.js';
 import {customerAdvice} from './customer-advice.js';
+import {createFixExplainer} from './fix-explainer.js';
+import {scrubPII} from './privacy.js';
 
 const now = () => new Date().toISOString();
 const hasTopic = (text, topics) => {
@@ -21,8 +23,11 @@ const LABELS={specialist_confirmed:"Learned from a customer-confirmed specialist
 export const sourceInfo=(row,score,gate)=>({advisory:gate?.advisory||null,id:row.id,origin:row.origin_type,verification:verificationOf(row),label:SOURCE_LABELS[verificationOf(row)]||LABELS[row.origin_type],version:row.version_number,customerConfirmed:Boolean(row.customer_confirmed),unconfirmed:row.origin_type==='auto_published_overdue'&&!row.customer_confirmed,title:row.title,...(score&&{score})});
 const evidenceFor=(row,score)=>({id:row.id,resolutionId:row.id,kind:row.customer_confirmed?'verified_resolution':'company_memory',origin:row.origin_type,version:row.version_number,text:JSON.parse(row.steps_json).join(' '),
   ...(score&&{score}),passport:passportView(row,{internal:false})});
-export function createTroubleshooting(store, learning, reuse, providerActions, {memoryPool, followThrough, queryProvider = null} = {}) {
+export function createTroubleshooting(store, learning, reuse, providerActions, {memoryPool, followThrough, queryProvider = null, explainer = createFixExplainer(), suggestionMode = 'choose', shadow = null} = {}) {
   const sql = store.db;
+  // 'choose' (default): up to three eligible suggestions are shown as choices and NOTHING is recorded as tried until the customer picks one.
+  // 'auto_first' is the legacy behaviour (the best suggestion is recorded as the attempt the moment it is shown); kept only for old deployments.
+  const explicitChoice = suggestionMode !== 'auto_first';
   function authorize(p) {
     if(!p.demo && !sql.prepare("SELECT 1 FROM company_memberships WHERE company_id=? AND account_id=? AND role='customer' AND status='active'").get(p.companyId,p.id))
       throw fault(403,'Your customer membership is no longer active in this workspace.');
@@ -37,6 +42,24 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(company_id,chatbot_id,customer_id,ticket_id,source,sequence) DO NOTHING`)
       .run(randomUUID(),...args(p,t),source,sequence,fix.id,extra.memoryId||null,JSON.stringify(fix),JSON.stringify(context),extra.score?JSON.stringify(extra.score):null,outcome,exchangeId,useId,now(),outcome==='skipped'?now():null);
     return attempts(p,t).find(a=>a.source===source && a.sequence===sequence);
+  }
+  const OUTCOME_WORDS={succeeded:'worked',failed:'did not work',pending:'chosen, no answer yet'};
+  const clean=(v,n=300)=>scrubPII(String(v??''),{names:[]}).text.replace(/\s+/g,' ').trim().slice(0,n);
+  /** What a specialist needs to start: the open question, every suggestion tried with its outcome and provenance, and the facts the customer gave. */
+  function handoffBrief(p,t,reason) {
+    const rows=attempts(p,t).filter(a=>!(a.source==='standard'&&a.fix_id==='none')); // 'none' only records that no playbook applied
+    const tried=rows.map(a=>{
+      let snap={};try{snap=JSON.parse(a.snapshot);}catch{/* keep empty */}
+      const memory=a.memory_id?sql.prepare('SELECT origin_type,version_number,source_id,external_record_id,customer_confirmed,locally_reviewed,status FROM memory_pool WHERE id=? AND company_id=?').get(a.memory_id,p.companyId):null;
+      return {sequence:a.sequence,kind:a.source==='standard'?'standard first step':'company suggestion',title:clean(snap.title||(a.source==='standard'?snap.id:'Suggested fix'),120),
+        outcome:a.outcome==='skipped'?(a.outcome_detail||'skipped'):OUTCOME_WORDS[a.outcome]||a.outcome,countedAsFailure:a.outcome==='failed',
+        ...(memory&&{provenance:{origin:memory.origin_type,version:memory.version_number,sourceId:memory.source_id||null,sourceRecordId:memory.external_record_id||null,customerConfirmed:Boolean(memory.customer_confirmed),reviewed:Boolean(memory.locally_reviewed)}})};
+    });
+    let facts={};try{facts=JSON.parse(sql.prepare('SELECT context FROM troubleshooting_context WHERE company_id=? AND chatbot_id=? AND customer_id=? AND ticket_id=?').get(...args(p,t))?.context||'{}');}catch{/* none */}
+    const humanRequested=rows.some(a=>a.outcome_detail==='human_requested');
+    return {reason:clean(reason,200),trigger:humanRequested?'customer asked for a person':/safety|smoke|burning|hazard/i.test(reason)?'safety concern':rows.filter(a=>a.source==='learned').length>=THRESHOLDS.maxSuggestions?'three suggestions tried':'no suitable suggestion',
+      unresolvedQuestion:clean([t.title,t.issue].filter(Boolean).join(': '),400),customerProvided:Object.fromEntries(Object.entries(facts).filter(([,v])=>typeof v==='string').map(([k,v])=>[k,clean(v,160)])),tried,
+      counts:{tried:tried.filter(x=>x.outcome!=='skipped').length,failed:tried.filter(x=>x.countedAsFailure).length,notApplicable:tried.filter(x=>x.outcome==='not_applicable').length,unableToTry:tried.filter(x=>x.outcome==='unable_to_try').length},createdAt:now()};
   }
   function human(p,t,reason) {
     const b = getBot(sql,p.companyId,botId(p));
@@ -54,6 +77,9 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     store.updateFor(p.companyId,d=>{const h=d.handoffs.find(x=>x.id===result.id&&x.companyId===p.companyId);
       if(h){h.troubleshooting||=[];for(const a of attempts(p,t).filter(a=>a.source==='learned'&&a.outcome==='failed'))
         if(!h.troubleshooting.some(x=>x.attemptId===a.id)) h.troubleshooting.push({id:randomUUID(),attemptId:a.id,resolutionId:a.memory_id,step:JSON.parse(a.snapshot).steps,outcome:'failed',note:'The suggested fix did not resolve the issue.',authorId:p.id,createdAt:a.outcome_at||now()});}});
+    // A concise, privacy-filtered brief for the specialist: what is unresolved, what was tried and how it went, where each suggestion came from.
+    const brief=handoffBrief(p,t,reason);
+    store.updateFor(p.companyId,d=>{const h=d.handoffs.find(x=>x.id===result.id&&x.companyId===p.companyId);if(h) h.brief=brief;});
     ev(p,t,'escalated_to_specialist',{reason,handoffId:result.id,attempts:attempts(p,t).map(a=>({source:a.source,sequence:a.sequence,outcome:a.outcome}))});
     return {waiting:true,handoffId:result.id};
   }
@@ -119,6 +145,8 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
   }
   const RICH_OUTCOMES=new Set(['not_applicable','unable_to_try','human_requested']);
   /** A suggestion shown next to the best one: a preview only. It is not an attempt until the customer chooses it. */
+  /** One grounded sentence on why this stored fix fits (model-written when configured, otherwise a template). Never changes the steps. */
+  const whyFor=(c,customerText)=>explainer.explain({id:c.row.id,version:c.row.version_number,title:c.row.title,symptoms:c.row.symptoms_text,steps:JSON.parse(c.row.steps_json),reasons:c.gate.reasons},customerText);
   function choiceView(c) {
     const row=c.row,pct=Math.round((c.breakdown.S_hybrid||0)*100);
     return {id:row.id,title:row.title,advice:customerAdvice(JSON.parse(row.steps_json).join(' ')),version:row.version_number,
@@ -165,6 +193,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     const pick=retrieved.eligible.find(x=>x.id===String(body.resolutionId||''));
     if(!pick) throw fault(409,'That suggestion is no longer available. Ask again for current guidance.');
     const row=pick.row,score={...pick.breakdown,backend:retrieved.backend,constraints:pick.gate.reasons},steps=JSON.parse(row.steps_json);
+    const whyFits=await whyFor(pick,t.issue);
     return sql.transaction(()=>{
       authorize(p);
       const latest=provider(store,p).ticket(t.id);
@@ -181,7 +210,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
       const use=reuse.recordMemory(p,t,row,exchangeId,now());
       const a=saveAttempt(p,t,'learned',{id:row.id,title:row.title,steps:steps.join(' '),origin:row.origin_type,version:row.version_number},context,exchangeId,'pending',use?.id,{sequence,memoryId:row.id,score});
       ev(p,t,'suggestion_chosen',{source:'learned',sequence,memoryId:row.id,origin:row.origin_type,version:row.version_number,sFinal:score.S_final});
-      return {id:exchangeId,title:row.title,reply:customerAdvice(steps.join(' ')),attempt:a,resolutionUse:use,evidence:[evidenceFor(row,score)],learnedSource:sourceInfo(row,score,pick.gate),
+      return {id:exchangeId,title:row.title,reply:customerAdvice(steps.join(' ')),attempt:a,resolutionUse:use,evidence:[evidenceFor(row,score)],learnedSource:sourceInfo(row,score,pick.gate),whyFits,
         // The suggestions that are still untried stay on offer next to the one now being tried.
         alternatives:retrieved.eligible.filter(x=>x.id!==pick.id).slice(0,THRESHOLDS.maxSuggestions-1).map(choiceView),workflow:{stage:'learned_pending',sequence}};
     }).immediate();
@@ -203,6 +232,13 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
         if (current.outcome !== 'pending' && current.outcome !== target) throw fault(409,'This outcome is already final.');
         sql.prepare("UPDATE troubleshooting_attempts SET outcome=?,outcome_at=? WHERE id=? AND outcome='pending'").run(target,now(),a.id);
         remote=reuse.feedback(p,{useId:a.use_id,worked:body.worked,confirmed:true,memory:body.memory,allowHandoff:false,note:body.note,safetyIncident:body.safetyIncident===true});
+        // Near-miss memory: which fix failed, why, and for which device/version facts (never who). It only ever adjusts ranking.
+        if(!body.worked && a.memory_id) {
+          let saved={};try{saved=JSON.parse(a.context||'{}');}catch{/* older attempts may have no context */}
+          const ticket=provider(store,p).ticket(a.ticket_id);
+          memoryPool.recordNearMiss({companyId:p.companyId,chatbotId:botId(p),memoryId:a.memory_id,ticketId:a.ticket_id,reason:body.reason,detail:body.reasonNote,
+            factsText:[ticket?.title,ticket?.issue,...Object.values(saved).filter(v=>typeof v==='string')].join(' ')});
+        }
       }).immediate();
       const r=await remote;
       ev(p,{id:a.ticket_id},body.worked?'suggestion_worked':'suggestion_failed',{source:a.source,sequence:a.sequence,memoryId:a.memory_id});
@@ -341,8 +377,10 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     }
     const learnedRows=rows.filter(a=>a.source==='learned');
     if(learnedRows.length>=THRESHOLDS.maxSuggestions) return escalated(escalate('Three company-memory suggestions were tried without resolving the issue.'));
+    let safetyBlocked=false;
     if(enabled) {
       const retrieved=await nextSuggestion(p,t,context,message);
+      safetyBlocked=retrieved.rejected?.some(r=>r.status==='safety_conflict')||false;
       authorize(p);
       if(getBot(sql,p.companyId,botId(p)).revision!==b.revision) throw fault(409,'This service configuration changed. Ask again for current guidance.');
       const currentTicket=provider(store,p).ticket(t.id);
@@ -350,12 +388,21 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
         return response('Your case is now with the company support team.',{workflow:{stage:'human'}});
       if(currentTicket.status==='Resolved') return response('Your request is resolved.',{workflow:{stage:'resolved'}});
       const top=retrieved.eligible[0];
+      if(top && explicitChoice) {
+        // Up to three eligible suggestions are PRESENTED. No attempt, reuse record or failure exists until the customer picks one (see choose()).
+        const choices=retrieved.eligible.slice(0,THRESHOLDS.maxSuggestions).map(choiceView);
+        if(!preview) ev(p,t,'suggestions_shown',{count:choices.length,memoryIds:choices.map(c=>c.id),sequence:learnedRows.length+1});
+        return response('Here '+(choices.length===1?'is a suggestion that fits':'are '+choices.length+' suggestions that fit')+' your description. Read '+(choices.length===1?'it':'them')+' and choose the one you want to try. Nothing is counted as tried until you choose.',
+          {decision:{mode:'recommend',action:null},evidence:[],choices,workflow:{stage:'learned_choices',sequence:learnedRows.length+1,count:choices.length},
+           trace:{knowledge:'Company memory ('+retrieved.backend+')',memory:'Operational workflow',learnedResolutions:0,recalled:retrieved.eligible.length,elapsedMs:0}});
+      }
       if(top) {
+        const whyFits=await whyFor(top,[t.issue,message].filter(Boolean).join(' '));
         const row=top.row,score={...top.breakdown,backend:retrieved.backend,constraints:top.gate.reasons};
         const steps=JSON.parse(row.steps_json);
         const sequence=learnedRows.length+1;
         const result=response(customerAdvice(steps.join(' ')),{decision:{mode:'recommend',action:null},evidence:[evidenceFor(row,score)],
-          learnedSource:sourceInfo(row,score,top.gate),
+          learnedSource:sourceInfo(row,score,top.gate),whyFits,
           alternatives:preview?[]:retrieved.eligible.slice(1,THRESHOLDS.maxSuggestions).map(choiceView),
           trace:{knowledge:'Company memory ('+retrieved.backend+')',memory:'Operational workflow',learnedResolutions:1,recalled:retrieved.eligible.length,elapsedMs:0}});
         return sql.transaction(()=>{
@@ -373,7 +420,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
       if(retrieved.withheld.length && !unavailable && !learnedRows.length)
         return response('Before suggesting a reviewed fix, please confirm: '+retrieved.withheld.flatMap(w=>w.missing).filter((v,i,all)=>all.indexOf(v)===i).slice(0,4).join('; '),{workflow:{stage:'learned_context'}});
     }
-    const h=escalate(enabled?'No applicable reviewed fix after standard troubleshooting.':'Standard troubleshooting did not resolve the issue. AI memory is off.');
+    const h=escalate(safetyBlocked?'A safety concern was reported, so no stored fix was suggested.':enabled?'No applicable reviewed fix after standard troubleshooting.':'Standard troubleshooting did not resolve the issue. AI memory is off.');
     return escalated(h);
   }
   return {process,feedback:processFeedback,choose,attempts};

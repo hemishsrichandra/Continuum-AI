@@ -28,6 +28,7 @@ const routes = {
   '/connector-ui.js': ['connector-ui.js', 'text/javascript; charset=utf-8'],
   '/operator': ['index.html', 'text/html; charset=utf-8'],
   '/operator.js': ['operator.js', 'text/javascript; charset=utf-8'],
+  '/tour.js': ['tour.js', 'text/javascript; charset=utf-8'],
   '/desk': ['index.html', 'text/html; charset=utf-8'],
   '/demo': ['demo.html', 'text/html; charset=utf-8'],
   '/demo.js': ['demo.js', 'text/javascript; charset=utf-8'],

@@ -1,6 +1,6 @@
 # Continuum connection setup
 
-Company signup, specialist invitations, customer confirmation, and the read-only database gateway are documented in [IMPLEMENTATION.md](IMPLEMENTATION.md). Start a new business with **Create a company**; customers and specialists join using the owner's links. Use Node 22 inside WSL on this computer.
+Company signup, specialist invitations, customer confirmation, and the read-only database gateway are documented in [IMPLEMENTATION.md](docs/IMPLEMENTATION.md). Start a new business with **Create a company**; customers and specialists join using the owner's links. Use Node 22 inside WSL on this computer.
 
 The implementation is ready to connect, but actual email delivery and calendar consent require credentials from your own provider accounts. Enter secrets in the ignored local `.env` or your deployment's environment settings. Do not put keys in chat, frontend files, source control, or screenshots.
 
@@ -42,11 +42,11 @@ References: Google's [web-server OAuth flow](https://developers.google.com/ident
 
 ## 3. Enable live AI, if wanted
 
-Set `HINDSIGHT_BASE_URL`, `HINDSIGHT_API_KEY`, and a unique `HINDSIGHT_BANK_PREFIX`; set `OPENAI_API_KEY` and any compatible endpoint/model overrides. `REQUIRE_LIVE_INTEGRATIONS=true` makes connection failures explicit instead of using local AI responses. These keys are independent of email and calendar configuration.
+Set `HINDSIGHT_BASE_URL`, `HINDSIGHT_API_KEY`, and a unique `HINDSIGHT_BANK_PREFIX`; set `OPENAI_API_KEY` (chat/drafting, e.g. Groq) and any compatible endpoint/model overrides. Neural embeddings use separate `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`. `REQUIRE_LIVE_INTEGRATIONS=true` makes connection failures explicit instead of using local AI responses. These keys are independent of email and calendar configuration.
 
 ## 4. Semantic search index (optional)
 
-Set `VECTOR_STORE=chroma` and `CHROMA_URL` to enable the ChromaDB index; leave them empty to run on SQLite alone. Start ChromaDB with `docker compose up -d chroma` or `npm run chroma:start`. Operator commands, embedding options, consistency rules and recovery steps are in [SEMANTIC-SEARCH.md](SEMANTIC-SEARCH.md).
+Set `VECTOR_STORE=chroma` and `CHROMA_URL` to enable the ChromaDB index; leave them empty to run on SQLite alone. Start ChromaDB with `docker compose up -d chroma` or `npm run chroma:start`. Operator commands, embedding options, consistency rules and recovery steps are in [SEMANTIC-SEARCH.md](docs/SEMANTIC-SEARCH.md).
 
 External company databases are off until the server owner allows them: `DATA_SOURCE_ALLOWED_ORIGINS` (REST, https only), `DATA_SOURCE_SQLITE_DIRS`, and for PostgreSQL `DATA_SOURCE_POSTGRES_DRIVER=pg`, `DATA_SOURCE_POSTGRES_HOSTS` and `DATA_SOURCE_POSTGRES_PORTS`. Connections are pinned to the validated address, read-only and TLS-verified; use a read-only database account.
 
@@ -63,4 +63,4 @@ A local installation without a configured encryption key creates a private `.sql
 
 ## Optional provider writes
 
-No business gateway is connected by default. See [PROVIDER-GATEWAY.md](PROVIDER-GATEWAY.md) before enabling confirmed-action sync. The gateway must implement durable idempotency and exact action receipts. The current adapter has been verified against an isolated HTTP service, not a live business database.
+No business gateway is connected by default. See [PROVIDER-GATEWAY.md](docs/PROVIDER-GATEWAY.md) before enabling confirmed-action sync. The gateway must implement durable idempotency and exact action receipts. The current adapter has been verified against an isolated HTTP service, not a live business database.

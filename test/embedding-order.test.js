@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createEmbeddingService } from '../server/embedding-service.js';
 
-const config = { EMBEDDING_MODEL: 'test-embedding', OPENAI_API_KEY: 'synthetic' };
+const config = { EMBEDDING_MODEL: 'test-embedding', EMBEDDING_API_KEY: 'synthetic' };
 // Each document's vector encodes WHICH document it is, so a mix-up is detectable.
 const vectorFor = (text) => [Number(text.slice(4)), 0.5, 0.25];
 const service = (respond, extra = {}) => createEmbeddingService({ ...config, ...extra }, { fetchImpl: async (url, options) => respond(JSON.parse(options.body).input) });

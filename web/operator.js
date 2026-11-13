@@ -2,6 +2,7 @@ import {staffAccountControls, bindStaffAccount} from './staff-account.js';
 import { request, escapeHtml as q, formatDate } from './client.js';
 import { confirmDialog, noteDialog } from './form-kit.js';
 import { toast, emptyState } from './toast.js';
+import { setTourRole } from './tour.js';
 // Results show as a toast; the old line stays as a screen-reader-only record of the last result.
 const say = (text, isError = false) => { const line = document.querySelector('#operator-result'); if (line) line.textContent = text; toast(text, { tone: isError ? 'error' : 'success' }); };
 const pct = (n) => (n === null || n === undefined ? '—' : Math.round(n * 100) + '%');
@@ -19,7 +20,9 @@ function dashboard(d) {
   const sc = (value, label, cls = '', note = '') => `<div class="stat-card ${cls}"><b>${q(value)}</b><span>${q(label)}</span>${note ? `<small>${q(note)}</small>` : ''}</div>`;
   const t = (value, label, cls = '', note = '') => `<div class="dash-stat ${cls}"><b>${q(value)}</b>${q(label)}${note ? `<small>${q(note)}</small>` : ''}</div>`;
   return `<section class="panel content-panel" aria-labelledby="intel"><h2 id="intel">How support is going</h2>${d.empty ? emptyState({ icon: 'chart', title: 'No activity yet', hint: 'Figures appear here once customers start using this service.' }) : ''}<div class="stat-row">${selfServiceCard(d, sc)}${sc(d.knowledge.flaggedForReview, 'Paused for review', d.knowledge.flaggedForReview ? 'warn' : '', d.knowledge.flaggedForReview ? 'Needs a decision from you' : 'Nothing waiting')}${sc(d.followThrough.slaBreaches, 'Cases past deadline', d.followThrough.slaBreaches ? 'warn' : '', 'Picked up within ' + d.followThrough.slaHours + ' h')}${sc(d.knowledge.customerConfirmedFixes, 'Fixes customers confirmed', 'ok', 'Trusted company knowledge')}</div>
+    ${repeatPanel(d)}
     ${topFixes(d)}
+    ${staleFixesPanel(d)}
     <details class="infra more-figures"><summary>More figures</summary><div class="dash-grid">
     ${t(d.knowledge.autoPublishedUnconfirmed, 'Fixes not yet confirmed', d.knowledge.autoPublishedUnconfirmed ? 'warn' : '', 'Never counted as confirmed')}
     ${t(d.knowledge.importedRecords, 'Imported fixes', '', 'Not counted as learned from customers')}
@@ -28,6 +31,19 @@ function dashboard(d) {
     ${t(minutes(d.responseTimes.meanFirstSpecialistResponseMs), 'Average first response', '', 'n=' + d.responseTimes.samples.firstResponse)}
     ${t(minutes(d.responseTimes.meanTimeToCustomerConfirmedResolutionMs), 'Average time to a confirmed fix', '', 'n=' + d.responseTimes.samples.confirmedResolution)}
   </div></details><details><summary>How to read these numbers</summary><ul>${d.notes.map((n) => `<li>${q(n)}</li>`).join('')}</ul></details></section>`;
+}
+function repeatPanel(d) {
+  const r = d.repeatProblems;
+  if (!r || (!r.baseline.requests && !r.after.requests)) return '';
+  const pc = (x) => (x.rate === null ? '—' : Math.round(x.rate * 100) + '%');
+  const lift = r.liftPoints === null ? '' : `<p class="muted">${r.liftPoints >= 0 ? 'Up ' : 'Down '}${Math.abs(r.liftPoints)} points since your first reusable fix. These are different requests, so this shows direction, not proof of cause.</p>`;
+  return `<div class="repeat-panel" aria-labelledby="repeat-h"><h3 id="repeat-h">Repeat problems answered without a specialist ${r.synthetic ? '<span class="pill warn">SYNTHETIC SAMPLE DATA</span>' : ''}</h3>
+    <div class="repeat-compare"><div class="dash-stat"><b>${q(pc(r.baseline))}</b>Before the first reusable fix<small>${q(r.baseline.solvedWithoutSpecialist)} of ${q(r.baseline.requests)} requests</small></div><span aria-hidden="true" class="repeat-arrow">→</span><div class="dash-stat ok"><b>${q(pc(r.after))}</b>After<small>${q(r.after.solvedWithoutSpecialist)} of ${q(r.after.requests)} requests</small></div></div>${lift}${r.synthetic ? '<p class="notice">This company holds invented sample data created to show the product. It is not a result from real customers.</p>' : ''}</div>`;
+}
+const STALE_WHY = { success_drop: 'Success is dropping', version_lag: 'Customers are on newer versions', not_reconfirmed: 'Not reconfirmed in a long time' };
+function staleFixesPanel(d) {
+  if (!d.staleFixes?.length) return '';
+  return `<div class="stale-panel"><h3>Fixes that deserve a fresh look</h3><ul class="plain-list">${d.staleFixes.slice(0, 6).map((f) => `<li><b>${q(f.title)}</b> ${f.signals.map((s) => `<span class="pill warn" title="${q(s.detail)}">${q(STALE_WHY[s.kind] || s.kind)}</span>`).join(' ')}<br><small>${q(f.signals.map((s) => s.detail).join(' '))}</small> <a href="#knowledge">Review</a></li>`).join('')}</ul><small class="muted">Nothing changes automatically. A person decides whether to keep, revise or retire each fix.</small></div>`;
 }
 function selfServiceCard(d, sc) {
   const s = d.selfService;
@@ -53,6 +69,7 @@ function healthPanel(h) {
   return `<section class="panel content-panel" aria-labelledby="health"><h2 id="health">Status</h2><ul class="plain-list">
     <li><b>Knowledge search</b> <span class="pill ${label[0]}">${q(label[1])}</span> ${note ? '<small>' + q(note) + '</small>' : ''}</li>
     <li><b>Waiting for your approval</b> <span class="pill ${waitingApproval ? 'warn' : 'green'}">${waitingApproval ? q(waitingApproval) + (waitingApproval === 1 ? ' fix' : ' fixes') : 'Nothing'}</span> ${waitingApproval ? '<a href="#knowledge">Review</a>' : ''}</li>
+    <li><b>Updates sent to your ticket system</b> <span class="pill ${h.summary.syncedUpdates?.state === 'attention' ? 'warn' : 'green'}">${h.summary.syncedUpdates?.state === 'attention' ? q(h.summary.syncedUpdates.failed) + ' failed · ' + q(h.summary.syncedUpdates.overdue) + ' late' : 'All delivered'}</span></li>
     <li><b>Background work</b> <span class="pill ${tasks.state === 'ok' ? 'green' : 'warn'}">${tasks.state === 'ok' ? 'All running' : q(tasks.count) + ' need attention'}</span> ${tasks.state === 'ok' ? '' : '<button class="button small" id="health-retry">Try again</button>'}</li>
   </ul><details><summary>Details</summary><dl class="passport-meta"><dt>Searchable fixes</dt><dd>${q(d.knowledge.indexed)} ready · ${q(d.knowledge.pending)} updating · ${q(d.knowledge.failed)} need attention</dd><dt>Search method</dt><dd>${q(d.embedding.neural ? 'Smart matching (' + d.embedding.model + ')' : 'Built-in matching')}</dd>${d.workers.filter((w) => w.lastError).map((w) => '<dt>' + q(w.name.replaceAll('-', ' ')) + '</dt><dd>' + q(w.lastError) + '</dd>').join('')}</dl></details></section>`;
 }
@@ -230,6 +247,7 @@ export async function mountOperator() {
       }),
     );
     document.querySelector('#refresh-queue').addEventListener('click', mountOperator);
+    setTourRole(data.role === 'owner' ? 'owner' : 'staff');
     document.querySelector('#health-retry')?.addEventListener('click', async (event) => {
       event.target.disabled = true;
       await request('company/system-health', { body: {} }).catch(() => {});
