@@ -14,7 +14,7 @@ const state = {
   authenticated: false,
   ticketId: readSession('supportly-ticket'),
   workspace: null,
-  tab: parameters.has('lab') ? 'compare' : 'conversation',
+  tab: 'conversation',
   messages: [],
   ledger: [],
   busy: false,
@@ -32,8 +32,8 @@ const names = {
   requirement: 'Add a note',
   book: 'Book a visit',
   cancel: 'Cancel appointment',
-  handoff: 'Request a specialist',
-  outcome: 'Update outcome',
+  handoff: 'Talk to a person',
+  outcome: 'Update status',
   invalidate: 'Retire memory',
   archive: 'Start a new conversation',
 };
@@ -141,11 +141,6 @@ function stats() {
   return `<div class="workspace-stats">${[
     [m.open, 'Open requests'],
     [m.appointments, 'Upcoming visits'],
-    [m.actions, 'Confirmed actions'],
-    [
-      m.satisfaction === null ? '—' : m.satisfaction + '%',
-      `Helpful responses${m.ratings ? ' · ' + m.ratings + ' rated' : ''}`,
-    ],
   ]
     .map(([value, text]) => `<div><strong>${q(value)}</strong><span>${q(text)}</span></div>`)
     .join('')}</div>`;
@@ -183,7 +178,6 @@ function render() {
     ['conversation', 'Conversation'],
     ['appointments', 'Visits'],
     ['activity', 'Activity'],
-    ['compare', 'Memory lab'],
   ]
     .map(
       ([id, name]) =>
@@ -191,7 +185,7 @@ function render() {
     )
     .join(
       '',
-    )}</div>${state.tab === 'conversation' ? chat(p) : state.tab === 'appointments' ? appointments(t) : state.tab === 'activity' ? activity(t) : lab(p)}</section><aside class="context-sidebar"><section class="panel context-panel"><div class="sidebar-heading"><h2>Next steps</h2><span class="subtle">For this request</span></div><div class="action-list">${['requirement', 'book', 'handoff', 'outcome'].map((kind) => `<button data-action="${kind}" ${disabled()}><span>${q(names[kind])}</span><span aria-hidden="true">↗</span></button>`).join('')}</div></section><section class="panel context-panel"><div class="sidebar-heading"><h2>Your data</h2></div><p class="context-intro">Download what Continuum holds for you here, or remove the content of your conversations. Your requests, appointments and specialist updates stay so your case isn’t disrupted.</p><div class="action-list"><button data-action="export-data" ${disabled()}><span>Download my data</span><span aria-hidden="true">↓</span></button><button data-action="erase-data" ${disabled()}><span>Remove my conversation content</span><span aria-hidden="true">✕</span></button></div></section><section class="panel context-panel"><div class="sidebar-heading"><h2>Remembered context <span>${active.length}</span></h2></div><p class="context-intro">Useful details for the next conversation.</p>${active.length ? active.map((m) => `<article class="memory-entry"><span class="pill">${q(kinds[m.kind] || m.kind)}</span><p>${q(m.text)}</p><div><small>${formatDate(m.createdAt)}</small><button class="text-button" data-retire="${q(m.id)}" ${disabled()} aria-label="Retire memory: ${q(m.text)}">Retire</button></div></article>`).join('') : '<div class="empty-state compact"><p>No remembered context yet.</p><small>Preferences and outcomes will appear here.</small></div>'}<button class="text-button summarize-button" data-action="reflect" ${state.busy || !state.memory || !active.length ? 'disabled' : ''}>Summarize context ↗</button>${state.reflection ? `<div class="reflection"><p>${q(state.reflection.text)}</p></div>` : ''}${
+    )}</div>${state.tab === 'conversation' ? chat(p) : state.tab === 'appointments' ? appointments(t) : state.tab === 'activity' ? activity(t) : chat(p)}</section><aside class="context-sidebar"><section class="panel context-panel"><div class="sidebar-heading"><h2>Actions</h2><span class="subtle">For this request</span></div><div class="action-list">${['requirement', 'book', 'handoff', 'outcome'].map((kind) => `<button data-action="${kind}" ${disabled()}><span>${q(names[kind])}</span><span aria-hidden="true">↗</span></button>`).join('')}</div></section><section class="panel context-panel"><details class="data-controls"><summary>Your data and privacy</summary><p class="context-intro">Download what Continuum holds for you here, or remove the content of your conversations. Your requests, appointments and specialist updates stay so your case isn’t disrupted.</p><div class="action-list"><button data-action="export-data" ${disabled()}><span>Download my data</span><span aria-hidden="true">↓</span></button><button data-action="erase-data" ${disabled()}><span>Remove my conversation content</span><span aria-hidden="true">✕</span></button></div></details></section><section class="panel context-panel"><div class="sidebar-heading"><h2>Remembered context <span>${active.length}</span></h2></div><p class="context-intro">Useful details for the next conversation.</p>${active.length ? active.map((m) => `<article class="memory-entry"><span class="pill">${q(kinds[m.kind] || m.kind)}</span><p>${q(m.text)}</p><div><small>${formatDate(m.createdAt)}</small><button class="text-button" data-retire="${q(m.id)}" ${disabled()} aria-label="Retire memory: ${q(m.text)}">Retire</button></div></article>`).join('') : '<div class="empty-state compact"><p>No remembered context yet.</p><small>Preferences and outcomes will appear here.</small></div>'}<button class="text-button summarize-button" data-action="reflect" hidden ${state.busy || !state.memory || !active.length ? 'disabled' : ''}>Summarize context ↗</button>${state.reflection ? `<div class="reflection"><p>${q(state.reflection.text)}</p></div>` : ''}${
     state.ledger.some((m) => m.invalidatedAt)
       ? `<details class="retired"><summary>Retired context</summary>${state.ledger
           .filter((m) => m.invalidatedAt)

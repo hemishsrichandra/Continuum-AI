@@ -14,7 +14,7 @@ try {
     server.stderr.on('data', (chunk) => { clearTimeout(timer); reject(new Error(chunk.toString())); });
     server.stdout.on('data', (chunk) => { const match = chunk.toString().match(/Continuum: (http:\/\/localhost:\d+)/); if (match) { clearTimeout(timer); resolve(match[1]); } });
   });
-  for (const route of ['/', '/about', '/services', '/pricing', '/book-a-session', '/style-guide', '/desk', '/desk/', '/operator/', '/team', '/team.js', '/staff-account.js', '/connector-ui.js', '/demo', '/demo.js', '/demo.css', '/data-sources-ui.js', '/staff-access-ui.js', '/operator.js', '/pages.js', '/client.js', '/workspace-control.js', '/chatbot-config.js', '/auth-ui.js', '/ui.js', '/styles.css']) {
+  for (const route of ['/', '/about', '/services', '/pricing', '/book-a-session', '/style-guide', '/desk', '/desk/', '/operator/', '/team', '/team.js', '/staff-account.js', '/connector-ui.js', '/demo', '/demo.js', '/demo.css', '/data-sources-ui.js', '/staff-access-ui.js', '/operator.js', '/pages.js', '/client.js', '/workspace-control.js', '/chatbot-config.js', '/auth-ui.js', '/ui.js', '/styles.css', '/theme.css', '/theme-init.js', '/fx.js', '/scene.js', '/vendor/three.module.min.js', '/vendor/three.core.min.js']) {
     const response = await fetch(base + route); assert.equal(response.status, 200, route);
     assert.ok(response.headers.get('content-security-policy'));
   }
