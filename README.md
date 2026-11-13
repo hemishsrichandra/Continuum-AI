@@ -6,7 +6,9 @@ Continuum AI is a multi-company support platform that turns customer-confirmed s
 
 One account can access multiple companies. Each company can run distinct support services, manage its own specialists and customers, and build a knowledge library that stays within its authorized workspace.
 
-**Project status:** Working prototype with two modes — the real company-scoped application and a separate **[Interactive Learning Demo](DEMO_GUIDE.md)** at `/demo` — plus an automated suite (see [STATUS.md](STATUS.md) for the latest actual results and limitations). See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and [FLAW-REGISTER-STATUS.md](FLAW-REGISTER-STATUS.md) for how each item in the independent flaw report was validated, fixed or left open.
+**Judging or presenting?** Start with [PITCH.md](PITCH.md): the 3-minute script, every measured number with its limits, and the questions to expect. Everything older is archived in [docs/](docs/DOCS.md).
+
+**Project status:** Working prototype with two modes — the real company-scoped application and a separate **[Interactive Learning Demo](docs/DEMO_GUIDE.md)** at `/demo` — plus an automated suite (see [STATUS.md](docs/STATUS.md) for the latest actual results and limitations). See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and [FLAW-REGISTER-STATUS.md](docs/FLAW-REGISTER-STATUS.md) for how each item in the independent flaw report was validated, fixed or left open.
 
 [Try the demo](#quick-start) · [How it works](#how-it-works) · [Architecture](#architecture) · [Verification](#verification) · [Documentation](#documentation)
 
@@ -91,7 +93,7 @@ npm ci
 npm start    # open http://localhost:3100/demo
 ```
 
-See [DEMO_GUIDE.md](DEMO_GUIDE.md) for the 2–4 minute script. `npm run demo:learning` runs the same chain headlessly.
+See [DEMO_GUIDE.md](docs/DEMO_GUIDE.md) for the 2–4 minute script. `npm run demo:learning` runs the same chain headlessly.
 
 ### Explore the complete multi-company demo
 
@@ -147,7 +149,7 @@ The reproducible demo verifies this sequence:
 5. **A separate learned attempt fails.** The issue reaches the human queue and the knowledge enters review.
 6. **Isolation is checked.** Company B and Company A's unrelated IT service cannot retrieve the repair solution. One customer switches between A and B without creating a second account.
 
-The same lifecycle was also verified in the browser for a charging issue: a newly registered Customer B received the standard charging check, then Customer A's confirmed solution, and completed the request through explicit feedback. The repair instructions and successful outcomes in that demonstration were fictional/simulated. See [CHARGING-TEST.md](CHARGING-TEST.md) for the observed steps and evidence.
+The same lifecycle was also verified in the browser for a charging issue: a newly registered Customer B received the standard charging check, then Customer A's confirmed solution, and completed the request through explicit feedback. The repair instructions and successful outcomes in that demonstration were fictional/simulated. See [CHARGING-TEST.md](docs/CHARGING-TEST.md) for the observed steps and evidence.
 
 ## Architecture
 
@@ -157,7 +159,7 @@ The same lifecycle was also verified in the browser for a charging issue: a newl
 | Application server | Node.js HTTP API; authentication, authorization, workflow transitions, confirmations and integration orchestration. |
 | Durable storage | SQLite through `better-sqlite3`; relational account/workspace tables and indexed application records, with transactions and uniqueness constraints. |
 | Memory | Hindsight integration for configured remote retention/recall, plus a local fallback for reproducible demonstrations. Local scope and publication checks remain authoritative. |
-| Semantic search | Optional ChromaDB index beside SQLite FTS5 (hybrid retrieval). SQLite stays authoritative and re-validates every candidate; without ChromaDB the app runs on SQLite alone. See [SEMANTIC-SEARCH.md](SEMANTIC-SEARCH.md). |
+| Semantic search | Optional ChromaDB index beside SQLite FTS5 (hybrid retrieval). SQLite stays authoritative and re-validates every candidate; without ChromaDB the app runs on SQLite alone. See [SEMANTIC-SEARCH.md](docs/SEMANTIC-SEARCH.md). |
 | Language model | Optional OpenAI-compatible endpoint for interpretation and response composition; permissions and state transitions remain server-controlled. |
 | Business gateway | Allowlisted HTTPS contract for customer lookup, service-record imports and optional acknowledged action delivery. |
 | Optional integrations | Resend email and Google Calendar OAuth, backed by encrypted credentials and durable delivery jobs. |
@@ -189,7 +191,7 @@ Global accounts use stable internal IDs and unique normalized email addresses. C
 
 Database uniqueness and transactional writes prevent duplicate memberships, attempts and active-case submissions. Finalized fix feedback cannot be overwritten by conflicting feedback. Specialist updates retain revision/conflict protection and audit history.
 
-**Migration 4** is additive, transactional and versioned. It backfills memberships and repair/IT chatbot identities while preserving account IDs, credentials, safe sessions, tickets, conversations, connector mappings, resolutions and audit records. Legacy shared knowledge remains within its original authorized domain. See [MULTI-COMPANY.md](MULTI-COMPANY.md) for migration behavior and remote-memory re-publication details.
+**Migration 4** is additive, transactional and versioned. It backfills memberships and repair/IT chatbot identities while preserving account IDs, credentials, safe sessions, tickets, conversations, connector mappings, resolutions and audit records. Legacy shared knowledge remains within its original authorized domain. See [MULTI-COMPANY.md](docs/MULTI-COMPANY.md) for migration behavior and remote-memory re-publication details.
 
 Authentication includes scrypt password hashing, opaque hashed sessions, HttpOnly cookies, CSRF protection, rate limits, expiring one-use verification/reset links and session revocation. Production uses secure cookies and HTTPS. Integration credentials remain encrypted server-side.
 
@@ -241,7 +243,7 @@ Tests use isolated databases and mocked providers. The retrieval-only evaluation
 
 Configured live checks are available through `npm run verify:live` and `npm run evaluate:live`. They contact remote services and require their own credentials. They were not run for the latest multi-company implementation; current local results do not establish live integration performance or production answer accuracy.
 
-Detailed records: [Multi-company verification](MULTI-COMPANY-VERIFICATION.md) · [Charging workflow verification](CHARGING-TEST.md).
+Detailed records: [Multi-company verification](docs/MULTI-COMPANY-VERIFICATION.md) · [Charging workflow verification](docs/CHARGING-TEST.md).
 
 ## Prototype scope and next steps
 
@@ -258,18 +260,18 @@ Detailed records: [Multi-company verification](MULTI-COMPANY-VERIFICATION.md) ·
 
 | Guide | Contents |
 | --- | --- |
-| [Multi-company implementation](MULTI-COMPANY.md) | Data model, migration, service configuration, workflow, memory boundaries, secure linking and demo instructions. |
-| [Semantic search](SEMANTIC-SEARCH.md) | SQLite + ChromaDB hybrid retrieval, embeddings, index consistency, recovery and rollback. |
-| [Privacy and erasure](PRIVACY.md) | What is stored where, what erasure removes, what is kept and why. |
-| [Upgrade audit](UPGRADE-AUDIT.md) | The 21 audit items, what changed, what was verified and what is still open. |
+| [Multi-company implementation](docs/MULTI-COMPANY.md) | Data model, migration, service configuration, workflow, memory boundaries, secure linking and demo instructions. |
+| [Semantic search](docs/SEMANTIC-SEARCH.md) | SQLite + ChromaDB hybrid retrieval, embeddings, index consistency, recovery and rollback. |
+| [Privacy and erasure](docs/PRIVACY.md) | What is stored where, what erasure removes, what is kept and why. |
+| [Upgrade audit](docs/UPGRADE-AUDIT.md) | The 21 audit items, what changed, what was verified and what is still open. |
 | [Integration setup](SETUP.md) | Environment configuration, email, Google Calendar, Hindsight and deployment prerequisites. |
-| [Company and specialist interfaces](COMPANY-INTERFACE.md) | Owner/staff workflows and role separation. |
-| [Provider gateway contract](PROVIDER-GATEWAY.md) | Service imports, customer lookup/linking and optional confirmed-action delivery. |
-| [Learning demonstration](LEARNING-DEMO.md) | Guided demonstration of reviewed knowledge reuse. |
-| [Verification report](MULTI-COMPANY-VERIFICATION.md) | Test results, browser observations and remaining validation limits. |
-| [Charging scenario](CHARGING-TEST.md) | Customer A → specialist → Customer B verification and generalized response behavior. |
+| [Company and specialist interfaces](docs/COMPANY-INTERFACE.md) | Owner/staff workflows and role separation. |
+| [Provider gateway contract](docs/PROVIDER-GATEWAY.md) | Service imports, customer lookup/linking and optional confirmed-action delivery. |
+| [Learning demonstration](docs/LEARNING-DEMO.md) | Guided demonstration of reviewed knowledge reuse. |
+| [Verification report](docs/MULTI-COMPANY-VERIFICATION.md) | Test results, browser observations and remaining validation limits. |
+| [Charging scenario](docs/CHARGING-TEST.md) | Customer A → specialist → Customer B verification and generalized response behavior. |
 | [Evaluation materials](evaluation/README.md) | Synthetic retrieval evaluation and interpretation of results. |
-| [Participant protocol](USER-PILOT.md) | Planned approach for collecting feedback from consenting test participants. |
+| [Participant protocol](docs/USER-PILOT.md) | Planned approach for collecting feedback from consenting test participants. |
 
 ---
 
@@ -277,4 +279,4 @@ Detailed records: [Multi-company verification](MULTI-COMPANY-VERIFICATION.md) ·
 
 ## More documentation
 
-See [DOCS.md](DOCS.md) for an index of every guide, audit and report, and [V3-LEDGER.md](V3-LEDGER.md) for the latest requirement-by-requirement status.
+See [DOCS.md](docs/DOCS.md) for an index of every guide, audit and report, and [V3-LEDGER.md](docs/V3-LEDGER.md) for the latest requirement-by-requirement status.

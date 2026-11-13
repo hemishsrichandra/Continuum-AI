@@ -17,8 +17,11 @@ export function client(getHandler) {
     get headers() { return { cookie, 'x-csrf-token': csrf }; },
   };
 }
-export async function world(t, { config = {}, file, vectorClient } = {}) {
-  let h = createHandler({ file, config, vectorClient });
+// `choose: true` runs the product default explicitly (suggestions are only presented; the customer picks one). Older suites that are about
+// learning, scoring or outcomes rather than the choice step run the legacy `auto_first` mode (set once in test/setup-windows-cleanup.js),
+// in which the best suggestion is the recorded attempt.
+export async function world(t, { config = {}, file, vectorClient, choose = false } = {}) {
+  let h = createHandler({ file, config: choose ? { SUGGESTION_MODE: 'choose', ...config } : config, vectorClient });
   t.after(() => h.close());
   const get = () => h;
   const owner = client(get), other = client(get);

@@ -244,7 +244,7 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
   return report;
 }
 
-if (process.argv[1]?.endsWith('/evaluate.js')) {
+if (/[\\/]evaluate\.js$/.test(process.argv[1] || '')) {
   const arg = (name) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined);
   const file = arg('--file');
   const report = await evaluate({

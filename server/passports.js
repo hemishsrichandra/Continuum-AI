@@ -147,6 +147,12 @@ export function normalizeApplicability(input = {}) {
         ...(c.max !== undefined && { max: String(c.max) }),
         required: c.required !== false,
       }));
+  if (input.structured && typeof input.structured === 'object') {
+    const list = (v) => (Array.isArray(v) ? v.slice(0, 20).map((x) => String(x).slice(0, 100)).filter(Boolean) : []);
+    const structured = { problemCategory: list(input.structured.problemCategory), productFamily: list(input.structured.productFamily), models: list(input.structured.models) };
+    for (const k of Object.keys(structured)) if (!structured[k].length) delete structured[k];
+    if (Object.keys(structured).length) out.structured = structured;
+  }
   if (input.universal === true) out.universal = true;
   if (input.reviewed === true) out.reviewed = true;
   return out;

@@ -284,9 +284,11 @@ test('PostgreSQL adapter runs only with a driver and uses quoted identifiers (mo
   const ds = createDataSources(w.h.store, w.h.dataSources.__delivery || w.h.delivery, { DATA_SOURCE_POSTGRES_DRIVER: 'pg', DATA_SOURCE_POSTGRES_HOSTS: '93.184.216.34' }, { drivers: { postgres: { Client } } });
   const result = await ds.sync(w.company, pg.data.source.id, 'test');
   assert.equal(result.inserted, 1);
-  assert.match(queries[0], /^SELECT "id","title","symptoms","steps" FROM "public"\."solutions" ORDER BY "id" LIMIT \d+ OFFSET 0$/);
+  assert.match(queries[0], /^SELECT "id","title","symptoms","steps" FROM "public"\."solutions" ORDER BY "id" LIMIT 500$/, 'a keyset page: ordered by id, bounded, values never inlined');
+  // An injection-shaped table name is refused when the source is saved, before anything can run.
   const evil = await save({ sourceType: 'postgres', name: 'Evil', fieldMapping: { fields: { externalId: 'id', title: 'title', symptoms: 'symptoms', steps: 'steps' }, diagnostics: {} }, connection: { uri: 'postgres://u:p@93.184.216.34/kb', table: 'solutions"; DROP TABLE x;--' } });
-  await assert.rejects(ds.sync(w.company, evil.data.source.id, 'test'), /plain table/);
+  assert.equal(evil.status, 400);
+  assert.match(evil.data.error, /plain table/);
 });
 
 test('diagnostic fields: mapped columns become applicability conditions and gate retrieval', async (t) => {
@@ -325,7 +327,7 @@ test('diagnostic fields: mapped columns become applicability conditions and gate
 
 // --------------------------------------------------------------------------- scheduled sync
 const HOUR = 3600000;
-const csvOf = (steps) => `id,title,symptoms,steps,applies_to\nK-1,Display flicker,Display flickers after startup,${steps},Model X firmware 4\n`;
+const csvOf = (steps) => `id,title,symptoms,steps,applies_to,safety\nK-1,Display flicker,Display flickers after startup,${steps},Model X firmware 4,None identified\n`;
 
 test('scheduled sync: due sources run on the worker tick exactly once per interval; manual-only sources never run', async (t) => {
   const { w, save } = await setup(t);

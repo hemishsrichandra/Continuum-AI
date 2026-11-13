@@ -5,6 +5,10 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 
+// Suites written before explicit suggestion choice exist run the legacy mode (the best suggestion is recorded as the attempt when shown).
+// New suites opt into the product default with `world(t, { choose: true })`.
+process.env.SUGGESTION_MODE ??= 'auto_first';
+
 if (process.platform === 'win32') {
   const locked = (e) => ['EBUSY', 'EPERM'].includes(e?.code);
   const rm = fsp.rm;

@@ -24,7 +24,11 @@
     "test:chroma": "node --import ./test/setup-windows-cleanup.js --test test/chroma-live.test.js",
     "verify:chroma": "node --import ./test/setup-windows-cleanup.js scripts/verify-chroma-live.js",
     "benchmark:semantic": "node --import ./test/setup-windows-cleanup.js scripts/benchmark-semantic.js --out evaluation/semantic-results.json",
-    "benchmark:sync": "node scripts/benchmark-sync.js"
+    "benchmark:sync": "node scripts/benchmark-sync.js",
+    "seed:sample": "node scripts/seed-sample-company.js",
+    "serve:sample": "node scripts/serve-sample.js",
+    "load-test": "node scripts/load-test.js --out evaluation/load-results.json",
+    "rotate:key": "node scripts/rotate-integration-key.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

@@ -30,6 +30,7 @@ import { createEmbeddingService } from './embedding-service.js';
 import { createVectorStore } from './vector-store.js';
 import { documentText } from './vector-index.js';
 import { safeReceipt, sanitizeText } from './privacy-sanitizer.js';
+import { reviewStatusOf } from './knowledge-lifecycle.js';
 
 const now = () => new Date().toISOString();
 const parse = (v, fallback) => {
@@ -39,6 +40,18 @@ const parse = (v, fallback) => {
     return fallback;
   }
 };
+
+// Why a customer said a suggested fix did not help. A near-miss lowers that fix's rank ONLY for customers in a similar situation
+// (the same device or version facts); how much depends on the reason. "could_not_do_step" says little about the fix itself.
+export const NEAR_MISS_REASONS = Object.freeze({
+  no_change: 0.04,
+  different_problem: 0.08,
+  made_worse: 0.1,
+  could_not_do_step: 0.01,
+  unspecified: 0.03,
+});
+const NEAR_MISS_CAP = 0.12;
+export const factPairs = (facts = {}) => Object.entries(facts).flatMap(([key, f]) => (f.values || []).slice(0, 5).map((v) => key + ':' + v)).sort();
 
 export function passportView(row, { internal = true } = {}) {
   if (!row) return null;
@@ -58,6 +71,13 @@ export function passportView(row, { internal = true } = {}) {
     verification: verificationOf(row),
     revisedFrom: evidence.revisedFrom || null,
     sourceStatus: row.source_status || 'present',
+    // Lifecycle: what a reviewer needs to judge this record without reading its source system.
+    reviewStatus: reviewStatusOf(row),
+    verificationBasis: verificationOf(row),
+    lastSeenAt: row.last_seen_at || null,
+    sourceVersion: row.source_version || null,
+    retirementReason: row.status === 'retired' ? row.flagged_reason || (row.source_status === 'withdrawn' ? 'Withdrawn from the source' : 'Retired by a reviewer') : null,
+    structured: parse(row.applicability_json, {}).structured || null,
     customerConfirmed: Boolean(row.customer_confirmed),
     unconfirmed,
     version: row.version_number,
@@ -230,7 +250,7 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
     for (let i = 0; i < wanted.length; i += 200) {
       const chunk = wanted.slice(i, i + 200);
       rows.push(...sql
-        .prepare(`SELECT * FROM memory_pool WHERE company_id=? AND chatbot_id=? AND status='active' AND origin_type IN (${originSql}) AND id IN (${chunk.map(() => '?').join(',')})`)
+        .prepare(`SELECT * FROM memory_pool WHERE +company_id=? AND +chatbot_id=? AND +status='active' AND +origin_type IN (${originSql}) AND id IN (${chunk.map(() => '?').join(',')})`)
         .all(companyId, chatbotId, ...origins, ...chunk)
         .filter((r) => !excludeIds.has(r.id) && !excludeSignatures.has(signatureOf(parse(r.steps_json, [])))));
     }
@@ -292,6 +312,8 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
     // short follow-up message can be matched on its own while still honouring the ticket's device facts.
     const gateText = factsText ?? text;
     const facts = customerFacts(gateText, fields);
+    const nearMisses = nearMissesFor(companyId, rows.map((r) => r.id));
+    const stated = new Set(factPairs(facts));
     const scoredRows = rows.map((r) => {
       const cos = cosines.has(r.id) ? cosines.get(r.id) : null;
       const bm = normBm25({ raw: raw.has(r.id) ? raw.get(r.id) : null, rawBest: rawBestAll, queryTokens, docTokens: tokens(r.title + ' ' + r.symptoms_text) });
@@ -300,7 +322,8 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
       const w = reliability(r.initial_confidence_score, r.reuse_success_count, r.reuse_failure_count);
       // A partly confirmed generic environment needs a strong enough semantic match; mandatory conditions never reach this branch.
       const usable = gate.eligible && (!gate.partial || hybrid >= THRESHOLDS.partialHybrid);
-      const final = usable ? finalScore(hybrid, gate.compat, w) : 0;
+      const penalty = usable ? nearMissPenalty(nearMisses.get(r.id), stated) : 0;
+      const final = usable ? Math.max(0, Math.round((finalScore(hybrid, gate.compat, w) - penalty) * 1e4) / 1e4) : 0;
       return {
         id: r.id,
         row: r,
@@ -309,7 +332,7 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
         gate,
         hybrid,
         finalScore: final,
-        breakdown: { cosine: cos === null || cos === undefined ? null : Math.round(cos * 10000) / 10000, normBm25: bm, S_hybrid: hybrid, S_compat: gate.compat, W_reliability: w, S_final: final, C_init: r.initial_confidence_score },
+        breakdown: { cosine: cos === null || cos === undefined ? null : Math.round(cos * 10000) / 10000, normBm25: bm, S_hybrid: hybrid, S_compat: gate.compat, W_reliability: w, S_final: final, C_init: r.initial_confidence_score, ...(penalty && { nearMissPenalty: penalty }) },
       };
     });
     const eligible = rankCandidates(scoredRows, limit);
@@ -323,6 +346,50 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
     const turnedAwayRelevant = scoredRows.some((c) => !c.eligible && ['conflict', 'unknown'].includes(c.gate.status) && finalScore(c.hybrid, 1, c.breakdown.W_reliability) >= THRESHOLDS.retrieval);
     const widen = eligible.length === 0 && saturated && turnedAwayRelevant && rows.length < poolSize;
     return { widen, eligible, withheld, rejected, backend, source, candidates: { lexical: raw.size, facets: facetHits.size, semantic: source === 'chroma' ? cosines.size : 0, unindexed: unindexed.size, merged: rows.length, poolSize } };
+  }
+
+  /** Near-miss rows for these fixes, grouped by fix. Only reasons and device/version facts: no customer identity. */
+  function nearMissesFor(companyId, ids) {
+    const out = new Map();
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      for (const r of sql.prepare(`SELECT memory_id, reason, facts_json FROM fix_near_misses WHERE company_id=? AND memory_id IN (${chunk.map(() => '?').join(',')})`).all(companyId, ...chunk)) {
+        if (!out.has(r.memory_id)) out.set(r.memory_id, []);
+        out.get(r.memory_id).push({ reason: r.reason, facts: parse(r.facts_json, []) });
+      }
+    }
+    return out;
+  }
+  /**
+   * Sum of the weights of earlier failures in a similar situation, capped. A failure is similar when, for every kind of fact both
+   * sides state (model, firmware, OS ...), at least one value is shared; a failure on firmware 5 says nothing about firmware 4.
+   * When the two sides share no kind of fact (or one side stated none) the failure counts half.
+   */
+  function nearMissPenalty(list, stated) {
+    if (!list?.length) return 0;
+    const byKey = (pairs) => pairs.reduce((m, p) => { const i = p.indexOf(':'); (m[p.slice(0, i)] ||= new Set()).add(p.slice(i + 1)); return m; }, {});
+    const now = byKey([...stated]);
+    let total = 0;
+    for (const m of list) {
+      const weight = NEAR_MISS_REASONS[m.reason] ?? NEAR_MISS_REASONS.unspecified;
+      const then = byKey(m.facts);
+      const common = Object.keys(then).filter((k) => now[k]);
+      const similarity = !common.length ? 0.5 : common.every((k) => [...then[k]].some((v) => now[k].has(v))) ? 1 : 0;
+      total += weight * similarity;
+    }
+    return Math.round(Math.min(NEAR_MISS_CAP, total) * 1e4) / 1e4;
+  }
+  /** Remember why a fix failed and in which situation. Idempotent per ticket; the note is sanitized and never holds a secret. */
+  function recordNearMiss({ companyId, chatbotId, memoryId, ticketId = null, reason = 'unspecified', detail = '', factsText = '' }) {
+    if (!scoped(companyId, chatbotId, memoryId)) return null;
+    const kind = Object.hasOwn(NEAR_MISS_REASONS, reason) ? reason : 'unspecified';
+    const note = typeof detail === 'string' && detail.trim() ? sanitizeText(detail.trim().slice(0, 300)) : null;
+    if (note?.secret) throw fault(400, 'Remove credentials, tokens and keys from your note.');
+    const pairs = factPairs(customerFacts(String(factsText || '')));
+    sql.prepare(`INSERT INTO fix_near_misses(id,company_id,chatbot_id,memory_id,ticket_id,reason,detail,facts_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(company_id,memory_id,ticket_id) DO UPDATE SET reason=excluded.reason, detail=excluded.detail, facts_json=excluded.facts_json`)
+      .run(randomUUID(), companyId, chatbotId, memoryId, ticketId || 'unknown', kind, note?.text ?? null, JSON.stringify(pairs), now());
+    return { reason: kind, facts: pairs };
   }
 
   /** Record a reuse outcome; flags for review at 2 consecutive failures or W < 0.55. */
@@ -443,6 +510,7 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
     vectors,
     retrieve,
     recordOutcome,
+    recordNearMiss,
     revise,
     review,
     screen,

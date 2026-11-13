@@ -1,0 +1,36 @@
+{
+  "generatedAt": "2026-11-13T17:15:59.538Z",
+  "node": "v24.13.1",
+  "setup": {
+    "knowledgeItems": 10000,
+    "concurrentChats": 50,
+    "rounds": 3,
+    "embedding": "local-hashed-concepts-v2",
+    "vectorIndex": "off (SQLite only)",
+    "seedSeconds": 7.5
+  },
+  "chat": {
+    "requests": 150,
+    "statuses": {
+      "200": 150
+    },
+    "medianMs": 6550,
+    "p95Ms": 7691.2,
+    "maxMs": 7692.3,
+    "wholeRoundMs": [
+      7244,
+      6553,
+      7693
+    ]
+  },
+  "retrievalAlone": {
+    "queries": 100,
+    "medianMs": 123.2,
+    "p95Ms": 196.8
+  },
+  "limits": [
+    "In-process: no network, no browser. One Node thread: requests interleave, they do not run in parallel.",
+    "Synthetic fixes and one company; a real company has messier text.",
+    "Offline embeddings unless EMBEDDING_* is set; a remote embedding model adds its own latency to each query."
+  ]
+}

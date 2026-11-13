@@ -17,6 +17,14 @@
         "--serve"
       ],
       "port": 3211
+    },
+    {
+      "name": "continuum-sample",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/serve-sample.js"
+      ],
+      "port": 3300
     }
   ]
 }

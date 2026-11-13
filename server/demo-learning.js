@@ -12,7 +12,7 @@
 //    confirms a specialist proposal inside the same demo session.
 //  * This is knowledge acquisition and retrieval, not model-weight training.
 import { randomBytes, randomUUID } from 'node:crypto';
-import { tokens } from './context.js';
+import { tokens, conceptTokens } from './context.js';
 import { customerFacts } from './applicability.js';
 import {
   THRESHOLDS, localEmbedding, cosine, normBm25, bm25Raw, hybridScore, reliability, finalScore,
@@ -37,7 +37,8 @@ export const DEMO_PLAYBOOKS = Object.freeze([
 export const SCRIPT = Object.freeze({
   userA: { description: 'My Demo Laptop X1 screen flickers right after startup. Restarting did not help.', device: 'Demo Laptop X1, firmware 4' },
   specialist: {
-    title: 'Demo X1 screen flicker after startup',
+    title: 'Demo X1 screen flicker after startup',
+
     environment: 'Demo Laptop X1 firmware 4',
     steps: 'Fictional demo only: open Display Settings, change Refresh Mode from Adaptive to Fixed 60 Hz, then restart the laptop.',
     safety: 'None identified',
@@ -336,6 +337,41 @@ export function confirm(state, { caseId, accepted, confirmed }) {
   return { case: c, learned: learnedView(l) };
 }
 
+// ---------------------------------------------------------------------------
+// Keyword search versus meaning search over THIS session's learned fixes, for the same reworded problem.
+//   keyword  = plain word matching: only words that appear, spelled the same way, in the stored fix's problem text. Words that merely name
+//              the device ("Demo Laptop X1") are not evidence that the PROBLEM matches, so they are listed but do not count.
+//   meaning  = the real retrieval used everywhere else in the demo (concept embedding + BM25, then the device and safety checks).
+// Nothing here is stored and nothing leaves the process.
+const PLAIN_STOP = new Set('the and for with that this have has had not but are was were you your our its from when what whenever while then than them they their there here into onto over under after before again very just also keeps keep got get gets can could would should will does did doing done been being itself right'.split(' '));
+const plainWords = (text) => new Set((String(text).toLowerCase().match(/[a-z0-9]+/g) || []).filter((w) => w.length > 2 && !PLAIN_STOP.has(w)));
+export function compareSearch(state, { description, device }) {
+  const query = text(description, 'description', 500);
+  const dev = optional(device, 'device and version', 200);
+  const clean = scrubPII(`${query}
+${dev}`, { names: [] }).text;
+  if (!state.learned.length) throw fault(409, 'Teach the demo a fix first (play the walkthrough, or finish Customer A’s case).');
+  const asked = plainWords(clean);
+  const rows = state.learned.map((l) => {
+    const deviceWords = plainWords(l.environment);
+    const problemWords = new Set([...plainWords(`${l.title} ${l.symptoms}`)].filter((w) => !deviceWords.has(w)));
+    const matched = [...problemWords].filter((w) => asked.has(w));
+    const deviceMatched = [...deviceWords].filter((w) => asked.has(w));
+    return { l, matched, deviceMatched };
+  });
+  const bestKeyword = rows.slice().sort((a, b) => b.matched.length - a.matched.length)[0];
+  const { top } = suggest(state, { description: query, device: dev });
+  const concepts = top ? [...conceptTokens(clean)].filter((c) => conceptTokens(`${top.learned.title} ${top.learned.symptoms}`).has(c)) : [];
+  return {
+    comparison: {
+      query: { description: query, device: dev },
+      embedding: 'Concept embedding that runs offline in this demo. A neural embedding model is used instead when one is configured.',
+      keyword: { found: bestKeyword.matched.length > 0, title: bestKeyword.matched.length ? bestKeyword.l.title : null, matchedWords: bestKeyword.matched, deviceWordsOnly: bestKeyword.deviceMatched },
+      meaning: { found: Boolean(top), title: top ? top.learned.title : null, matchedConcepts: concepts, confidence: top ? top.breakdown.S_final : null, checks: top ? top.gate.reasons : [] },
+    },
+  };
+}
+
 export function reset(state) {
   const keep = state.id;
   Object.assign(state, fresh(keep), { resets: state.resets + 1 });
@@ -397,10 +433,11 @@ export async function handleDemo(req, url, write) {
     'POST /api/demo/customer/feedback': feedback,
     'POST /api/demo/customer/confirm': confirm,
     'POST /api/demo/specialist/propose': propose,
+    'POST /api/demo/compare': compareSearch,
   };
   const action = actions[route];
   if (!action) throw fault(404, 'Demo route not found.');
   const result = action(state, await readJson(req));
-  write(200, { ...(result?.preview ? result : { success: true }), state: view(state) });
+  write(200, { ...(result?.preview || result?.comparison ? result : { success: true }), state: view(state) });
   return true;
 }

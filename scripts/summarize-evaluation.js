@@ -51,7 +51,7 @@ lines.push('## Limits and next evidence', '',
   '- The dataset is now observed. Keep it as a regression set; obtain independent customer wording for the next blind evaluation.',
   '- Same-language, ten-domain sample only. Other languages, complex multi-issue tickets and adversarial prompts need separate evaluation.',
   '- This challenge does not replace the existing publication, retirement, company-isolation and HTTP regression checks.',
-  '- No real participants, customer-time savings, business deployment or screen recording are claimed. Use USER-PILOT.md and JUDGE-DEMO.md for those next steps.',
+  '- No real participants, customer-time savings, business deployment or screen recording are claimed. Use docs/USER-PILOT.md and docs/JUDGE-DEMO.md for those next steps.',
   '- Live runs use separate temporary databases and Hindsight namespaces. Synthetic cloud memories may remain in the recorded namespace; existing workspace records are not used.', '');
 await mkdir('output/evaluation-results', { recursive: true });
 for (let i = 0; i < files.length; i++) await writeFile('output/evaluation-results/' + basename(files[i]), JSON.stringify(reports[i], null, 2));

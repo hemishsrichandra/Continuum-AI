@@ -1,6 +1,6 @@
 # Judging evidence pack
 
-Start with [the challenge results](output/CHALLENGE-RESULTS.md). They report the new dataset, local/live behavior, individual misses and limitations. Read the live column only when the completed live report is present; do not substitute local checks for live integration evidence.
+Start with [the challenge results](../output/CHALLENGE-RESULTS.md). They report the new dataset, local/live behavior, individual misses and limitations. Read the live column only when the completed live report is present; do not substitute local checks for live integration evidence.
 
 ## Present
 
@@ -23,9 +23,9 @@ Use actual report filenames printed by the runs. The local challenge can exit no
 
 ## Gather the next evidence
 
-- [Participant protocol](USER-PILOT.md) and [blank observations CSV](evaluation/pilot-results.csv): run with 3–5 consenting people unfamiliar with the app.
+- [Participant protocol](USER-PILOT.md) and [blank observations CSV](../evaluation/pilot-results.csv): run with 3–5 consenting people unfamiliar with the app.
 - [Business gateway contract](PROVIDER-GATEWAY.md): use when a real partner and endpoint exist.
-- [Integration setup](SETUP.md): email and Google credentials/consent are deferred to the user.
+- [Integration setup](../SETUP.md): email and Google credentials/consent are deferred to the user.
 
 ## Claims to avoid
 

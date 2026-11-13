@@ -207,3 +207,32 @@ Each point of an outside critique was checked against the code before anything c
 * **Real pilot:** cannot be done from here. The tooling is ready: export 50–200 solved tickets, run the replay, have a specialist fill in `human_match`.
 * **Tickets out of the JSON `records` store, plus a real queue:** valid, but a large, risky migration with no tenant yet large enough to need it. Do it after the pilot, sized by real data.
 * **Ticket shape beyond `repair|it`:** unchanged.
+
+
+## Judge-readiness round (13 November 2026)
+
+Verified first, then built. Full write-up with limits: [PITCH.md](../PITCH.md).
+
+| Item | Verdict | What changed |
+| --- | --- | --- |
+| Make the AI visible | Done, offline engine only | Keyword-vs-meaning card on `/demo`. **Neural embeddings were not run**: no `EMBEDDING_API_KEY`, and the chat key (Groq) has no embeddings endpoint. |
+| Learning-loop visual | Already existed; refined | Home timeline relabelled to the four beats, plus a pause control (WCAG 2.2.2). |
+| One real metric | Done | "Repeat problems answered without a specialist" with before/after; companies seeded by `npm run seed:sample` are labelled synthetic. Sample: 1/4 → 7/8. |
+| Pitch kit | Partly | `PITCH.md` with the 3-minute script and a shot list. **No video was recorded**; it has to be recorded on a real machine. |
+| Recall gaps | Re-measured, not moved | Re-ran every set: regression 20/20, challenge 29/30, held-out 28/30, validation 25/30, informal 22/30, informal2 24/30, 0 wrong/unsafe. The older figures in the table above (30/30, 27/30) were already out of date on the committed code. Two general phrase patterns were added from the sample run. Nine of the 27 remaining misses are in the *storage* domain, and the pending-fix "re-show" path looks involved: worth a focused look. |
+| Model explains matches | Done | `server/fix-explainer.js`: grounded one-sentence "why this fits", with template fallback. |
+| Learn from near-misses | Done | Migration 12 `fix_near_misses`; reason picker; similarity-scoped, capped rank penalty. |
+| Stale-fix detection | Done | `server/stale-fixes.js`: success drop, not reconfirmed, same-model version lag. Shown on the owner dashboard. |
+| Guided tours | Done | `web/tour.js` for customer, specialist, owner. |
+| Customer progress | Done | Progress strip above the conversation. |
+| Accessibility pass | Done for owner and customer views | 0 axe violations; the scan caught and fixed a contrast failure in the new tour card. |
+| Split `app.js` | Done | 937 → 240 lines; `server/routes/{public,company,customer,actions}.js`; full suite green after the move. |
+| Move off JSON-collection storage | **Not done** | Largest architectural gap; a project of its own. |
+| Per-chatbot staff permissions | Already existed | `staff_chatbot_access` (migration 6) and `companies.mayUseBot`. |
+| Scheduled ingestion, job reconciliation | Ingestion existed; reconciliation added | Failed, late and abandoned provider jobs show in the owner's status panel. |
+| Load test | Done | `npm run load-test`; two query-plan fixes took retrieval from 668 ms to 123 ms and a 50-chat round from ~23 s to ~7 s at 10,000 fixes. |
+| Rotate credentials | Yours to do | Checklist and a re-encrypt script: `docs/SECURITY-HOUSEKEEPING.md`. |
+| Git history scan | Done | `.env` never committed; no current key appears in any commit. |
+| Chroma token | Already existed | `CHROMA_TOKEN`. |
+| Docs cleanup | Done | 25 reports moved to `docs/`; root keeps README, SETUP, PITCH. |
+| Pilot with real people | Yours to do | Protocol in `docs/USER-PILOT.md`; `scripts/pilot-replay.js`. |

@@ -66,7 +66,8 @@ test('the per-run limit pauses the import without dropping anything, shows it, a
   assert.ok(!third.deferred, 'the last run finishes');
   assert.equal(s.count(), 1500, 'every record arrived across the runs');
   assert.equal((await s.view()).status, 'ok');
-  assert.match(third.warning, /resumed import finished/i);
+  assert.equal(third.resumedFrom, 1400, 'the last run continued the same scan from its durable checkpoint');
+  assert.equal(third.snapshot, 'partial', 'this source is not declared an authoritative snapshot, so nothing could be retired');
 });
 
 test('a paused or resumed run never retires records, even for an authoritative snapshot; one full run does', async (t) => {
