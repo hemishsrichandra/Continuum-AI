@@ -1,5 +1,9 @@
 // Interactive Learning Demo UI. Talks only to /api/demo/* with a per-tab demo session id.
 // No cookies, no login, no real company data.
+import { initTheme, initProgress, initScene } from './fx.js';
+initTheme();
+initProgress();
+initScene();
 const KEY = 'continuum-demo-session';
 const q = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const app = document.querySelector('#demo-app');
@@ -73,9 +77,9 @@ function chain() {
   const s = state.summary;
   const hasEvent = (kind) => state.events.some((e) => e.kind === kind);
   return `<div class="demo-chain" aria-label="Learning progress">
-    <span class="${stepClass(hasEvent('still_need_help'))}">1 · A: standard idea fails</span><span class="arrow" aria-hidden="true">→</span>
+    <span class="${stepClass(hasEvent('still_need_help'))}">1 · A’s first suggestion fails</span><span class="arrow" aria-hidden="true">→</span>
     <span class="${stepClass(hasEvent('specialist_proposed'))}">2 · Specialist proposes</span><span class="arrow" aria-hidden="true">→</span>
-    <span class="${stepClass(s.verifiedMemoryCreated)}">3 · A confirms · memory created</span><span class="arrow" aria-hidden="true">→</span>
+    <span class="${stepClass(s.verifiedMemoryCreated)}">3 · A confirms: memory grows</span><span class="arrow" aria-hidden="true">→</span>
     <span class="${stepClass(s.userBBenefited)}">4 · B benefits</span></div>`;
 }
 function meter() {

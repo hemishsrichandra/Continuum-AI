@@ -32,6 +32,13 @@ const routes = {
   '/demo.js': ['demo.js', 'text/javascript; charset=utf-8'],
   '/demo.css': ['demo.css', 'text/css; charset=utf-8'],
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/theme.css': ['theme.css', 'text/css; charset=utf-8'],
+  '/theme-init.js': ['theme-init.js', 'text/javascript; charset=utf-8'],
+  '/fx.js': ['fx.js', 'text/javascript; charset=utf-8'],
+  '/scene.js': ['scene.js', 'text/javascript; charset=utf-8'],
+  // Three.js (MIT) is served from this origin: the security policy only allows scripts from here.
+  '/vendor/three.module.min.js': ['../node_modules/three/build/three.module.min.js', 'text/javascript; charset=utf-8'],
+  '/vendor/three.core.min.js': ['../node_modules/three/build/three.core.min.js', 'text/javascript; charset=utf-8'],
   '/auth-ui.js': ['auth-ui.js', 'text/javascript; charset=utf-8'],
   '/client.js': ['client.js', 'text/javascript; charset=utf-8'],
   '/workspace-control.js': ['workspace-control.js', 'text/javascript; charset=utf-8'],

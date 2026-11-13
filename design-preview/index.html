@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Continuum — design preview (rough)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#060914; --bg2:#0b1022; --surface:rgba(255,255,255,.045); --surface-2:rgba(255,255,255,.08); --line:rgba(255,255,255,.10);
+  --text:#eef2ff; --text2:rgba(223,231,255,.70); --text3:rgba(223,231,255,.48);
+  --a1:#6c8cff; --a2:#a78bfa; --ok:#5ee6b0; --warn:#f5c76a; --glow:0 0 0 1px rgba(108,140,255,.35),0 12px 50px -8px rgba(108,140,255,.55);
+  --shadow:0 30px 80px -30px rgba(0,0,0,.7); --r:18px;
+  font-family:'DM Sans',system-ui,sans-serif; color:var(--text); background:var(--bg);
+}
+:root[data-theme=light]{
+  --bg:#f5f7fc; --bg2:#ffffff; --surface:rgba(255,255,255,.75); --surface-2:#ffffff; --line:rgba(14,19,48,.10);
+  --text:#0d1230; --text2:rgba(13,18,48,.68); --text3:rgba(13,18,48,.48);
+  --glow:0 0 0 1px rgba(80,110,240,.3),0 12px 40px -10px rgba(80,110,240,.45); --shadow:0 24px 60px -28px rgba(30,40,100,.35);
+}
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden}
+body:before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(900px 500px at 12% -5%,rgba(108,140,255,.22),transparent 60%),radial-gradient(800px 500px at 95% 10%,rgba(167,139,250,.18),transparent 60%),radial-gradient(700px 500px at 50% 110%,rgba(94,230,176,.08),transparent 60%)}
+h1,h2,h3{font-family:'Space Grotesk',sans-serif;letter-spacing:-.03em;line-height:1.08;margin:0;font-weight:600}
+h1{font-size:clamp(46px,7vw,92px)} h2{font-size:clamp(30px,4vw,52px)} h3{font-size:20px}
+p{margin:0 0 1em} a{color:inherit;text-decoration:none}
+.wrap{width:min(calc(100% - 48px),1200px);margin-inline:auto}
+.grad{background:linear-gradient(100deg,var(--a1),var(--a2) 60%,var(--ok));-webkit-background-clip:text;background-clip:text;color:transparent}
+.eyebrow{font-size:11px;letter-spacing:.18em;font-weight:700;color:var(--text3);text-transform:uppercase;display:flex;gap:10px;align-items:center;margin-bottom:18px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 12px var(--ok)}
+.lead{font-size:19px;color:var(--text2);max-width:560px}
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--surface);color:var(--text);padding:13px 22px;border-radius:14px;font:600 14px 'DM Sans';cursor:pointer;backdrop-filter:blur(12px);transition:transform .25s,box-shadow .25s,background .25s}
+.btn:hover{transform:translateY(-2px);background:var(--surface-2)}
+.btn.primary{background:linear-gradient(120deg,var(--a1),var(--a2));border:0;color:#fff;box-shadow:var(--glow)}
+.btn.primary:hover{box-shadow:0 0 0 1px rgba(167,139,250,.5),0 16px 60px -6px rgba(140,130,255,.75)}
+.btn.sm{padding:9px 15px;font-size:13px;border-radius:11px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);font-size:11px;font-weight:600;color:var(--text2)}
+.pill.ok{color:var(--ok);background:rgba(94,230,176,.1);border-color:rgba(94,230,176,.3)} .pill.warn{color:var(--warn);background:rgba(245,199,106,.1);border-color:rgba(245,199,106,.3)} .pill.blue{color:#9db4ff;background:rgba(108,140,255,.12);border-color:rgba(108,140,255,.35)}
+/* glass */
+.glass{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);backdrop-filter:blur(18px);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.06)}
+/* nav */
+.nav{position:sticky;top:12px;z-index:50;margin:12px auto 0;width:min(calc(100% - 32px),1200px);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 14px 10px 18px}
+.brand{display:flex;gap:10px;align-items:center;font:700 20px 'Space Grotesk';letter-spacing:-.04em}
+.logo{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(135deg,var(--a1),var(--a2));color:#fff;box-shadow:var(--glow)}
+.nav nav{display:flex;gap:6px} .nav nav a{padding:8px 14px;border-radius:10px;font-size:14px;color:var(--text2)} .nav nav a:hover,.nav nav a.on{color:var(--text);background:var(--surface-2)}
+.nav .acts{display:flex;gap:8px;align-items:center}
+.icon{width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:var(--surface);color:var(--text);cursor:pointer;display:grid;place-items:center;font-size:16px}
+@media(max-width:820px){.nav nav{display:none}}
+/* hero */
+.hero{position:relative;padding:110px 0 40px;min-height:88vh;display:grid;align-items:center}
+.hero canvas{position:absolute;right:-6%;top:2%;width:62%;height:96%;opacity:.95;pointer-events:none;mask-image:radial-gradient(circle at 55% 50%,#000 38%,transparent 72%)}
+.hero .copy{position:relative;z-index:2;max-width:640px}
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin:34px 0 26px}
+.chips{display:flex;gap:10px;flex-wrap:wrap}
+.chip{animation:float 7s ease-in-out infinite;padding:10px 14px;font-size:13px;display:flex;gap:10px;align-items:center}
+.chip:nth-child(2){animation-delay:-2.3s}.chip:nth-child(3){animation-delay:-4.6s}
+@keyframes float{50%{transform:translateY(-8px)}}
+@media(max-width:900px){.hero canvas{width:100%;right:-20%;opacity:.5}}
+/* sections */
+section{position:relative} .sec{padding:110px 0}
+.head{display:flex;justify-content:space-between;align-items:end;gap:30px;flex-wrap:wrap;margin-bottom:46px}
+.head p{max-width:420px;color:var(--text2)}
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .8s,transform .8s cubic-bezier(.2,.7,.2,1)} .reveal.in{opacity:1;transform:none}
+/* tilt */
+.scene3d{perspective:1400px} [data-tilt]{transform-style:preserve-3d;transition:transform .25s ease-out;will-change:transform;position:relative}
+[data-tilt]:before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(420px circle at var(--mx,50%) var(--my,0%),rgba(140,160,255,.18),transparent 45%);opacity:0;transition:opacity .3s}
+[data-tilt]:hover:before{opacity:1}
+/* workspace mock */
+.ws{display:grid;grid-template-columns:230px 1fr 250px;min-height:430px;overflow:hidden;padding:0}
+.ws aside{padding:18px;border-right:1px solid var(--line)} .ws aside:last-child{border-right:0;border-left:1px solid var(--line)}
+.ws .main{padding:20px;display:flex;flex-direction:column;gap:14px}
+.req{padding:12px;border-radius:12px;border:1px solid transparent;margin-top:8px;font-size:13px;color:var(--text2)} .req b{display:block;color:var(--text);font-size:14px}
+.req.on{background:var(--surface-2);border-color:var(--line)}
+.bubble{overflow-wrap:anywhere;padding:12px 15px;border-radius:14px 14px 14px 4px;background:var(--surface-2);border:1px solid var(--line);font-size:14px;max-width:86%}
+.bubble.me{align-self:flex-end;border-radius:14px 14px 4px 14px;background:linear-gradient(120deg,rgba(108,140,255,.35),rgba(167,139,250,.3))}
+.src{font-size:11px;color:var(--text3);margin-top:6px;display:flex;gap:8px}
+.answerbar{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto}.ws .main,.cmain{min-width:0}
+.tag{font-size:10px;letter-spacing:.14em;color:var(--text3);font-weight:700}
+@media(max-width:900px){.ws{grid-template-columns:minmax(0,1fr)}.ws aside{display:none}}
+/* story */
+.story{height:380vh} .story .pin{position:sticky;top:0;height:100vh;display:grid;grid-template-columns:1fr 1.1fr;gap:40px;align-items:center}
+.steps{display:grid;gap:10px} .step{padding:18px 20px;border-radius:16px;border:1px solid transparent;opacity:.45;transition:.4s;cursor:default} .step.on{opacity:1;background:var(--surface);border-color:var(--line);box-shadow:var(--shadow)}
+.step h3{display:flex;gap:12px;align-items:center;margin-bottom:6px} .num{font:600 13px 'Space Grotesk';color:var(--a1)} .step p{margin:0;color:var(--text2);font-size:15px}
+.stack{position:relative;height:440px;perspective:1200px}
+.scard{position:absolute;inset:30px 0;background:linear-gradient(160deg,var(--bg2),var(--bg));backdrop-filter:none;padding:26px;display:flex;flex-direction:column;gap:12px;justify-content:center;transition:transform .15s linear,opacity .15s linear}
+.scard .big{font:600 28px 'Space Grotesk';letter-spacing:-.03em} .scard .who{font-size:12px;letter-spacing:.14em;color:var(--text3);font-weight:700}
+@media(max-width:900px){.story{height:auto}.story .pin{position:static;height:auto;grid-template-columns:1fr}.stack{height:360px}}
+/* cards */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{padding:28px;min-height:230px} .card .ic{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(108,140,255,.3),rgba(167,139,250,.25));margin-bottom:22px;font-size:20px;transform:translateZ(40px)}
+.card h3{margin-bottom:10px;transform:translateZ(26px)} .card p{color:var(--text2);margin:0;font-size:15px}
+@media(max-width:900px){.cards{grid-template-columns:1fr}}
+/* console */
+.console{display:grid;grid-template-columns:210px 1fr;overflow:hidden;min-height:520px;padding:0}
+.side{border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:4px}
+.side a{padding:10px 12px;border-radius:11px;font-size:14px;color:var(--text2);display:flex;justify-content:space-between;align-items:center} .side a.on{background:var(--surface-2);color:var(--text);box-shadow:inset 2px 0 0 var(--a1)} .side a:hover{background:var(--surface)}
+.side .badge{font-size:11px;background:rgba(245,199,106,.18);color:var(--warn);border-radius:99px;padding:1px 8px}
+.cmain{padding:24px;display:grid;gap:18px;align-content:start}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px} .kpi{padding:16px;border-radius:14px;background:var(--surface);border:1px solid var(--line)} .kpi b{display:block;font:600 26px 'Space Grotesk'} .kpi span{font-size:12px;color:var(--text3)}
+.fix{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:16px 18px;border-radius:14px;background:var(--surface);border:1px solid var(--line)} .fix small{color:var(--text3);display:block}
+@media(max-width:800px){.console{grid-template-columns:minmax(0,1fr)}.side{flex-direction:row;overflow:auto;border-right:0;border-bottom:1px solid var(--line)}.kpis{grid-template-columns:1fr}}
+/* login */
+.login{display:grid;grid-template-columns:1.1fr 1fr;overflow:hidden;min-height:420px;padding:0}
+.login .art{position:relative;background:radial-gradient(500px 300px at 30% 30%,rgba(108,140,255,.4),transparent 60%),radial-gradient(400px 300px at 80% 80%,rgba(167,139,250,.35),transparent 60%);padding:40px;display:flex;flex-direction:column;justify-content:end}
+.login form{padding:40px;display:grid;gap:14px;align-content:center}
+.field{display:grid;gap:6px;font-size:13px;color:var(--text2)} .field span{padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--text3)}
+@media(max-width:800px){.login{grid-template-columns:1fr}.login .art{display:none}}
+/* journey */
+.journey{padding:34px;display:grid;gap:26px}
+.path{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;position:relative}
+.path:before{content:"";position:absolute;left:6%;right:6%;top:30px;height:2px;background:linear-gradient(90deg,var(--a1),var(--a2),var(--ok));opacity:.5}
+.node{position:relative;text-align:center;padding:0 6px} .node i{width:60px;height:60px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;font-style:normal;font-size:22px;background:var(--bg2);border:1px solid var(--line);transition:.5s} .node.on i{background:linear-gradient(135deg,var(--a1),var(--a2));box-shadow:var(--glow);transform:translateZ(0) scale(1.08)}
+.node b{display:block;font-size:14px} .node small{color:var(--text3)}
+.meter{display:flex;align-items:center;gap:18px;flex-wrap:wrap} .count{font:700 64px 'Space Grotesk';line-height:1} .count.up{color:var(--ok);text-shadow:0 0 30px rgba(94,230,176,.5)}
+@media(max-width:700px){.path{grid-template-columns:1fr 1fr}.path:before{display:none}}
+/* cta + footer */
+.cta{padding:70px 40px;text-align:center;overflow:hidden} .cta h2{margin-bottom:18px}
+footer{padding:50px 0 70px;color:var(--text3);font-size:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:20px}
+/* preview labels (only in this mockup) */
+.lab{position:absolute;top:-14px;left:0;z-index:5;font:700 11px 'DM Sans';letter-spacing:.08em;background:#f5c76a;color:#2a2100;padding:3px 10px;border-radius:99px}
+body.nolabels .lab{display:none}
+.bar{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:90;padding:6px 8px;display:flex;gap:10px;align-items:center;font-size:13px;white-space:nowrap;max-width:calc(100% - 24px)}
+@media(max-width:560px){.brand{font-size:0}.brand .logo{font-size:16px}.hero{padding-top:60px}}
+.hero .lab{top:56px}
+@media(max-width:700px){.bar span{display:none}.nav .acts .btn:not(.primary){display:none}.nav{padding:8px 10px 8px 14px}.btn.sm{white-space:nowrap}}
+.progress{position:fixed;top:0;left:0;height:3px;width:0;background:linear-gradient(90deg,var(--a1),var(--a2),var(--ok));z-index:100}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}.story{height:auto}.story .pin{position:static;height:auto}}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+
+<header class="nav glass" data-label="1">
+  <a class="brand" href="#top"><span class="logo">∿</span>Continuum</a>
+  <nav aria-label="Main"><a class="on" href="#top">Home</a><a href="#product">Product</a><a href="#how">How it works</a><a href="#console">For teams</a><a href="#demo">Demo</a></nav>
+  <div class="acts"><button class="icon" id="theme" aria-label="Switch light or dark theme">◐</button><a class="btn sm" href="#signin">Sign in</a><a class="btn sm primary" href="#demo">Try the demo</a></div>
+</header>
+
+<main id="top">
+<!-- 2 HERO -->
+<section class="hero wrap">
+  <span class="lab">2 · Hero with 3D memory constellation</span>
+  <canvas id="scene" aria-hidden="true"></canvas>
+  <div class="copy">
+    <div class="eyebrow"><span class="dot"></span>Support that remembers what works</div>
+    <h1>Good support<br><span class="grad">remembers.</span></h1>
+    <p class="lead">Every fixed problem becomes a verified answer for the next customer. Confirmed by people, kept by company, never shared across companies.</p>
+    <div class="actions"><a class="btn primary" href="#demo">Try the demo →</a><a class="btn" href="#how">See how it works</a></div>
+    <div class="chips"><span class="chip glass"><span class="dot"></span>Fix confirmed by Customer A</span><span class="chip glass">✦ Found for Customer B in 40 ms</span><span class="chip glass">🔒 Company-private</span></div>
+  </div>
+</section>
+
+<!-- 3 PRODUCT -->
+<section class="sec wrap" id="product">
+  <span class="lab">3 · 3D tilting product preview (follows the pointer)</span>
+  <div class="head reveal"><div><div class="eyebrow">The workspace</div><h2>One calm place for<br>every request.</h2></div><p>Conversation in the middle, context on the right, every answer labelled with where it came from.</p></div>
+  <div class="scene3d reveal"><div class="ws glass" data-tilt="6">
+    <aside><div class="tag">REQUESTS</div>
+      <div class="req on"><b>MacBook Pro</b>Display flickers<br><span class="pill warn">Waiting for part</span></div>
+      <div class="req"><b>Wi-Fi keeps dropping</b>Resolved yesterday</div>
+      <div class="req"><b>Printer paper jam</b>New</div></aside>
+    <div class="main">
+      <div class="bubble me">My display flickers after startup.</div>
+      <div class="bubble">Here’s a fix that worked for a customer with your model. <b>Open Display settings → Standard profile → restart.</b>
+        <div class="src"><span class="pill ok">✓ Confirmed by a customer</span><span>Model X · firmware 4</span></div></div>
+      <div class="answerbar"><button class="btn primary sm">It worked</button><button class="btn sm">Still need help</button><button class="btn sm">Talk to a person</button></div>
+    </div>
+    <aside><div class="tag">YOUR CONTEXT</div><div class="req on"><b>Call before paid repairs</b>Saved preference</div><div class="req"><b>Earlier restart didn’t help</b>Won’t be suggested again</div><div class="tag" style="margin-top:20px">NEXT STEP</div><div class="req">Book a visit →</div></aside>
+  </div></div>
+</section>
+
+<!-- 4 STORY -->
+<section class="story" id="how">
+  <span class="lab" style="left:24px;top:40px">4 · Pinned scroll story (scroll slowly)</span>
+  <div class="pin wrap">
+    <div class="steps" id="steps">
+      <div class="eyebrow">How it works</div>
+      <div class="step"><h3><span class="num">01</span>A customer reports a problem</h3><p>They describe it in their own words and get a safe first suggestion.</p></div>
+      <div class="step"><h3><span class="num">02</span>A specialist solves it</h3><p>When the suggestion fails, a person writes the fix and what it applies to.</p></div>
+      <div class="step"><h3><span class="num">03</span>The customer confirms</h3><p>Only after “It worked” does the fix become trusted company knowledge.</p></div>
+      <div class="step"><h3><span class="num">04</span>The next customer is helped</h3><p>A matching problem gets the verified fix, checked against device and safety.</p></div>
+    </div>
+    <div class="stack scene3d" id="stack">
+      <div class="scard glass"><span class="who">CUSTOMER A</span><div class="big">“My screen flickers after startup.”</div><span class="pill">Standard suggestion: restart → didn’t help</span></div>
+      <div class="scard glass"><span class="who">SPECIALIST</span><div class="big">Switch Refresh Mode to Fixed 60 Hz.</div><span class="pill blue">Applies to: Model X · firmware 4</span></div>
+      <div class="scard glass"><span class="who">CUSTOMER A CONFIRMS</span><div class="big">It worked. <span class="grad">Memory: 0 → 1</span></div><span class="pill ok">✓ Customer-confirmed</span></div>
+      <div class="scard glass"><span class="who">CUSTOMER B</span><div class="big">Monitor keeps blinking on boot.</div><span class="pill ok">✦ Matched A’s verified fix</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 CAPABILITIES -->
+<section class="sec wrap">
+  <span class="lab">5 · Tilt cards with light that follows the cursor</span>
+  <div class="head reveal"><div><div class="eyebrow">Why it feels different</div><h2>Trusted answers,<br>not guesses.</h2></div><p>Three promises the product keeps.</p></div>
+  <div class="cards scene3d">
+    <div class="card glass reveal" data-tilt="9"><div class="ic">✓</div><h3>Verified by people</h3><p>Nothing is reused until a customer confirms it worked. Unconfirmed fixes are clearly labelled.</p></div>
+    <div class="card glass reveal" data-tilt="9"><div class="ic">⛨</div><h3>Safe by default</h3><p>Fixes are checked against your device, version and safety rules before they’re ever shown.</p></div>
+    <div class="card glass reveal" data-tilt="9"><div class="ic">◈</div><h3>Private to your company</h3><p>Each company’s knowledge stays its own. Personal details are removed before anything is saved.</p></div>
+  </div>
+</section>
+
+<!-- 6 CONSOLE -->
+<section class="sec wrap" id="console">
+  <span class="lab">6 · Redesigned owner console (sidebar instead of one long page)</span>
+  <div class="head reveal"><div><div class="eyebrow">For support teams</div><h2>Run it from<br>one clear console.</h2></div><p>Six places, one job each. No wall of numbers, no jargon.</p></div>
+  <div class="scene3d reveal"><div class="console glass" data-tilt="4">
+    <div class="side"><a class="on">Overview</a><a>Cases <span class="badge">3</span></a><a>Knowledge <span class="badge">1</span></a><a>Data sources</a><a>Team</a><a>Settings</a></div>
+    <div class="cmain">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><h3>Overview</h3><div style="display:flex;gap:8px"><span class="pill ok">● Search ready</span><span class="pill ok">● Background work running</span></div></div>
+      <div class="kpis"><div class="kpi"><b>24</b><span>Fixes customers can receive</span></div><div class="kpi"><b>87%</b><span>Customers helped without a specialist</span></div><div class="kpi"><b>3</b><span>Cases need you</span></div></div>
+      <div class="tag">WAITING FOR YOUR APPROVAL</div>
+      <div class="fix"><div><b>Printer shows paper jam but nothing is stuck</b><small>Imported from your knowledge base · Model X</small></div><div style="display:flex;gap:8px"><button class="btn primary sm">Approve</button><button class="btn sm">Don’t use</button></div></div>
+      <div class="fix"><div><b>Wi-Fi keeps dropping</b><small>Updated by a specialist · not yet confirmed by a customer</small></div><span class="pill blue">Version 2</span></div>
+    </div>
+  </div></div>
+</section>
+
+<!-- 7 DEMO -->
+<section class="sec wrap" id="demo">
+  <span class="lab">7 · Interactive demo journey (press Play)</span>
+  <div class="head reveal"><div><div class="eyebrow">Try it · fictional data</div><h2>Watch a fix<br><span class="grad">teach the system.</span></h2></div><p>The real demo runs the same steps with your own typing.</p></div>
+  <div class="journey glass reveal"><div class="path scene3d" id="path">
+    <div class="node"><i>👤</i><b>Customer A</b><small>Reports it</small></div>
+    <div class="node"><i>🛠</i><b>Specialist</b><small>Writes the fix</small></div>
+    <div class="node"><i>✓</i><b>Confirmed</b><small>It worked</small></div>
+    <div class="node"><i>👥</i><b>Customer B</b><small>Gets the fix</small></div></div>
+    <div class="meter"><div><div class="tag">LEARNED MEMORY</div><div class="count" id="count">0</div></div><div style="flex:1;min-width:220px;color:var(--text2)" id="caption">Press Play to follow one problem from report to reuse.</div><button class="btn primary" id="play">▶ Play</button></div></div>
+</section>
+
+<!-- 8 SIGN IN -->
+<section class="sec wrap" id="signin">
+  <span class="lab">8 · Sign-in: one form, one action</span>
+  <div class="head reveal"><div><div class="eyebrow">Sign in</div><h2>Straight to your work.</h2></div><p>No “schema adapter”, no five competing links.</p></div>
+  <div class="login glass reveal"><div class="art"><div class="logo" style="margin-bottom:auto">∿</div><h3 style="font-size:28px">Good support<br>starts with you.</h3></div>
+    <form onsubmit="return false"><h3>Welcome back</h3><label class="field">Email<span>you@example.com</span></label><label class="field">Password<span>••••••••••</span></label><button class="btn primary" style="justify-content:center">Sign in</button><div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text3)"><a href="#">Forgot password?</a><a href="#">Create account</a></div></form></div>
+</section>
+
+<section class="wrap reveal" style="padding-bottom:80px"><div class="cta glass"><h2>Less chasing.<br><span class="grad">More moving forward.</span></h2><p class="lead" style="margin:0 auto 28px">See your support team’s best fixes help the next customer.</p><a class="btn primary" href="#demo">Try the demo →</a></div></section>
+</main>
+<footer class="wrap"><span>© Continuum · Good support remembers.</span><span>Product · How it works · Pricing · Demo · Sign in</span></footer>
+
+<div class="bar glass"><button class="btn sm" id="labels">Hide labels</button><span style="color:var(--text3)">Rough design preview · yellow tags number the sections</span></div>
+
+<script>
+// theme (remembered, never required)
+const root=document.documentElement;
+try{const t=localStorage.getItem('theme'); if(t) root.dataset.theme=t;}catch{}
+document.getElementById('theme').onclick=()=>{const n=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('theme',n)}catch{}};
+document.getElementById('labels').onclick=e=>{document.body.classList.toggle('nolabels');e.target.textContent=document.body.classList.contains('nolabels')?'Show labels':'Hide labels'};
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+// scroll progress + reveal
+const prog=document.getElementById('progress');
+addEventListener('scroll',()=>{prog.style.width=(scrollY/(document.documentElement.scrollHeight-innerHeight)*100)+'%';story()},{passive:true});
+const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add('in')),{threshold:.15});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+// tilt + spotlight
+document.querySelectorAll('[data-tilt]').forEach(el=>{const max=+el.dataset.tilt;
+  el.addEventListener('pointermove',e=>{if(reduce)return;const r=el.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
+    el.style.transform=`rotateX(${(.5-y)*max}deg) rotateY(${(x-.5)*max}deg) translateZ(0)`;el.style.setProperty('--mx',x*100+'%');el.style.setProperty('--my',y*100+'%')});
+  el.addEventListener('pointerleave',()=>el.style.transform='')});
+// pinned story
+const how=document.getElementById('how'),steps=[...document.querySelectorAll('#steps .step')],cards=[...document.querySelectorAll('#stack .scard')];
+function story(){const r=how.getBoundingClientRect();const p=Math.min(1,Math.max(0,-r.top/(how.offsetHeight-innerHeight)));const s=p*3;
+  steps.forEach((el,i)=>el.classList.toggle('on',Math.round(s)===i));
+  cards.forEach((c,i)=>{const d=i-s,a=Math.abs(d);c.style.transform=`translate3d(${d*14}%,${d*-5}%,${-a*130}px) rotateY(${d*-16}deg) rotateX(${a*3}deg)`;c.style.opacity=Math.max(0,1-a*1.3);c.style.zIndex=10-Math.round(a*3)});}
+story();
+// demo journey
+const nodes=[...document.querySelectorAll('#path .node')],count=document.getElementById('count'),cap=document.getElementById('caption'),play=document.getElementById('play');
+const words=['Customer A reports a flickering screen.','The standard suggestion fails, so a specialist writes a fix.','Customer A confirms it worked. Memory goes from 0 to 1.','Customer B reports a similar problem and receives A’s verified fix.'];
+play.onclick=async()=>{play.disabled=true;count.textContent='0';count.classList.remove('up');nodes.forEach(n=>n.classList.remove('on'));
+  for(let i=0;i<4;i++){nodes[i].classList.add('on');cap.textContent=words[i];if(i===2){count.textContent='1';count.classList.add('up')}await new Promise(r=>setTimeout(r,reduce?300:1400))}
+  play.disabled=false;play.textContent='↺ Replay'};
+// 3D constellation (plain canvas, no libraries)
+const cv=document.getElementById('scene'),cx=cv.getContext('2d');let W,H,DPR;
+const N=78,pts=Array.from({length:N},()=>{const u=Math.random()*2-1,t=Math.random()*Math.PI*2,r=Math.sqrt(1-u*u),k=.62+Math.random()*.38;return{x:r*Math.cos(t)*k,y:u*k,z:r*Math.sin(t)*k,ph:Math.random()*6.28}});
+const edges=[];for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){const d=Math.hypot(pts[i].x-pts[j].x,pts[i].y-pts[j].y,pts[i].z-pts[j].z);if(d<.5)edges.push([i,j])}
+const sparks=Array.from({length:6},()=>({e:Math.random()*edges.length|0,t:Math.random()}));let mx=0,my=0,ang=0,visible=true;
+function size(){DPR=Math.min(devicePixelRatio||1,1.75);W=cv.clientWidth;H=cv.clientHeight;cv.width=W*DPR;cv.height=H*DPR;cx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',size);size();addEventListener('pointermove',e=>{mx=(e.clientX/innerWidth-.5);my=(e.clientY/innerHeight-.5)});
+new IntersectionObserver(e=>visible=e[0].isIntersecting).observe(cv);
+function frame(ts){if(visible&&!document.hidden){ang+=.0016;cx.clearRect(0,0,W,H);const ry=ang+mx*.9,rx=my*.6,cyy=Math.cos(ry),syy=Math.sin(ry),cxx=Math.cos(rx),sxx=Math.sin(rx),R=Math.min(W,H)*.46,F=2.4;
+  const P=pts.map(p=>{let x=p.x*cyy-p.z*syy,z=p.x*syy+p.z*cyy,y=p.y*cxx-z*sxx;z=p.y*sxx+z*cxx;const s=F/(F+z);return{x:W/2+x*R*s,y:H/2+y*R*s,s,z,ph:p.ph}});
+  const dark=root.dataset.theme==='dark',c1=dark?'140,165,255':'70,95,230';
+  cx.lineWidth=1;for(const[i,j]of edges){const a=P[i],b=P[j],al=Math.max(0,.34-(a.z+b.z)*.12);cx.strokeStyle=`rgba(${c1},${al})`;cx.beginPath();cx.moveTo(a.x,a.y);cx.lineTo(b.x,b.y);cx.stroke()}
+  for(const sp of sparks){sp.t+=.012;if(sp.t>1){sp.t=0;sp.e=Math.random()*edges.length|0}const[i,j]=edges[sp.e],a=P[i],b=P[j],x=a.x+(b.x-a.x)*sp.t,y=a.y+(b.y-a.y)*sp.t;const g=cx.createRadialGradient(x,y,0,x,y,10);g.addColorStop(0,'rgba(94,230,176,.95)');g.addColorStop(1,'rgba(94,230,176,0)');cx.fillStyle=g;cx.beginPath();cx.arc(x,y,10,0,6.3);cx.fill()}
+  P.forEach((p,i)=>{const hot=i%17===0,pulse=hot?.6+.4*Math.sin(ts/500+p.ph):1,r=(hot?4.2:2.1)*p.s*pulse;if(hot){const g=cx.createRadialGradient(p.x,p.y,0,p.x,p.y,26*p.s);g.addColorStop(0,'rgba(167,139,250,.55)');g.addColorStop(1,'rgba(167,139,250,0)');cx.fillStyle=g;cx.beginPath();cx.arc(p.x,p.y,26*p.s,0,6.3);cx.fill()}
+    cx.fillStyle=hot?'rgb(200,185,255)':`rgba(${c1},${.5+p.s*.3})`;cx.beginPath();cx.arc(p.x,p.y,Math.max(.6,r),0,6.3);cx.fill()})}
+  if(!reduce)requestAnimationFrame(frame)}
+requestAnimationFrame(frame);if(reduce)frame(0);
+</script>
+</body>
+</html>
