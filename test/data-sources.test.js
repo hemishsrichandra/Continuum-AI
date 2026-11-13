@@ -194,7 +194,9 @@ test('SQLite adapter: allowlisted directory only, read-only, identifiers validat
   db.close();
   const outside = new Database(join(dir, 'secret', 'other.sqlite'));
   outside.exec("CREATE TABLE kb(id TEXT, title TEXT, symptoms TEXT, steps TEXT)"); outside.close();
-  await symlink(join(dir, 'secret', 'other.sqlite'), join(dir, 'allowed', 'link.sqlite'));
+  // Creating symlinks needs Developer Mode or elevation on Windows; without it this traversal case cannot be set up.
+  try { await symlink(join(dir, 'secret', 'other.sqlite'), join(dir, 'allowed', 'link.sqlite')); }
+  catch (e) { if (e.code === 'EPERM' && process.platform === 'win32') return t.skip('symlinks are not permitted for this Windows user'); throw e; }
   const mapping = { fields: { externalId: 'id', title: 'title', symptoms: 'symptoms', steps: 'steps', applicability: 'env' }, diagnostics: {} };
   const { w, save } = await setup(t, { DATA_SOURCE_SQLITE_DIRS: join(dir, 'allowed') });
   const ok = await save({ sourceType: 'sqlite', name: 'SQLite', fieldMapping: mapping, connection: { path: file, table: 'kb' } });
@@ -269,7 +271,7 @@ test('assertSafeUrl blocks private, loopback, metadata, credentialed and non-htt
 });
 
 test('PostgreSQL adapter runs only with a driver and uses quoted identifiers (mock driver)', async (t) => {
-  const { w, save } = await setup(t, { DATA_SOURCE_POSTGRES_DRIVER: 'pg' });
+  const { w, save } = await setup(t, { DATA_SOURCE_POSTGRES_DRIVER: 'pg', DATA_SOURCE_POSTGRES_HOSTS: '93.184.216.34' });
   const queries = [];
   class Client {
     constructor(options) { this.options = options; }
@@ -277,12 +279,12 @@ test('PostgreSQL adapter runs only with a driver and uses quoted identifiers (mo
     async query(q) { queries.push(q); return { rows: [{ id: 'p1', title: 'Display flicker', symptoms: 'Display flickers after startup', steps: 'Open Display settings and pick the Standard profile then restart.' }] }; }
     async end() {}
   }
-  const pg = await save({ sourceType: 'postgres', name: 'PG', fieldMapping: { fields: { externalId: 'id', title: 'title', symptoms: 'symptoms', steps: 'steps' }, diagnostics: {} }, connection: { uri: 'postgres://user:pw@db.internal/kb', table: 'solutions', schema: 'public' } });
-  const ds = createDataSources(w.h.store, w.h.dataSources.__delivery || w.h.delivery, { DATA_SOURCE_POSTGRES_DRIVER: 'pg' }, { drivers: { postgres: { Client } } });
+  const pg = await save({ sourceType: 'postgres', name: 'PG', fieldMapping: { fields: { externalId: 'id', title: 'title', symptoms: 'symptoms', steps: 'steps' }, diagnostics: {} }, connection: { uri: 'postgres://user:pw@93.184.216.34/kb', table: 'solutions', schema: 'public' } });
+  const ds = createDataSources(w.h.store, w.h.dataSources.__delivery || w.h.delivery, { DATA_SOURCE_POSTGRES_DRIVER: 'pg', DATA_SOURCE_POSTGRES_HOSTS: '93.184.216.34' }, { drivers: { postgres: { Client } } });
   const result = await ds.sync(w.company, pg.data.source.id, 'test');
   assert.equal(result.inserted, 1);
   assert.match(queries[0], /^SELECT "id","title","symptoms","steps" FROM "public"\."solutions" LIMIT \d+$/);
-  const evil = await save({ sourceType: 'postgres', name: 'Evil', fieldMapping: { fields: { externalId: 'id', title: 'title', symptoms: 'symptoms', steps: 'steps' }, diagnostics: {} }, connection: { uri: 'postgres://x', table: 'solutions"; DROP TABLE x;--' } });
+  const evil = await save({ sourceType: 'postgres', name: 'Evil', fieldMapping: { fields: { externalId: 'id', title: 'title', symptoms: 'symptoms', steps: 'steps' }, diagnostics: {} }, connection: { uri: 'postgres://u:p@93.184.216.34/kb', table: 'solutions"; DROP TABLE x;--' } });
   await assert.rejects(ds.sync(w.company, evil.data.source.id, 'test'), /plain table/);
 });
 

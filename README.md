@@ -157,6 +157,7 @@ The same lifecycle was also verified in the browser for a charging issue: a newl
 | Application server | Node.js HTTP API; authentication, authorization, workflow transitions, confirmations and integration orchestration. |
 | Durable storage | SQLite through `better-sqlite3`; relational account/workspace tables and indexed application records, with transactions and uniqueness constraints. |
 | Memory | Hindsight integration for configured remote retention/recall, plus a local fallback for reproducible demonstrations. Local scope and publication checks remain authoritative. |
+| Semantic search | Optional ChromaDB index beside SQLite FTS5 (hybrid retrieval). SQLite stays authoritative and re-validates every candidate; without ChromaDB the app runs on SQLite alone. See [SEMANTIC-SEARCH.md](SEMANTIC-SEARCH.md). |
 | Language model | Optional OpenAI-compatible endpoint for interpretation and response composition; permissions and state transitions remain server-controlled. |
 | Business gateway | Allowlisted HTTPS contract for customer lookup, service-record imports and optional acknowledged action delivery. |
 | Optional integrations | Resend email and Google Calendar OAuth, backed by encrypted credentials and durable delivery jobs. |
@@ -258,6 +259,8 @@ Detailed records: [Multi-company verification](MULTI-COMPANY-VERIFICATION.md) ·
 | Guide | Contents |
 | --- | --- |
 | [Multi-company implementation](MULTI-COMPANY.md) | Data model, migration, service configuration, workflow, memory boundaries, secure linking and demo instructions. |
+| [Semantic search](SEMANTIC-SEARCH.md) | SQLite + ChromaDB hybrid retrieval, embeddings, index consistency, recovery and rollback. |
+| [Upgrade audit](UPGRADE-AUDIT.md) | The 21 audit items, what changed, what was verified and what is still open. |
 | [Integration setup](SETUP.md) | Environment configuration, email, Google Calendar, Hindsight and deployment prerequisites. |
 | [Company and specialist interfaces](COMPANY-INTERFACE.md) | Owner/staff workflows and role separation. |
 | [Provider gateway contract](PROVIDER-GATEWAY.md) | Service imports, customer lookup/linking and optional confirmed-action delivery. |

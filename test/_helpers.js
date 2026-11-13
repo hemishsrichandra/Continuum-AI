@@ -17,8 +17,8 @@ export function client(getHandler) {
     get headers() { return { cookie, 'x-csrf-token': csrf }; },
   };
 }
-export async function world(t, { config = {}, file } = {}) {
-  let h = createHandler({ file, config });
+export async function world(t, { config = {}, file, vectorClient } = {}) {
+  let h = createHandler({ file, config, vectorClient });
   t.after(() => h.close());
   const get = () => h;
   const owner = client(get), other = client(get);
@@ -60,7 +60,7 @@ export async function world(t, { config = {}, file } = {}) {
     });
   }
   const db = () => get().store.db;
-  return { get h() { return h; }, restart() { h.close(); h = createHandler({ file, config }); }, owner, other, company, companyB, code, codeB, customer, ticket, ask, seed, botOf, db };
+  return { get h() { return h; }, restart() { h.close(); h = createHandler({ file, config, vectorClient }); }, owner, other, company, companyB, code, codeB, customer, ticket, ask, seed, botOf, db };
 }
 export const ISSUE = 'The display flickers after startup on Model X firmware 4.';
 export const FOUR = [

@@ -63,16 +63,18 @@ function fresh(id) {
 function event(state, kind, who, detail, extra = {}) {
   state.events.push({ id: state.events.length + 1, at: iso(), kind, who, detail, learnedCount: state.learned.length, ...extra });
 }
+// Only sessions that have genuinely expired are removed. An active session is never evicted to make room:
+// when the demo is full, a new session is refused with a clear message instead.
 function sweep() {
   const cutoff = now() - DEMO_TTL_MS;
   for (const [id, s] of sessions) if (s.lastSeen < cutoff) sessions.delete(id);
-  while (sessions.size > MAX_SESSIONS) sessions.delete(sessions.keys().next().value);
 }
 const timer = setInterval(sweep, 5 * 60 * 1000);
 timer.unref();
 
 export function createSession() {
   sweep();
+  if (sessions.size >= MAX_SESSIONS) throw fault(503, 'The demo is busy right now. Please try again in a few minutes.');
   const id = randomBytes(24).toString('base64url');
   const state = fresh(id);
   sessions.set(id, state);
@@ -96,7 +98,8 @@ export function destroySession(id) {
 // Public (client-safe) projection. Never includes other sessions' data.
 const learnedView = (l) => ({
   id: l.id, title: l.title, symptoms: l.symptoms, applicability: l.environment, safety: l.safety, steps: l.steps,
-  origin: 'specialist_confirmed', provenance: 'Learned from User A’s confirmed specialist resolution', verified: true,
+  origin: 'specialist_confirmed', provenance: `Learned from User ${l.originUser}’s confirmed specialist resolution`, verified: true,
+  originUser: l.originUser, originCase: l.sourceCaseId, confirmationUser: l.confirmationUser, confirmationTime: l.confirmationTime, verificationStatus: l.verificationStatus,
   cInit: l.cInit, successes: l.successes, failures: l.failures, consecutiveFailures: l.consecutiveFailures,
   reliability: reliability(l.cInit.score, l.successes, l.failures), status: l.status, sourceCaseId: l.sourceCaseId, createdAt: l.createdAt,
 });
@@ -118,14 +121,18 @@ export function view(state) {
 }
 function summaryOf(state) {
   const learned = state.learned[0];
-  const benefit = state.events.find((e) => e.kind === 'user_b_benefited');
+  // A benefit is a real "It worked" on a learned suggestion by a user other than the one who taught it.
+  const benefit = state.events.find((e) => e.kind === 'user_b_benefited' && e.beneficiary && e.beneficiary !== e.teacher);
+  const teacher = learned?.originUser;
+  const other = teacher === 'A' ? 'B' : 'A';
   return {
-    userATaught: Boolean(learned),
+    userATaught: teacher === 'A',
     verifiedMemoryCreated: Boolean(learned),
     userBBenefited: Boolean(benefit),
+    teacher: teacher || null,
     line: benefit
-      ? 'User A taught Continuum → verified demo memory created → User B benefited'
-      : learned ? 'User A taught Continuum → verified demo memory created → waiting for User B' : 'No learned memory yet. Learned memory: 0',
+      ? `User ${benefit.teacher} taught Continuum → verified demo memory created → User ${benefit.beneficiary} benefited`
+      : learned ? `User ${teacher} taught Continuum → verified demo memory created → waiting for User ${other}` : 'No learned memory yet. Learned memory: 0',
   };
 }
 
@@ -174,7 +181,7 @@ function offer(state, c) {
     const l = top.learned;
     const attempt = {
       id: randomUUID(), source: 'learned', suggestionId: l.id, title: l.title, steps: l.steps, outcome: 'pending',
-      label: 'Learned from User A’s confirmed specialist resolution', verified: true,
+      label: l.originUser === c.user ? 'Learned from your earlier confirmed resolution' : `Learned from User ${l.originUser}’s confirmed specialist resolution`, verified: true, originUser: l.originUser,
       explanation: {
         why: `Matches “${l.symptoms}” (symptom similarity) and is compatible with ${l.environment}.`,
         constraintsMatched: top.gate.reasons, scores: top.breakdown, threshold: THRESHOLDS.retrieval,
@@ -183,7 +190,7 @@ function offer(state, c) {
     };
     c.attempts.push(attempt);
     c.status = 'suggested';
-    event(state, 'learned_suggestion_shown', 'Continuum', `Recommended the fix learned from User A (S_final ${top.breakdown.S_final}).`, { caseId: c.id });
+    event(state, 'learned_suggestion_shown', 'Continuum', `Recommended the fix learned from User ${l.originUser} (S_final ${top.breakdown.S_final}).`, { caseId: c.id });
     return attempt;
   }
   if (withheld.length && !c.clarified) {
@@ -247,7 +254,7 @@ export function feedback(state, { caseId, worked, confirmed }) {
     if (l) {
       l.successes += 1;
       l.consecutiveFailures = 0;
-      event(state, 'user_b_benefited', who, `“It worked”: the fix learned from User A resolved ${c.user === 'B' ? 'User B’s' : 'the'} issue.`, { caseId: c.id, learnedId: l.id });
+      event(state, 'user_b_benefited', who, `“It worked”: the fix learned from User ${l.originUser} resolved User ${c.user}’s issue.`, { caseId: c.id, learnedId: l.id, teacher: l.originUser, beneficiary: c.user });
     } else event(state, 'standard_worked', who, '“It worked” on the initial standard suggestion.', { caseId: c.id });
     return { case: c, attempt: a };
   }
@@ -319,6 +326,8 @@ export function confirm(state, { caseId, accepted, confirmed }) {
     safety: noneSafety ? 'None identified (reviewed)' : p.safety,
     safetyModel: noneSafety ? { restrictions: [] } : { restrictions: [{ text: p.safety, keywords: [...new Set(p.safety.toLowerCase().match(/\b[a-z]{4,}\b/g) || [])].slice(0, 8) }] },
     cInit: p.cInit, successes: 0, failures: 0, consecutiveFailures: 0, status: 'active', sourceCaseId: c.id, createdAt: iso(),
+    // Who actually taught this fix: the user whose own case received the specialist solution and confirmed it.
+    originUser: c.user, confirmationUser: c.user, confirmationTime: iso(), verificationStatus: 'customer_confirmed',
     vector: localEmbedding(`${p.title}\n${p.symptoms}`),
   };
   state.learned.push(l);

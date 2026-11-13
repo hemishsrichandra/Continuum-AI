@@ -17,6 +17,7 @@ import {
 } from './scoring.js';
 import { conditionsFromText } from './applicability.js';
 import { dangerousInstructions } from './privacy.js';
+import { sanitizeForPublication } from './privacy-sanitizer.js';
 
 export const ORIGINS = ['standard_playbook', 'company_db_sync', 'specialist_confirmed', 'auto_published_overdue'];
 export const ORIGIN_LABELS = {
@@ -86,6 +87,37 @@ CREATE TABLE IF NOT EXISTS case_events (
 CREATE INDEX IF NOT EXISTS case_event_ticket ON case_events(company_id,chatbot_id,ticket_id,created_at);
 `;
 
+/**
+ * Verification belongs to ONE version of a passport. A revision starts unverified by customers even when its
+ * parent was confirmed: the new instructions have not been tried and confirmed by anyone yet.
+ */
+export function verificationOf(row) {
+  let evidence = {};
+  try { evidence = JSON.parse(row.verification_evidence_json || '{}'); } catch { /* keep empty */ }
+  if (row.customer_confirmed) return 'customer_confirmed';
+  if (row.origin_type === 'auto_published_overdue') return 'unconfirmed_by_customer';
+  if (row.origin_type === 'company_db_sync') {
+    if (row.status === 'flagged_for_review' && !row.locally_reviewed) return 'import_pending_review';
+    if (row.locally_reviewed) return 'imported_approved';
+    return evidence.declaredVerified ? 'imported_declared_verified' : 'imported_unverified';
+  }
+  if (row.origin_type === 'standard_playbook') return 'company_configured';
+  if (evidence.revisedFrom) return 'specialist_revised';
+  return 'not_customer_confirmed';
+}
+/** Plain, customer-safe wording for each verification state. */
+export const SOURCE_LABELS = {
+  customer_confirmed: 'Learned from a customer-confirmed specialist resolution',
+  unconfirmed_by_customer: 'Specialist fix · UNCONFIRMED BY CUSTOMER',
+  imported_declared_verified: "Imported from your company's support knowledge base",
+  imported_approved: "Imported from your company's support knowledge base",
+  imported_unverified: "Imported from your company's support knowledge base",
+  import_pending_review: 'Imported · waiting for approval',
+  company_configured: 'Standard playbook',
+  specialist_revised: 'Updated by a specialist · not yet confirmed by a customer',
+  not_customer_confirmed: 'Specialist fix · not yet confirmed by a customer',
+};
+
 export const stepsList = (steps) =>
   (Array.isArray(steps) ? steps : [steps]).map((s) => String(s ?? '').trim()).filter(Boolean);
 export const stepsText = (row) => stepsList(typeof row.steps_json === 'string' ? JSON.parse(row.steps_json) : row.steps).join(' ');
@@ -124,20 +156,45 @@ export function normalizeSafety(input = {}) {
     const text = input.trim();
     if (!text) return { restrictions: [] };
     if (/^none(?: identified)?\.?$/i.test(text)) return { restrictions: [], noneIdentified: true };
-    return { restrictions: text.split(/\n|;/).map((t) => t.trim()).filter(Boolean).slice(0, 10).map((t) => ({ text: t.slice(0, 300), keywords: safetyKeywords(t) })) };
+    return { restrictions: text.split(/\n|;/).map((t) => t.trim()).filter(Boolean).slice(0, 10).map((t) => normalizeRestriction(t)) };
   }
+  if (!input || typeof input !== 'object') return { restrictions: [] };
   return {
-    restrictions: (input.restrictions || []).slice(0, 10).map((r) =>
-      typeof r === 'string' ? { text: r.slice(0, 300), keywords: safetyKeywords(r) } : { text: String(r.text || '').slice(0, 300), keywords: (r.keywords || safetyKeywords(r.text)).slice(0, 10).map(String), ...(r.conditions && { conditions: normalizeApplicability({ conditions: r.conditions }).conditions }) },
-    ),
+    restrictions: (Array.isArray(input.restrictions) ? input.restrictions : []).slice(0, 10).map((r) => normalizeRestriction(r)).filter(Boolean),
     ...(input.noneIdentified === true && { noneIdentified: true }),
     ...(input.reviewed === true && { reviewed: true }),
   };
 }
+/**
+ * One safety restriction. The machine-readable parts are always DERIVED from the restriction text and merged with
+ * anything the author supplied: an empty or incomplete `keywords` array can never switch a restriction off.
+ * A restriction that cannot be evaluated by machine (no hazard word, no condition, no trigger clause) is flagged
+ * `unevaluable`, and the compatibility gate treats it as ineligible until a specialist rewrites it.
+ */
+function normalizeRestriction(r) {
+  const item = typeof r === 'string' ? { text: r } : r && typeof r === 'object' ? r : null;
+  if (!item) return null;
+  const text = String(item.text || '').slice(0, 300).trim();
+  const supplied = (Array.isArray(item.keywords) ? item.keywords : []).filter((k) => typeof k === 'string' && k.trim()).map((k) => k.toLowerCase().trim().slice(0, 40));
+  const keywords = [...new Set([...supplied, ...safetyKeywords(text)])].slice(0, 12);
+  const conditions = Array.isArray(item.conditions) ? normalizeApplicability({ conditions: item.conditions }).conditions || [] : [];
+  const terms = triggerTerms(text);
+  const out = { text, keywords, ...(conditions.length && { conditions }), ...(terms.length && { terms }) };
+  if (!text && !keywords.length && !conditions.length) return null;
+  if (!keywords.length && !conditions.length && !terms.length) out.unevaluable = true;
+  return out;
+}
+// "Do not use if the cable is frayed" -> the clause after the trigger word, reduced to its content terms. Used to
+// block the fix when every term of the clause appears in what the customer described.
+function triggerTerms(text) {
+  const m = String(text || '').toLowerCase().match(/\b(?:if|when|while|during|unless|whenever|after|near|around|with)\b\s+(.{3,160})$/);
+  if (!m) return [];
+  return [...tokens(m[1])].filter((w) => w.length >= 3).slice(0, 6);
+}
 // Hazard words in a restriction become keywords that make the passport ineligible
 // when a customer reports them ("Do not use if the battery is swollen").
 function safetyKeywords(text) {
-  return [...new Set(String(text || '').toLowerCase().match(/\b(?:swollen|hot|overheat\w*|smoke|burning|damaged|cracked|wet|water|liquid|sparks?|leak\w*|bent|frayed|corrosion)\b/g) || [])];
+  return [...new Set(String(text || '').toLowerCase().match(/\b(?:swollen|swelling|hot|overheat\w*|smoke|smoking|burning|burnt|damaged|cracked|wet|water|liquid|damp|moist\w*|spill\w*|sparks?|leak\w*|bent|frayed|corrosion|corroded|exposed|melted|melting|sticky)\b/g) || [])];
 }
 
 /** Compute C_init for a passport. `facts` are the diagnostic facts of the source case. */
@@ -156,12 +213,25 @@ export function computeInitialConfidence({ symptoms, applicability, safety, step
  */
 export function insertPassport(db, p) {
   const now = p.now || new Date().toISOString();
-  const steps = stepsList(p.steps);
-  const applicability = normalizeApplicability(p.applicability);
-  const safety = normalizeSafety(p.safety);
+  let steps = stepsList(p.steps);
+  let applicability = normalizeApplicability(p.applicability);
+  let safety = normalizeSafety(p.safety);
+  let title = p.title, symptoms = p.symptoms, sanitized = 0;
+  // Privacy boundary: every shared passport (imports, revisions, auto-published and specialist fixes alike) is
+  // inspected recursively, including nested applicability conditions and safety restrictions. Credential-shaped
+  // content is rejected; personal data is replaced. Owner-configured standard playbooks are the company's own text.
+  if (p.origin !== 'standard_playbook') {
+    const fault = (message) => Object.assign(new Error(message), { status: 400 });
+    const r = sanitizeForPublication({ title, symptoms, steps, applicability, safety }, { names: p.privateNames || [], fault });
+    ({ title, symptoms, steps, applicability, safety } = r.value);
+    sanitized = r.count;
+  }
   const id = p.id || randomUUID();
-  const searchable = `${p.title}\n${p.symptoms}`;
+  const searchable = `${title}\n${symptoms}`;
   const risks = dangerousInstructions(steps.join(' '));
+  // Imported records are not customer-verified. Unless the owner declared the source verified (or a specialist has
+  // already reviewed the record), an import waits for approval and is never recommended in the meantime.
+  const awaitingApproval = p.origin === 'company_db_sync' && !p.evidence?.declaredVerified && !p.locallyReviewed && !p.status;
   const row = {
     id,
     company_id: p.companyId,
@@ -174,32 +244,52 @@ export function insertPassport(db, p) {
     source_id: p.sourceId || null,
     external_record_id: p.externalRecordId || null,
     source_ticket_id: p.sourceTicketId || null,
-    content_hash: hash({ t: p.title, s: p.symptoms, a: applicability, r: safety, steps }),
-    title: String(p.title).slice(0, 200),
-    symptoms_text: String(p.symptoms).slice(0, 2000),
+    content_hash: hash({ t: title, s: symptoms, a: applicability, r: safety, steps }),
+    title: String(title).slice(0, 200),
+    symptoms_text: String(symptoms).slice(0, 2000),
     search_terms: [...tokens(searchable)].join(' '),
     applicability_json: JSON.stringify(applicability),
     safety_restrictions_json: JSON.stringify(safety),
     steps_json: JSON.stringify(steps),
     verification_evidence_json: JSON.stringify(p.evidence || {}),
-    provenance_json: JSON.stringify(p.provenance || {}),
+    provenance_json: JSON.stringify({ ...(p.provenance || {}), ...(sanitized && { sanitized }) }),
     embedding_blob: vectorToBlob(localEmbedding(searchable + '\n' + steps.join(' '))),
     embedding_model: LOCAL_EMBEDDING_MODEL,
     initial_confidence_score: p.initialConfidence,
     reuse_success_count: p.successes || 0,
     reuse_failure_count: p.failures || 0,
     consecutive_failures: p.consecutiveFailures || 0,
-    status: p.status || (risks.length && p.origin === 'company_db_sync' ? 'flagged_for_review' : 'active'),
+    status: p.status || ((risks.length && p.origin === 'company_db_sync') || awaitingApproval ? 'flagged_for_review' : 'active'),
     customer_confirmed: p.customerConfirmed ? 1 : 0,
     risk_level: risks.length || p.highRisk ? 'high' : 'standard',
     locally_reviewed: p.locallyReviewed ? 1 : 0,
-    flagged_reason: risks.length && p.origin === 'company_db_sync' ? 'Imported instructions need review: ' + risks.join(', ') : p.flaggedReason || null,
+    flagged_reason: risks.length && p.origin === 'company_db_sync' ? 'Imported instructions need review: ' + risks.join(', ') : awaitingApproval ? 'Imported from a company database and waiting for approval' : p.flaggedReason || null,
     created_at: now,
     updated_at: now,
   };
   const columns = Object.keys(row);
   db.prepare(`INSERT INTO memory_pool(${columns.join(',')}) VALUES(${columns.map((c) => '@' + c).join(',')})`).run(row);
-  return db.prepare('SELECT * FROM memory_pool WHERE id=? AND company_id=?').get(id, p.companyId);
+  const stored = db.prepare('SELECT * FROM memory_pool WHERE id=? AND company_id=?').get(id, p.companyId);
+  if (db.prepare("SELECT 1 FROM pragma_table_info('memory_pool') WHERE name='facets_at'").get()) refreshFacets(db, stored);
+  return stored;
+}
+
+/**
+ * Equality facets (model, firmware, region ...) of a passport, stored in an indexed table. Text similarity cannot tell
+ * apart fixes that differ only by device or version, so retrieval also asks "which fixes name THIS device?" here.
+ * Facets only help find candidates; the compatibility gate still makes every decision.
+ */
+export function refreshFacets(db, row) {
+  let applicability = {};
+  try { applicability = JSON.parse(row.applicability_json || '{}'); } catch { /* none */ }
+  const conditions = [...(applicability.conditions || []), ...conditionsFromText(applicability.environmentText || '')];
+  db.prepare('DELETE FROM passport_facets WHERE memory_id=?').run(row.id);
+  const insert = db.prepare('INSERT OR IGNORE INTO passport_facets(memory_id,company_id,chatbot_id,key,value) VALUES(?,?,?,?,?)');
+  for (const c of conditions) {
+    if (c.op !== 'in' || !Array.isArray(c.values)) continue;
+    for (const v of c.values.slice(0, 20)) insert.run(row.id, row.company_id, row.chatbot_id, String(c.key).toLowerCase(), String(v).toLowerCase().slice(0, 100));
+  }
+  db.prepare('UPDATE memory_pool SET facets_at=? WHERE id=?').run(new Date().toISOString(), row.id);
 }
 
 /** Mirror a chatbot's standard playbooks into its memory pool (idempotent). */
@@ -271,6 +361,7 @@ export function backfillV5(db, data, resolutionUses) {
     let consecutive = 0;
     for (const u of ordered) consecutive = u.status === 'failed' ? consecutive + 1 : 0;
     const needsReview = Boolean(r.reviewRequestedAt && (r.reviewRevision || 0) > (r.reviewedRevision || 0));
+    try {
     insertPassport(db, {
       id: r.id,
       companyId: r.companyId,
@@ -290,5 +381,8 @@ export function backfillV5(db, data, resolutionUses) {
       provenance: { cInit: c, migratedAt: new Date().toISOString(), note: 'Backfilled by Migration 5 from a published specialist resolution.' },
       now: r.publishedAt || r.createdAt,
     });
+    } catch (e) {
+      if (e.status !== 400) throw e; // a legacy row that fails the privacy boundary stays out of shared memory
+    }
   }
 }

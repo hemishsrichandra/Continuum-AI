@@ -1,0 +1,25 @@
+# Local ChromaDB for Continuum's semantic search index.
+#
+#   docker compose up -d chroma
+#   then set in .env:   VECTOR_STORE=chroma   CHROMA_URL=http://127.0.0.1:8000
+#
+# SQLite stays the source of truth: this index can be deleted and rebuilt at any time
+# (npm run index -- reindex). The port is bound to localhost only; do not expose it publicly.
+#
+# NOTE: this file has not been run in the environment it was written in (Docker was not installed there). The same
+# server version was verified through `pip install chromadb==1.5.9` and `npm run chroma:start` (see SETUP.md).
+services:
+  chroma:
+    image: chromadb/chroma:1.5.9
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - chroma-data:/data
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /data
+      ANONYMIZED_TELEMETRY: "FALSE"
+    restart: unless-stopped
+
+volumes:
+  chroma-data:

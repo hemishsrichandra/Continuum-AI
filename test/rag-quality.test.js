@@ -141,7 +141,7 @@ test('typo tolerance maps common misspellings but leaves real words alone', () =
 
 test('typo audit: no ordinary English word near the vocabulary is silently mapped to a support concept', () => {
   const allowed = new Set(['appliaction', 'applications', 'connections', 'ewpty', 'parer']);
-  const words = readFileSync(new URL('./fixtures/fuzzy-neighbours.txt', import.meta.url), 'utf8').split('\n').filter(Boolean);
+  const words = readFileSync(new URL('./fixtures/fuzzy-neighbours.txt', import.meta.url), 'utf8').split(/\r?\n/).filter(Boolean);
   assert.ok(words.length > 200, 'the audit fixture is present');
   const gained = words.filter((w) => [...conceptTokens(w)].some((c) => !conceptTokens(w, { fuzzy: false }).has(c)));
   assert.deepEqual(gained.filter((w) => !allowed.has(w)), []);

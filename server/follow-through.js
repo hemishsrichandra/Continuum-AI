@@ -6,7 +6,8 @@
 // cannot publish twice.
 import { randomUUID } from 'node:crypto';
 import { THRESHOLDS } from './scoring.js';
-import { insertPassport, passportFromResolution, stepsList } from './passports.js';
+import { insertPassport, passportFromResolution, normalizeSafety, stepsList } from './passports.js';
+import { sanitizeDeep } from './privacy-sanitizer.js';
 import { containsPII, containsSecret, dangerousInstructions } from './privacy.js';
 
 const iso = (ms = Date.now()) => new Date(ms).toISOString();
@@ -19,6 +20,14 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
   const sql = store.db;
   const confirmationHours = hours(config.CONFIRMATION_DEADLINE_HOURS, 24);
   const slaHours = hours(config.CASE_SLA_HOURS, 8);
+  // Milestone deadlines for assigned cases (hours). Assignment is slaHours above.
+  const policy = {
+    firstResponseHours: hours(config.SLA_FIRST_RESPONSE_HOURS, 4),
+    inactivityHours: hours(config.SLA_INACTIVITY_HOURS, 24),
+    followUpHours: hours(config.SLA_FOLLOW_UP_HOURS, 24),
+    resolutionHours: hours(config.SLA_RESOLUTION_HOURS, 72),
+  };
+  const STAFF_ACTIONS = new Set(['assignment', 'progress', 'solution_proposed', 'resolution_revised', 'resolution_review']);
 
   function log({ companyId, chatbotId = null, ticketId, customerId = null, kind, detail = {}, actor = null, at = iso() }) {
     if (!companyId || !ticketId) return;
@@ -69,7 +78,19 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
     if (r.redactions > 0) blockers.push('personal data was redacted; a specialist must confirm the scrubbed text still makes sense');
     if (containsSecret(text) || containsPII(text)) blockers.push('contains private data');
     if (r.customerAccepted === false) blockers.push('customer contradicted the fix');
-    return blockers;
+    // Trust policy: a high confidence score does not show that the fix worked, so anything unresolved blocks it.
+    // (Applies to stored proposals, which carry their structured passport.)
+    if (r.passport) {
+      const passport = r.passport;
+      const safety = normalizeSafety(passport.safety);
+      if (safety.restrictions.some((x) => x.unevaluable) && !safety.reviewed) blockers.push('a safety restriction cannot be evaluated automatically');
+      if (!safety.restrictions.length && !(safety.noneIdentified && safety.reviewed)) blockers.push('safety restrictions were not reviewed');
+      const applicability = passport.applicability || {};
+      if (!(applicability.conditions?.length || String(applicability.environmentText || '').trim() || (applicability.universal && applicability.reviewed))) blockers.push('mandatory diagnostic information (applicability) is missing');
+      if (sanitizeDeep(passport).secret) blockers.push('contains credential-like content');
+    }
+    if (r.status && r.status !== 'pending_confirmation') blockers.push('the proposal is no longer waiting for the customer');
+    return [...new Set(blockers)];
   }
 
   /** Process due tasks. Safe to run repeatedly and concurrently. */
@@ -159,7 +180,66 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
         results.push({ handoffId: h.id, status: 'sla_escalated' });
       }
     }
+    results.push(...slaMilestones(at));
     return results;
+  }
+
+  /**
+   * SLA milestones for cases that ARE assigned but not progressing. Each (case, milestone) escalates once: the
+   * escalation history lives in sla_events, so a case that was already escalated is never escalated again for the
+   * same reason, and a case waiting on the customer is never blamed on the specialist.
+   *   first_response   assigned, but the specialist has done nothing since
+   *   specialist_inactive   no specialist activity for the inactivity window (one escalation per quiet period)
+   *   follow_up        the customer needs a follow-up and nobody has acted on it
+   *   resolution       open past the final-resolution deadline
+   */
+  function slaMilestones(at) {
+    const out = [];
+    const open = store.data.handoffs.filter((h) => h.createdAt && !['Resolved', 'Closed'].includes(h.status) && h.assignedTo);
+    if (!open.length) return out;
+    const tickets = new Set(open.map((h) => h.ticketId));
+    const assignedAt = new Map();
+    const lastStaff = new Map();
+    for (const a of store.data.audit) {
+      if (!tickets.has(a.ticketId) || !a.createdAt || !STAFF_ACTIONS.has(a.kind)) continue;
+      const t = Date.parse(a.createdAt);
+      if (a.kind === 'assignment') assignedAt.set(a.ticketId, Math.max(assignedAt.get(a.ticketId) || 0, t));
+      lastStaff.set(a.ticketId, Math.max(lastStaff.get(a.ticketId) || 0, t));
+    }
+    // The ball is in the customer's court while a proposal is unanswered, even after it was auto-published as unconfirmed.
+    const waitingOnCustomer = new Set([
+      ...sql.prepare("SELECT handoff_id FROM follow_through_tasks WHERE status='pending' AND task_type='customer_confirmation_wait'").all().map((r) => r.handoff_id),
+      ...store.data.resolutions.filter((r) => r.status === 'pending_confirmation').map((r) => r.handoffId),
+    ]);
+    const H = 3600000;
+    const raise = (h, milestone, dueMs, message) => {
+      const inserted = sql
+        .prepare('INSERT OR IGNORE INTO sla_events(id,company_id,chatbot_id,handoff_id,ticket_id,milestone,due_at,escalated_at,detail_json) VALUES(?,?,?,?,?,?,?,?,?)')
+        .run(randomUUID(), h.companyId, h.chatbotId, h.id, h.ticketId, milestone, iso(dueMs), iso(at), JSON.stringify({ message }));
+      if (!inserted.changes) return;
+      sql
+        .prepare(`INSERT INTO follow_through_tasks(id,company_id,chatbot_id,ticket_id,customer_id,handoff_id,task_type,dedupe_key,deadline_at,status,outcome_json,created_at)
+          VALUES(?,?,?,?,?,?,'sla_escalation',?,?,'escalated',?,?) ON CONFLICT(company_id,dedupe_key) DO NOTHING`)
+        .run(randomUUID(), h.companyId, h.chatbotId, h.ticketId, h.customerId, h.id, 'sla:' + milestone + ':' + h.id, iso(dueMs), JSON.stringify({ milestone, message }), iso(at));
+      log({ companyId: h.companyId, chatbotId: h.chatbotId, ticketId: h.ticketId, customerId: h.customerId, kind: 'sla_breached', detail: { milestone, message }, actor: 'follow-through worker', at: iso(at) });
+      out.push({ handoffId: h.id, status: 'sla_escalated', milestone });
+    };
+    for (const h of open) {
+      const created = Date.parse(h.createdAt);
+      const assigned = assignedAt.get(h.ticketId) || created;
+      const last = lastStaff.get(h.ticketId) || assigned;
+      const customerTurn = waitingOnCustomer.has(h.id);
+      if (!customerTurn && last <= assigned && assigned + policy.firstResponseHours * H <= at)
+        raise(h, 'first_response', assigned + policy.firstResponseHours * H, 'Assigned but no specialist response yet.');
+      if (!customerTurn && last > assigned && last + policy.inactivityHours * H <= at)
+        raise(h, 'specialist_inactive:' + last, last + policy.inactivityHours * H, 'No specialist activity for a while.');
+      if (h.followUpRequired && !customerTurn) {
+        const since = Math.max(Date.parse(h.updatedAt || '') || 0, assigned);
+        if (last <= since && since + policy.followUpHours * H <= at) raise(h, 'follow_up', since + policy.followUpHours * H, 'The customer needs a follow-up.');
+      }
+      if (created + policy.resolutionHours * H <= at) raise(h, 'resolution', created + policy.resolutionHours * H, 'Open past the resolution deadline.');
+    }
+    return out;
   }
 
   /** Staff-facing queue for a company (and optionally one service). */
@@ -190,10 +270,10 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
                   ? 'Published as UNCONFIRMED. Keep following up; the request remains open.'
                   : 'Closed by the customer response.'
             : t.task_type === 'sla_escalation'
-              ? 'Unclaimed past the SLA: claim or assign this case.'
+              ? (t.outcome_json && JSON.parse(t.outcome_json).message) || 'Unclaimed past the SLA: claim or assign this case.'
               : t.status === 'pending' ? 'Review the flagged fix: keep, retire or publish a revised version.' : 'Reviewed.',
       }));
-    return { slaHours, confirmationHours, tasks: list };
+    return { slaHours, confirmationHours, policy, tasks: list };
   }
 
   return {

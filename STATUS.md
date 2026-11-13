@@ -78,3 +78,19 @@ Environment: Node v22.23.4, Linux, fresh `npm ci`. All figures are from syntheti
 **Still not done / cannot be claimed**
 * **No validation on real support text** and **no run against a live embedding model** — neither data nor credentials exist here. `node scripts/evaluate.js --file …` and `--embeddings` exist so you can run both; until then accuracy on real customers is unknown.
 * **“Air tight” is not a claim this project can make.** Remaining known limits: tickets/conversations are still JSON records (hot paths are now scoped, but one very large tenant is still O(its own data) per request); bare personal names with no cue word cannot be detected; per-cohort reliability is not tracked; scheduling/time zones and external-job reconciliation are untouched; no central route registry or `app.js` layering; the PostgreSQL adapter and remote embeddings have only been tested with mocks. See `FLAW-REGISTER-STATUS.md`.
+
+## SQLite + ChromaDB hybrid RAG upgrade and audit fixes (latest)
+
+Branch `feature/chroma-hybrid-rag`. Environment: Windows 11, Node 24.13, ChromaDB 1.5.9 (pip) with JS client 3.5.0; `better-sqlite3` raised to `^12` so it installs on Node 24. Full detail: [UPGRADE-AUDIT.md](UPGRADE-AUDIT.md), [SEMANTIC-SEARCH.md](SEMANTIC-SEARCH.md).
+
+**Verification (final run):** `npm test` **272 tests, 271 passed, 0 failed, 1 skipped** (the symlink test needs Windows Developer Mode). `npm run demo`, `demo:multi`, `demo:learning` and `test:http` pass. A live test against a real ChromaDB server passes (`npm run test:chroma`; it skips itself when no server is reachable). One manual browser pass of the owner console, mobile width and the demo (see UPGRADE-AUDIT.md).
+
+**Implemented:** ChromaDB vector index with durable, idempotent indexing from SQLite (triggers + worker, reconcile, reindex, per-model collections, SQLite-only fallback); hybrid retrieval with indexed device facets and adaptive widening; embedding service with a privacy boundary; central privacy sanitizer; safety-restriction fix; per-version verification; approval gating for imports and authoritative-snapshot reconciliation; DNS-pinned REST and allowlisted, TLS, read-only PostgreSQL connectors; durable retried erasure tasks; assigned-case SLA milestones; independent worker lanes; demo attribution and session fixes; owner Status panel.
+
+**Measured (synthetic, same offline embedding for all systems; table in UPGRADE-AUDIT.md):** recall@3 about 0.91-0.97 for the original and the SQLite-only upgrade at 100 / 1,000 / 10,000 fixes, 0.95-0.99 with ChromaDB, zero wrong-device recommendations. At 10,000 fixes the SQLite-only path took roughly a third of the original's median time; the ChromaDB path was not faster. Timings are noisy.
+
+**Still not done / cannot be claimed**
+* No neural embedding model was run (none configured): paraphrase quality is still that of the offline concept list. No live Hindsight, email, Google or PostgreSQL server was available, so those paths are covered only by mocks and failure-path tests.
+* `docker-compose.yml` has not been run (Docker is not installed here); the same ChromaDB version was run through pip.
+* Deferred: splitting `server/app.js` and replacing JSON collections (item 20), a per-company SLA editor, demo-session persistence.
+* Windows-only: `npm test` uses `test/setup-windows-cleanup.js` to ignore file-lock errors when deleting temp folders.

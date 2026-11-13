@@ -116,14 +116,43 @@ export function createIntegrations(store, config) {
   }
   // Additional periodic work (e.g. follow-through deadlines) runs on this same
   // worker tick, never per web request.
+  //
+  // Every registered task is its own lane: it has its own running flag, timeout, backoff and status, so a slow
+  // external database sync (or a failing one) can never delay email delivery, indexing or follow-through.
   const tickTasks = [];
-  function register(task) { tickTasks.push(task); }
+  function register(task, { name = 'task-' + (tickTasks.length + 1), timeoutMs = 60000 } = {}) {
+    tickTasks.push({ task, name, timeoutMs, running: null, startedAt: null, lastDurationMs: null, lastError: null, failures: 0, nextAt: 0, runs: 0 });
+  }
+  // A lane never overlaps itself. A task that exceeds its timeout keeps its lane until it settles, but waiting
+  // callers stop waiting for it; repeated failures back the lane off (up to 5 minutes).
+  function runLane(lane) {
+    if (lane.running) return lane.running;
+    if (Date.now() < lane.nextAt) return Promise.resolve();
+    lane.startedAt = Date.now();
+    lane.runs++;
+    lane.running = Promise.resolve()
+      .then(() => lane.task())
+      .then(() => { lane.lastError = null; lane.failures = 0; lane.nextAt = 0; })
+      .catch((e) => {
+        lane.failures++;
+        lane.lastError = e?.status ? e.message : 'The task failed.';
+        lane.nextAt = Date.now() + Math.min(300000, 5000 * 2 ** Math.min(lane.failures, 6));
+        console.warn('Worker task "' + lane.name + '" failed:', e?.message);
+      })
+      .finally(() => { lane.lastDurationMs = Date.now() - lane.startedAt; lane.running = null; });
+    return lane.running;
+  }
+  const settleWithin = (promise, ms) => Promise.race([promise, new Promise((resolve) => setTimeout(resolve, ms).unref())]);
+  function lanes() {
+    return [{ name: 'outbox', running: Boolean(running), lastError: null }, ...tickTasks.map(({ name, running: r, lastDurationMs, lastError, failures, runs, startedAt }) => ({ name, running: Boolean(r), lastDurationMs, lastError, failures, runs, ...(r && { runningForMs: Date.now() - startedAt }) }))];
+  }
+  /** Run every lane once and wait for each (each wait is bounded by that lane's timeout). Used by tests and manual runs. */
   async function flush() {
+    await Promise.allSettled([flushOutbox(), ...tickTasks.map((lane) => settleWithin(runLane(lane), lane.timeoutMs))]);
+  }
+  async function flushOutbox() {
     if (running) return running;
     running = Promise.resolve().then(async () => {
-      for (const task of tickTasks) {
-        try { await task(); } catch (e) { console.warn('Worker task failed:', e.message); }
-      }
       for (let count = 0; count < 10; count++) {
         const job = store.update((data) => {
           const next = data.outbox.find((j) => {
@@ -151,8 +180,10 @@ export function createIntegrations(store, config) {
     }).finally(() => { running = false; });
     return running;
   }
-  function kick() { if (!stopped) setTimeout(() => flush().catch(() => {}), 0).unref(); }
-  function start() { stopped = false; timer = setInterval(() => flush().catch(() => {}), 10000); timer.unref(); kick(); }
+  // A new outbox job only needs the outbox lane; the periodic tick starts every lane independently (never awaiting one for another).
+  function kick() { if (!stopped) setTimeout(() => flushOutbox().catch(() => {}), 0).unref(); }
+  function tick() { flushOutbox().catch(() => {}); for (const lane of tickTasks) runLane(lane); }
+  function start() { stopped = false; timer = setInterval(tick, 10000); timer.unref(); tick(); }
   function close() { stopped = true; clearInterval(timer); }
   function status(accountId) {
     const connected = accountId && sql.prepare('SELECT connected_at FROM connections WHERE account_id=?').get(accountId);
@@ -200,5 +231,5 @@ export function createIntegrations(store, config) {
     return false;
   }
   if (emailConfigured || googleConfigured) encryptionKey();
-  return { register, emailConfigured, googleConfigured, queueEmail, queueBooking, available, flush, start, close, status, handle, seal, unseal };
+  return { register, lanes, emailConfigured, googleConfigured, queueEmail, queueBooking, available, flush, start, close, status, handle, seal, unseal };
 }
