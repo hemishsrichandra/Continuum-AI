@@ -142,7 +142,11 @@ export function createIntegrations(store, config) {
       .finally(() => { lane.lastDurationMs = Date.now() - lane.startedAt; lane.running = null; });
     return lane.running;
   }
-  const settleWithin = (promise, ms) => Promise.race([promise, new Promise((resolve) => setTimeout(resolve, ms).unref())]);
+  const settleWithin = (promise, ms) => new Promise((resolve) => {
+    // Keep an explicit flush alive until its deadline, then release the timer if the lane finishes first.
+    const t = setTimeout(resolve, ms);
+    promise.finally(() => { clearTimeout(t); resolve(); });
+  });
   function lanes() {
     return [{ name: 'outbox', running: Boolean(running), lastError: null }, ...tickTasks.map(({ name, running: r, lastDurationMs, lastError, failures, runs, startedAt }) => ({ name, running: Boolean(r), lastDurationMs, lastError, failures, runs, ...(r && { runningForMs: Date.now() - startedAt }) }))];
   }
