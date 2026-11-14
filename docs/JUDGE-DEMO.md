@@ -1,5 +1,7 @@
 # Continuum: four-minute judging demonstration
 
+Historical extended rehearsal. Use [PITCH.md](../PITCH.md) for the current submission script, measured results and limits.
+
 ## Claim to demonstrate
 
 Continuum remembers reviewed support outcomes, applies them only to matching problems, and stops reusing a fix when failure feedback requires review. It retrieves knowledge; it does not retrain model weights.
@@ -8,7 +10,7 @@ All device names and fixes in this demonstration are synthetic fixtures, not har
 
 ## Prepare before presenting
 
-1. Start the existing app with `bash scripts/start-wsl.sh` under WSL. Open http://localhost:3100.
+1. Run `npm run seed:sample`, then `npm run serve:sample` and open http://localhost:3300 for the offline synthetic rehearsal. For a configured live integration rehearsal use `npm start` and the configured frontend port (3100 in `.env.example`). WSL is optional.
 2. Use a dedicated demo company with separate customer A, customer B and owner/specialist sessions. Use separate browser profiles so cookies cannot silently switch roles. Label the windows clearly.
 3. Create A's request: **Demo screen flicker**, description: **My Model X laptop on firmware 4 has a flickering screen after startup. Restarting did not help. Please email me instead of calling.**
 4. Create B's request: **Demo flashing screen**, description: **My Model X laptop on firmware 4 has a flashing screen after startup.**
@@ -23,7 +25,7 @@ All device names and fixes in this demonstration are synthetic fixtures, not har
 |---|---|---|
 | 0:00–0:30 | B asks “The panel flashes when the laptop starts. Is there a known fix?” | “This company has no verified solution yet.” Verify no fix is invented. |
 | 0:30–1:10 | Specialist opens A's case history, then proposes the staged synthetic solution | “The specialist receives the problem and attempted fix, so the customer does not start over.” The proposal must await customer confirmation. |
-| 1:10–1:40 | A confirms success; specialist library shows published/synced | “A proposed answer is not knowledge until the customer confirms it worked.” |
+| 1:10–1:40 | A confirms success; specialist library shows published/synced | “This answer is now customer-confirmed. Overdue publication follows a separate policy and is labelled unconfirmed.” |
 | 1:40–2:25 | B asks “The image blinks as my notebook boots. What helped with this?” Open Sources & response details | Verify exact reviewed steps, Hindsight attribution and compatible environment. “Another customer benefits from the reviewed outcome.” |
 | 2:25–2:55 | B opens Memory lab and compares the same question ON/OFF | ON should retrieve the fix; OFF should withhold it. The comparison must not submit an action. Explain that withholding is safer than guessing. |
 | 2:55–3:35 | On B's saved recommendation, choose Still need help; complete any confirmation shown | Verify reopened request, specialist case/history and resolution review pause. Ask again; the failed steps must not be repeated. |

@@ -53,7 +53,10 @@ test('erase requires confirmation, removes content, keeps operational records, a
   assert.ok(!JSON.stringify(w.h.store.data).includes('415 555 0100'), 'the phone number is gone from every collection');
   assert.equal(JSON.stringify(w.h.store.data.conversations.filter((c) => c.ticketId === tb)), bobBefore, 'Bob’s data is untouched');
   assert.equal((await a.api('status?ticketId=' + ta)).status, 200, 'the request itself is kept');
-  assert.ok(w.h.store.data.audit.some((x) => x.kind === 'privacy_erasure' && !JSON.stringify(x).includes('415')), 'an audit record exists and holds no content');
+  const audit = w.h.store.data.audit.find((x) => x.kind === 'privacy_erasure');
+  assert.ok(audit, 'an erasure audit record exists');
+  assert.deepEqual(Object.keys(audit).sort(), ['id', 'scope', 'ticketId', 'kind', 'counts', 'createdAt'].sort(), 'the audit contains metadata only');
+  assert.ok(!JSON.stringify(audit).includes('415 555 0100'), 'the phone number is absent; random identifiers may contain its three-digit prefix');
   const again = (await a.api('privacy/erase', { confirmed: true })).data;
   assert.equal(again.erased.conversations, 0, 'idempotent');
 });

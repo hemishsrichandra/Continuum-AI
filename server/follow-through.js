@@ -114,8 +114,8 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
       const result = sql.transaction(() => {
         const current = sql.prepare("SELECT status FROM follow_through_tasks WHERE id=?").get(task.id);
         if (current?.status !== 'pending') return null;
-        const data = store.data;
-        const r = data.resolutions.find((x) => x.id === task.proposal_id && x.companyId === task.company_id);
+        const stored = sql.prepare("SELECT payload FROM records WHERE collection='resolutions' AND json_extract(payload,'$.companyId')=? AND json_extract(payload,'$.id')=?").get(task.company_id, task.proposal_id);
+        const r = stored ? JSON.parse(stored.payload) : null;
         // The customer answered (or the proposal is gone): nothing to publish.
         if (!r || r.status !== 'pending_confirmation') {
           sql.prepare("UPDATE follow_through_tasks SET status='completed',processed_at=?,outcome_json=? WHERE id=? AND status='pending'").run(iso(at), JSON.stringify({ reason: 'customer responded or proposal closed' }), task.id);
@@ -125,7 +125,7 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
         if (blockers.length) {
           const claimed = sql.prepare("UPDATE follow_through_tasks SET status='escalated',processed_at=?,outcome_json=? WHERE id=? AND status='pending'").run(iso(at), JSON.stringify({ blockers }), task.id);
           if (!claimed.changes) return null;
-          store.update((d) => {
+          store.updateFor(task.company_id, (d) => {
             const h = d.handoffs.find((x) => x.id === r.handoffId && x.companyId === task.company_id);
             if (h) {
               h.followUpRequired = true;
@@ -163,7 +163,7 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
           });
         }
         sql.prepare("UPDATE follow_through_tasks SET memory_id=?,outcome_json=? WHERE id=?").run(memory.id, JSON.stringify({ memoryId: memory.id, cInit: task.initial_confidence_score }), task.id);
-        store.update((d) => {
+        store.updateFor(task.company_id, (d) => {
           const x = d.resolutions.find((y) => y.id === r.id);
           // The proposal still awaits the customer: the case is NOT resolved.
           x.autoPublishedAt = iso(at);
@@ -182,7 +182,9 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
       if (result) results.push(result);
     }
     // SLA: queued cases nobody has claimed become explicit escalation tasks.
-    for (const h of store.data.handoffs.filter((h) => h.status === 'Queued' && !h.assignedTo && h.createdAt && Date.parse(h.createdAt) + slaHours * 3600000 <= at)) {
+    // Read only open handoffs, rather than deserializing every collection for every tenant each tick.
+    const handoffs = sql.prepare("SELECT payload FROM records WHERE collection='handoffs' AND json_extract(payload,'$.status') NOT IN ('Resolved','Closed') ORDER BY position").all().map((r) => JSON.parse(r.payload));
+    for (const h of handoffs.filter((h) => h.status === 'Queued' && !h.assignedTo && h.createdAt && Date.parse(h.createdAt) + slaHours * 3600000 <= at)) {
       const inserted = sql.prepare(`INSERT INTO follow_through_tasks(id,company_id,chatbot_id,ticket_id,customer_id,handoff_id,task_type,dedupe_key,deadline_at,status,created_at)
         VALUES(?,?,?,?,?,?,'sla_escalation',?,?,'escalated',?) ON CONFLICT(company_id,dedupe_key) DO NOTHING`)
         .run(randomUUID(), h.companyId, h.chatbotId, h.ticketId, h.customerId, h.id, 'sla:' + h.id, iso(Date.parse(h.createdAt) + slaHours * 3600000), iso(at));
@@ -191,7 +193,7 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
         results.push({ handoffId: h.id, status: 'sla_escalated' });
       }
     }
-    results.push(...slaMilestones(at));
+    results.push(...slaMilestones(at, handoffs));
     return results;
   }
 
@@ -204,23 +206,27 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
    *   follow_up        the customer needs a follow-up and nobody has acted on it
    *   resolution       open past the final-resolution deadline
    */
-  function slaMilestones(at) {
+  function slaMilestones(at, handoffs) {
     const out = [];
-    const open = store.data.handoffs.filter((h) => h.createdAt && !['Resolved', 'Closed'].includes(h.status) && h.assignedTo);
+    const open = handoffs.filter((h) => h.createdAt && h.assignedTo);
     if (!open.length) return out;
-    const tickets = new Set(open.map((h) => h.ticketId));
     const assignedAt = new Map();
     const lastStaff = new Map();
-    for (const a of store.data.audit) {
-      if (!tickets.has(a.ticketId) || !a.createdAt || !STAFF_ACTIONS.has(a.kind)) continue;
-      const t = Date.parse(a.createdAt);
-      if (a.kind === 'assignment') assignedAt.set(a.ticketId, Math.max(assignedAt.get(a.ticketId) || 0, t));
-      lastStaff.set(a.ticketId, Math.max(lastStaff.get(a.ticketId) || 0, t));
+    for (const h of open) {
+      // record_scope covers this exact scope/ticket lookup; identical ticket IDs in other tenants cannot contribute.
+      const activity = sql.prepare("SELECT payload FROM records WHERE collection='audit' AND json_extract(payload,'$.scope')=? AND json_extract(payload,'$.ticketId')=?").all(h.scope, h.ticketId);
+      for (const row of activity) {
+        const a = JSON.parse(row.payload);
+        if (!a.createdAt || !STAFF_ACTIONS.has(a.kind)) continue;
+        const t = Date.parse(a.createdAt);
+        if (a.kind === 'assignment') assignedAt.set(h.id, Math.max(assignedAt.get(h.id) || 0, t));
+        lastStaff.set(h.id, Math.max(lastStaff.get(h.id) || 0, t));
+      }
     }
     // The ball is in the customer's court while a proposal is unanswered, even after it was auto-published as unconfirmed.
     const waitingOnCustomer = new Set([
       ...sql.prepare("SELECT handoff_id FROM follow_through_tasks WHERE status='pending' AND task_type='customer_confirmation_wait'").all().map((r) => r.handoff_id),
-      ...store.data.resolutions.filter((r) => r.status === 'pending_confirmation').map((r) => r.handoffId),
+      ...[...new Set(open.map((h) => h.companyId))].flatMap((companyId) => sql.prepare("SELECT json_extract(payload,'$.handoffId') AS id FROM records WHERE collection='resolutions' AND json_extract(payload,'$.companyId')=? AND json_extract(payload,'$.status')='pending_confirmation'").all(companyId).map((r) => r.id)),
     ]);
     const H = 3600000;
     const raise = (h, milestone, dueMs, message) => {
@@ -237,8 +243,8 @@ export function createFollowThrough(store, { delivery, config = {} } = {}) {
     };
     for (const h of open) {
       const created = Date.parse(h.createdAt);
-      const assigned = assignedAt.get(h.ticketId) || created;
-      const last = lastStaff.get(h.ticketId) || assigned;
+      const assigned = assignedAt.get(h.id) || created;
+      const last = lastStaff.get(h.id) || assigned;
       const customerTurn = waitingOnCustomer.has(h.id);
       if (!customerTurn && last <= assigned && assigned + policy.firstResponseHours * H <= at)
         raise(h, 'first_response', assigned + policy.firstResponseHours * H, 'Assigned but no specialist response yet.');

@@ -1,0 +1,64 @@
+// Real round trip in an isolated temporary database; never uses the existing demo.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { once } from 'node:events';
+import { launchBrowser, startApp, signUp, asUser } from './support.mjs';
+import { createExampleServer } from '../examples/external-chatbot/server.js';
+
+test('owner creates a key and separate chatbot renders real Continuum retrieval, clarification, no-match and revoked states', async t => {
+  const app = await startApp({VECTOR_STORE:'sqlite',EMBEDDING_PROVIDER:'local'}); t.after(()=>app.stop());
+  const browser = await launchBrowser(); t.after(()=>browser.close());
+  const owner = await signUp(app,{createCompany:true,companyName:'Synthetic External Chat Test',name:'Synthetic Owner',email:'external-owner@example.test'});
+  const bot = owner.profile.chatbotId;
+  const csv = await readFile(new URL('../examples/external-chatbot/synthetic-knowledge.csv',import.meta.url),'utf8');
+  const source = await owner.call('company/data-sources',{confirmed:true,sourceType:'csv_sync',chatbotId:bot,name:'Synthetic fixture',connection:{csv},declaredVerified:false,
+    fieldMapping:{fields:{externalId:'id',title:'title',symptoms:'symptoms',steps:'steps',applicability:'environment',safety:'safety'},diagnostics:{}}});
+  assert.equal(source.status,201);
+  assert.equal((await owner.call(`company/data-sources/${source.data.source.id}/preview`,{})).data.valid,3);
+  assert.equal((await owner.call(`company/data-sources/${source.data.source.id}/sync`,{confirmed:true})).data.result.inserted,3);
+  const records = (await owner.call('operator')).data.passports.filter(r=>r.origin === 'company_db_sync');
+  for (const r of records) assert.equal((await owner.call('operator/review-resolution',{id:r.id,decision:'keep',note:'Synthetic fixture reviewed for audience and safety.',confirmed:true})).status,200);
+  const {page,context} = await asUser(browser,app,owner); t.after(()=>context.close());
+  await page.goto(app.base+'/team'); await page.locator('#staff-account').click();
+  await page.getByRole('link',{name:'Manage integration API keys'}).waitFor();
+  // Follow the account option in this same isolated tab for automation.
+  await page.goto(app.base+'/api/company/integration-keys/manage');
+  await page.locator('[name=name]').fill('Synthetic company bot');
+  for (const r of records) await page.locator(`[name=memoryIds][value="${r.id}"]`).check();
+  await page.locator('[name=confirmed]').check();
+  const creationResponse = page.waitForResponse(r=>r.request().method()==='POST' && r.url().includes('/integration-keys/manage'));
+  await page.getByRole('button',{name:'Create integration key'}).click();
+  const creation = await creationResponse;
+  assert.equal(creation.status(),201,creation.status() === 201 ? '' : await creation.text());
+  await page.getByRole('heading',{name:'Copy your key now'}).waitFor();
+  const key = await page.locator('pre').innerText(); assert.match(key,/^ctm_/);
+  assert.equal(await page.locator('script').count(),0);
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth),true,'the one-time key fits a mobile screen');
+  await page.setViewportSize({width:1280,height:900});
+  const adapter = createExampleServer({apiUrl:app.base,key}); adapter.listen(0,'127.0.0.1'); await once(adapter,'listening');
+  t.after(()=>{adapter.closeAllConnections();adapter.close();});
+  const url = 'http://127.0.0.1:'+adapter.address().port;
+  await page.goto(url);
+  const requests=[]; page.on('request',r=>{if(r.url().startsWith(url)) requests.push({url:r.url(),headers:r.headers(),body:r.postData()});});
+  await page.locator('[name=environment]').fill('Model X firmware 4');
+  await page.getByRole('button',{name:'Ask company support'}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('#suggestions article').length===3);
+  const result = JSON.parse(await page.locator('#response').innerText());
+  assert.equal(result.suggestions.length,3); assert.equal(result.preview,true);
+  assert.equal(await page.locator('#suggestions').getByText(/Source: Reviewed company knowledge import/).count(),3);
+  assert.equal(await page.locator('#suggestions').getByText(/Not customer-confirmed/).count(),3);
+  assert.ok(!JSON.stringify(requests).includes(key)); assert.ok(!(await page.content()).includes(key));
+  await page.locator('[name=environment]').fill(''); await page.getByRole('button',{name:'Ask company support'}).click();
+  await page.waitForFunction(()=>document.querySelector('#response').textContent.includes('clarification_required'));
+  assert.ok((await page.locator('#clarification').innerText()).length);
+  await page.locator('[name=question]').fill('The satellite antenna has a broken mast.');
+  await page.getByRole('button',{name:'Ask company support'}).click();
+  await page.waitForFunction(()=>document.querySelector('#response').textContent.includes('no_match'));
+  const listed = (await owner.call('company/integration-keys')).data.credentials;
+  assert.equal((await owner.call('company/integration-keys/'+listed[0].id,undefined,'DELETE')).status,200);
+  await page.getByRole('button',{name:'Ask company support'}).click();
+  await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('invalid or revoked'));
+  assert.ok(!(await page.content()).includes(key));
+});

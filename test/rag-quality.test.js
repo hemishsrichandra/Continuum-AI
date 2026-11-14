@@ -10,17 +10,20 @@ import { extractMentions } from '../server/applicability.js';
 import { localEmbedding, cosine, LOCAL_EMBEDDING_MODEL } from '../server/scoring.js';
 import { extractFacts } from '../server/facts.js';
 
-// Recall floors reflect measured results with a little headroom; precision/safety floors are absolute.
-// regression/challenge/holdout wording informed the concept map; validation was written afterwards
-// and measured once without tuning, so it is the honest out-of-sample figure.
+// Independent-query protocol (14 Nov 2026): each wording gets a fresh ticket containing only that
+// wording and its environment. Previous floors included source symptoms/title and pending answers.
+// The explicit symptom gate intentionally withholds unfamiliar failure descriptions: these floors
+// record that precision/recall tradeoff, not an improvement in general semantic quality.
+// See evaluation/remediation-results.json for the old code under the SAME independent protocol.
+// Safety/precision requirements remain absolute; do not lower them to improve recall.
 const SETS = [
   { name: 'regression', options: {}, minRecall: 20 },
-  { name: 'challenge', options: { challenge: true }, minRecall: 28 },
+  { name: 'challenge', options: { challenge: true }, minRecall: 27 },
   { name: 'holdout', options: { holdout: true }, minRecall: 28 },
-  { name: 'validation', options: { validation: true }, minRecall: 24 },
+  { name: 'validation', options: { validation: true }, minRecall: 20 },
   // Typos/slang: `informal` informed the typo matcher; `informal2` was written afterwards and measured once.
-  { name: 'informal', options: { informal: true }, minRecall: 22 },
-  { name: 'informal2', options: { informal2: true }, minRecall: 23 },
+  { name: 'informal', options: { informal: true }, minRecall: 20 },
+  { name: 'informal2', options: { informal2: true }, minRecall: 18 },
 ];
 for (const { name, options, minRecall } of SETS)
   test(`RAG evaluation (${name}): recall floor ${minRecall}/${name === 'regression' ? 20 : 30}, zero unsafe recommendations, zero memory-off leaks, no repeated failed fix`, async () => {

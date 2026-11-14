@@ -3,6 +3,7 @@ import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual, cre
 import { promisify } from 'node:util';
 import { fault, profiles } from './providers.js';
 import { field, json } from './requests.js';
+import { clientAddress } from './client-address.js';
 
 const scrypt = promisify(scryptCallback);
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
@@ -207,7 +208,7 @@ export function createAuth(store, config, delivery, companies) {
     expiresAt: new Date(session.expires_at).toISOString(),
   });
   async function handle(req, endpoint, send, session) {
-    const ip = req.socket.remoteAddress;
+    const ip = clientAddress(req);
     if (endpoint === 'GET /api/auth/config') {
       send(200, { demoEnabled, emailConfigured: delivery.emailConfigured, verificationRequired, ...(demoSignIn && { demoAccounts: demoSignIn.accounts, demoPassword: demoSignIn.password }) });
       return true;

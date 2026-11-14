@@ -35,6 +35,17 @@ test('evaluating your own dataset runs the real flow and omits raw customer word
   assert.match(r.embeddingModel, /offline/);
 });
 
+test('evaluation queries cannot borrow the stored source title or symptoms as problem evidence', async () => {
+  const r = await evaluate({ dataset: [{
+    id: 'different-symptom', title: 'Display flicker after startup', symptoms: 'Screen flickers after startup',
+    environment: 'Model Q firmware 7', solution: 'Open Display settings and disable Adaptive Refresh, then restart.',
+    queries: ['My screen is too dim after startup.'],
+  }] });
+  assert.equal(r.error, undefined);
+  assert.equal(r.counts.positiveQuestions, 1);
+  assert.equal(r.counts.correctMemoryOn, 0, 'the different failure must be withheld despite the stored source text');
+});
+
 test('embedding evaluation fails loudly without configuration', async () => {
   await assert.rejects(evaluate({ dataset: MINE, embeddings: true, embeddingEnv: {} }), /EMBEDDING_MODEL and EMBEDDING_API_KEY/);
   await assert.rejects(evaluate({ dataset: MINE, embeddings: true, embeddingEnv: { EMBEDDING_MODEL: 'm' } }), /EMBEDDING_API_KEY/);

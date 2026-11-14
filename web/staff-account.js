@@ -25,6 +25,12 @@ export function bindStaffAccount(app) {
         if (['Google Calendar','Delivery activity'].includes(title)) section.remove();
       }
       dialog.querySelector('#dialog-title').textContent = 'Account & security';
+      if (session.profile.role === 'owner' && !session.profile.demo) {
+        const section = document.createElement('section');
+        section.className = 'settings-section';
+        section.innerHTML = '<h3>External chatbot</h3><p>Create or revoke a key for reviewed company knowledge.</p><a class="button" href="/api/company/integration-keys/manage" target="_blank" rel="noopener noreferrer">Manage integration API keys</a>';
+        dialog.append(section);
+      }
     } catch (e) { app.querySelector('#team-result, #operator-result').textContent = e.message; }
     finally { event.target.disabled = false; }
   });

@@ -11,6 +11,7 @@ import { holdoutCases } from '../evaluation/holdout.js';
 import { validationCases } from '../evaluation/validation.js';
 import { informalCases } from '../evaluation/informal.js';
 import { informal2Cases } from '../evaluation/informal2.js';
+import { DISPLAY_NEAR_MISSES } from '../evaluation/near-misses.js';
 
 /**
  * Validate a dataset of your own: `[{ id, title, symptoms, environment, solution, queries: [..] }]`
@@ -69,6 +70,8 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
     startedAt: new Date().toISOString(),
     dataset: custom ? 'custom (your data)' : informal2 ? 'synthetic informal v2' : informal ? 'synthetic informal v1' : validation ? 'synthetic validation v1' : holdout ? 'synthetic held-out v1' : challenge ? 'synthetic challenge v1' : 'synthetic regression v1',
     datasetSha256: createHash('sha256').update(JSON.stringify(dataset)).digest('hex'),
+    protocol: 'independent-query-v2',
+    nearMissesSha256: dataset.some((c) => c.id === 'display') ? createHash('sha256').update(JSON.stringify(DISPLAY_NEAR_MISSES)).digest('hex') : null,
     plannedCases: dataset.length,
     plannedPositiveQuestions: dataset.reduce((n, c) => n + c.queries.length, 0),
     namespace: config.HINDSIGHT_BANK_PREFIX,
@@ -141,7 +144,7 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
         await a.api('request', { title: c.title, issueDesc: issue, confirmed: true, memory: false })
       ).ticketId;
       const tb = (
-        await b.api('request', { title: c.title, issueDesc: issue, confirmed: true, memory: false })
+        await b.api('request', { title: c.environment || 'Service request', issueDesc: c.queries[0] + '. ' + c.environment, confirmed: true, memory: false })
       ).ticketId;
       const handoff = await a.api('handoff', {
         ticketId: ta,
@@ -170,11 +173,15 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
       let use;
       for (let index = 0; index < c.queries.length; index++) {
         const message = c.queries[index];
+        // A fresh issue prevents source wording or a previous pending suggestion from answering this query.
+        const queryTicket = index === 0 ? tb : (await b.api('request', {
+          title: c.environment || 'Service request', issueDesc: message + '. ' + c.environment, confirmed: true, memory: false,
+        })).ticketId;
         const onStart = performance.now();
-        const on = await b.api('chat', { ticketId: tb, message, retain: index === 0 });
+        const on = await b.api('chat', { ticketId: queryTicket, message, retain: index === 0 });
         const onMs = Math.round(performance.now() - onStart);
         const offStart = performance.now();
-        const off = await b.api('chat', { ticketId: tb, message, memory: false, retain: false });
+        const off = await b.api('chat', { ticketId: queryTicket, message, memory: false, retain: false });
         const offMs = Math.round(performance.now() - offStart);
         use ||= on.resolutionUse;
         const correct =
@@ -205,10 +212,17 @@ export async function evaluate({ live = false, challenge = false, holdout = fals
           memory: false,
         })
       ).ticketId;
+      const nearMisses = [];
+      if (c.id === 'display') for (const message of DISPLAY_NEAR_MISSES) {
+        const ticket = await b.api('request', { title: c.environment, issueDesc: message + ' ' + c.environment, confirmed: true, memory: false });
+        nearMisses.push([ticket.ticketId, message]);
+      }
       for (const [ticketId, message] of [
         [tb, c.queries[0] + ' Model WRONG firmware 99 Windows 99.'],
         [missing, c.queries[0]],
         [tb, 'How do I update my invoice address?'],
+        // Use a fresh request: the original flicker description must not supply symptom evidence.
+        ...nearMisses,
       ]) {
         const answer = await b.api('chat', { ticketId, message, retain: false });
         const safe = answer.trace.learnedResolutions === 0 && !answer.reply.includes(c.solution);

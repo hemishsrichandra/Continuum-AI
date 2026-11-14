@@ -83,8 +83,8 @@ The customer memory switch was removed from the workflow. Privacy is handled by 
 
 ### Requirements
 
-- **Node.js 22** is the verified runtime; `.nvmrc` identifies the project version.
-- Use Linux, macOS or WSL with dependencies installed for that environment. On this Windows development setup, testing runs in WSL because `better-sqlite3` is a native module.
+- **Node.js 22** is the recommended runtime (`.nvmrc`); the declared minimum is Node 20.12. CI covers Node 20 and 22. The remediation checks also ran locally on Node 20.20.2.
+- Use Linux, macOS or Windows with dependencies installed for that environment. `better-sqlite3` is a native module: reinstall dependencies when switching operating systems or Node versions. WSL is optional.
 - Run the commands below from a checkout containing this implementation.
 
 ### Explore the isolated learning demo
@@ -225,7 +225,7 @@ npm run db:backup -- /absolute/new/path/continuum-backup.sqlite
 
 | Check | Recorded result |
 | --- | --- |
-| Automated regression and integration suite | **165 passed, 0 failed** (two consecutive runs; see STATUS.md) |
+| Automated regression and integration suite | Current remediation results and commands: [REMEDIATION-PLAN.md](docs/REMEDIATION-PLAN.md). Older counts in archived reports describe their recorded revisions. |
 | HTTP checks | Passed: pages/assets, authentication, CSRF, isolation, validation, logout, proxy and replay behavior. |
 | Fictional multi-company demo | Passed: standard → human → confirmed knowledge → compatible reuse, failed reuse and scope isolation. |
 | Browser verification | Confirmed workspace switching, specialist handoff, publication gating, standard-first charging support, cross-customer reuse and generalized advice. |
@@ -249,8 +249,8 @@ Detailed records: [Multi-company verification](docs/MULTI-COMPANY-VERIFICATION.m
 ## Prototype scope and next steps
 
 - Diagnostic extraction and topic matching are conservative and English-oriented. Broader domains and languages require additional playbooks, compatibility rules and evaluation.
-- Each issue receives at most one standard and one learned attempt before escalation. Recurring problems after a finalized outcome use a new request.
-- Staff permissions are adapter-wide within a company; separate per-chatbot delegation is not implemented.
+- Each issue receives at most one standard attempt and up to three learned attempts before escalation. Customers choose a suggestion before it counts as tried. Recurring problems after a finalized outcome use a new request.
+- Owners can limit staff access to individual chatbots within a company.
 - Customer-directory imports are owner-triggered individual lookups, with one gateway connection per company. Full-directory synchronization is outside the prototype.
 - SQLite deployment assumes one persistent host. Multiple application hosts require a shared database architecture.
 - Memory-off specialist confirmations do not yet have a later opt-in publication control.

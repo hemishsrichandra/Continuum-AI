@@ -15,7 +15,7 @@
 //    failure-tracked records
 //  * a sync is resumable: progress (a keyset checkpoint) commits in the same transaction as each batch of writes; a failed, cancelled,
 //    paused or partial run never retires knowledge and is never reported as complete
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { resolve, sep, basename } from 'node:path';
 import { realpathSync, createReadStream, statSync } from 'node:fs';
@@ -28,7 +28,7 @@ import { localEmbedding, vectorToBlob, LOCAL_EMBEDDING_MODEL } from './scoring.j
 import { containsSecret, scrubPII, dangerousInstructions } from './privacy.js';
 import { customerFacts } from './applicability.js';
 import { field, json } from './requests.js';
-import { sanitizeDeep, isPersonalKey, shapeEvidence, shapeProvenance } from './privacy-sanitizer.js';
+import { sanitizeDeep, sanitizeText, isPersonalKey, shapeEvidence, shapeProvenance } from './privacy-sanitizer.js';
 import { IDENT, PATH, dotted, CsvParser, csvHeaderName, csvBatches, sliceString, sqlBatches, encodeKey, compareKeys, restBatches, fetchWithRetries, restStyle, REST_STYLES } from './source-adapters.js';
 import { createKnowledgeLifecycle, recordKnowledgeEvent } from './knowledge-lifecycle.js';
 
@@ -172,7 +172,13 @@ export function mapRecord(row, mapping, schema = [], { declaredVerified = false 
     facts: customerFacts([raw.applicability, ...conditions.map((c) => c.key + ' ' + c.values.join(' '))].join('\n'), Object.fromEntries(conditions.map((c) => [c.key, c.values[0]]))),
     author: { kind: declaredVerified ? 'verified_import' : 'unverified_import' },
   });
-  return { externalId: raw.externalId, passport, redactions, hazards, issues, cInit: confidence, updatedAt: raw.updatedAt, sourceVersion: raw.sourceVersion };
+  // Long catalogue IDs can resemble opaque credentials to the receipt scrubber. Keep a deterministic,
+  // non-secret reference instead of storing/echoing that value or relaxing credential detection.
+  // Explicit credential syntax is still a validation error above; free-text passport fields are unchanged.
+  const externalId = sanitizeText(raw.externalId).secret && !containsSecret(raw.externalId)
+    ? 'record.' + createHash('sha256').update(raw.externalId).digest('hex').match(/.{16}/g).join('.')
+    : raw.externalId;
+  return { externalId, passport, redactions, hazards, issues, cInit: confidence, updatedAt: raw.updatedAt, sourceVersion: raw.sourceVersion };
 }
 
 // --------------------------------------------------------------------------- CSV (whole-text helper kept for pasted content and tests)

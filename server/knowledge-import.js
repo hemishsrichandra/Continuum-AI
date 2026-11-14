@@ -249,12 +249,13 @@ export function draftArticle(text, { name = '' } = {}) {
 
 // --------------------------------------------------------------------------- past tickets
 const COLUMNS = {
-  ref: /^(id|ticket_?id|ticket_?number|ticket|number|key|case_?id|case_?number|issue_?key|reference)$/,
+  ref: /^(id|record_?id|ticket_?id|ticket_?number|ticket|number|key|case_?id|case_?number|issue_?key|reference)$/,
   subject: /^(subject|title|summary|short_?description|topic)$/,
   problem: /^(description|problem|issue|body|details|question|customer_?message|first_?message|request|complaint|symptoms?|issue_?description|ticket_?description)$/,
   resolution: /^(resolution|solution|fix|answer|resolution_?notes?|resolution_?comment|agent_?(?:response|reply)|closing_?(?:note|comment)|resolved_?with|steps|fix_?applied|what_?fixed_?it|last_?agent_?reply|close_?notes?)$/,
   status: /^(status|state|ticket_?status)$/,
-  environment: /^(product|device|model|environment|platform|os|operating_?system|version|asset|device_?model|product_?name)$/,
+  environment: /^(applicability|applies_?to|product|device|model|environment|platform|os|operating_?system|version|asset|device_?model|product_?name)$/,
+  safety: /^(safety|safety_?restrictions?|warnings?|cautions?)$/,
   date: /^(created|created_?at|date|opened|opened_?at|solved_?at|resolved_?at|closed_?at|updated_?at)$/,
 };
 const normHeader = (h) => String(h).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -288,6 +289,8 @@ export function parseLooseCsv(input, { maxRows = MAX_TICKETS } = {}) {
 export function detectColumns(header) {
   const out = {};
   for (const [k, re] of Object.entries(COLUMNS)) out[k] = header.find((h) => re.test(h)) || null;
+  // An explicit applicability field carries more scope than an earlier model column in the same CSV.
+  out.environment = ['applicability', 'applies_to', 'appliesto', 'environment'].find(h => header.includes(h)) || out.environment;
   return out;
 }
 const SOLVED = /^(solved|resolved|closed|done|complete|completed|fixed)$/i;
@@ -313,7 +316,7 @@ export function parseTickets(text, ext = 'csv') {
   const tickets = [], skipped = [];
   list.forEach((r, i) => {
     const ref = (columns.ref && r[columns.ref]) || `row ${i + 2}`;
-    const t = { ref: String(ref).slice(0, 80), subject: (columns.subject && r[columns.subject]) || '', problem: (columns.problem && r[columns.problem]) || '', resolution: r[columns.resolution] || '', environment: (columns.environment && r[columns.environment]) || '', date: (columns.date && r[columns.date]) || '' };
+    const t = { ref: String(ref).slice(0, 80), subject: (columns.subject && r[columns.subject]) || '', problem: (columns.problem && r[columns.problem]) || '', resolution: r[columns.resolution] || '', environment: (columns.environment && r[columns.environment]) || '', safety: (columns.safety && r[columns.safety]) || '', date: (columns.date && r[columns.date]) || '' };
     if (columns.status && r[columns.status] && !SOLVED.test(r[columns.status].trim())) return skipped.push({ ref: t.ref, reason: 'not solved (status: ' + r[columns.status].slice(0, 30) + ')' });
     const res = t.resolution.trim();
     if (!res || USELESS.test(res) || res.split(/\s+/).length < 4) return skipped.push({ ref: t.ref, reason: 'the resolution is too short to reuse' });
@@ -325,14 +328,15 @@ export function parseTickets(text, ext = 'csv') {
 export function draftTicket(t) {
   const problem = (t.problem || t.subject).replace(/\s+/g, ' ').trim();
   const title = (t.subject || sentences(problem)[0] || problem).replace(/\s+/g, ' ').slice(0, 120);
-  return finishDraft({ title, symptoms: problem.slice(0, 2000), steps: stepsFrom(t.resolution), appliesTo: t.environment.replace(/\s+/g, ' ').slice(0, 500), safety: '', method: 'rules', sourceRef: t.ref, seenInTickets: 1 });
+  return finishDraft({ title, symptoms: problem.slice(0, 2000), steps: stepsFrom(t.resolution), appliesTo: t.environment.replace(/\s+/g, ' ').slice(0, 500), safety: (t.safety || '').replace(/\s+/g, ' ').slice(0, 1000), method: 'rules', sourceRef: t.ref, seenInTickets: 1 });
 }
 /** Several tickets solved the same way become one draft that says how often it was used. */
 export function mergeTicketDrafts(drafts) {
   const byFix = new Map();
   for (const d of drafts) {
-    const key = [...tokens(d.steps.join(' '))].sort().join(' ') + '|' + d.appliesTo.toLowerCase();
-    const prev = key.length > 1 && byFix.get(key);
+    const stepKey = [...tokens(d.steps.join(' '))].sort().join(' ');
+    const key = stepKey + '|' + d.appliesTo.toLowerCase() + '|' + (d.safety || '').toLowerCase();
+    const prev = stepKey && byFix.get(key);
     if (!prev) { byFix.set(key, { ...d, refs: [d.sourceRef].filter(Boolean) }); continue; }
     prev.seenInTickets += d.seenInTickets;
     if (prev.refs.length < 20 && d.sourceRef) prev.refs.push(d.sourceRef);
@@ -438,7 +442,12 @@ export function createKnowledgeImport(store, config = {}, { fetchImpl = null } =
     const drafts = [], skipped = [], read = [];
     for (const f of files) {
       const { name, ext, text } = fileText(f);
-      if (kind === 'articles') {
+      // CSV uploads (and pasted knowledge tables) are records even when the article radio is selected.
+      // Do not send a complete title/symptoms/steps table through hundreds of model calls.
+      const header = text.split('\n', 1)[0];
+      const pastedTable = /(?:^|[,;\t])\s*"?(?:steps|resolution|solution)"?\s*(?:[,;\t]|$)/i.test(header) && /(?:^|[,;\t])\s*"?(?:title|subject|symptoms|description)"?\s*(?:[,;\t]|$)/i.test(header);
+      const records = kind === 'tickets' || ['csv', 'tsv'].includes(ext) || pastedTable;
+      if (!records) {
         const articles = splitArticles(text);
         read.push({ name, items: articles.length });
         for (const a of articles) {
@@ -449,10 +458,14 @@ export function createKnowledgeImport(store, config = {}, { fetchImpl = null } =
         const parsed = parseTickets(text, ext);
         read.push({ name, items: parsed.tickets.length + parsed.skipped.length, columns: parsed.columns });
         skipped.push(...parsed.skipped.map((s) => ({ ...s, file: name })));
+        const completeTable = parsed.columns.subject === 'title' && parsed.columns.problem === 'symptoms' && parsed.columns.resolution === 'steps';
         for (const d of mergeTicketDrafts(parsed.tickets.map(draftTicket))) {
-          if (drafts.length >= MAX_DRAFTS) break;
+          if (drafts.length >= MAX_DRAFTS) {
+            skipped.push({ ref: d.sourceRef, file: name, reason: `Draft limit reached (${MAX_DRAFTS}). Import the full CSV through Knowledge sources, or split it into smaller files.` });
+            continue;
+          }
           const source = [d.symptoms, d.steps.join(' '), d.appliesTo].join('\n');
-          drafts.push({ ...(await improve(drafter, d, source, 'ticket', budget)), sourceName: name });
+          drafts.push({ ...(completeTable ? { ...d, seenInTickets: 0 } : await improve(drafter, d, source, 'ticket', budget)), sourceName: name });
         }
       }
     }
@@ -462,7 +475,7 @@ export function createKnowledgeImport(store, config = {}, { fetchImpl = null } =
     }
     return {
       kind, read, skipped: skipped.slice(0, 200), skippedCount: skipped.length, drafts,
-      drafting: drafter ? { method: 'model', model: drafter.model, modelCalls: modelBudget - budget.left, modelFailures: budget.failed } : { method: 'rules' },
+      drafting: drafter && budget.left < modelBudget ? { method: 'model', model: drafter.model, modelCalls: modelBudget - budget.left, modelFailures: budget.failed } : { method: 'rules' },
       note: 'Nothing has been saved. Drafts you send for review wait for a specialist’s approval before any customer sees them.',
     };
   }

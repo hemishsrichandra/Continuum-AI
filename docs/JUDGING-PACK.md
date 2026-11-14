@@ -1,5 +1,7 @@
 # Judging evidence pack
 
+Historical evidence index. Start with [PITCH.md](../PITCH.md) and [the remediation record](REMEDIATION-PLAN.md) for the current script and checks.
+
 Start with [the challenge results](../output/CHALLENGE-RESULTS.md). They report the new dataset, local/live behavior, individual misses and limitations. Read the live column only when the completed live report is present; do not substitute local checks for live integration evidence.
 
 ## Present
@@ -10,7 +12,7 @@ Start with [the challenge results](../output/CHALLENGE-RESULTS.md). They report 
 
 ## Reproduce
 
-In WSL, with the project's Node 22 installation on PATH:
+With Node 22 (recommended) and dependencies installed for your operating system; WSL is optional:
 
 ```sh
 npm test

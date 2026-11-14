@@ -28,6 +28,7 @@ import { createPublicRoutes } from './routes/public.js';
 import { createCompanyRoutes } from './routes/company.js';
 import { createCustomerRoutes } from './routes/customer.js';
 import { createActionRoutes } from './routes/actions.js';
+import { createExternalChat } from './external-chat.js';
 
 export function createHandler({ file, config = process.env, service, vectorClient } = {}) {
   config = { APP_URL: 'http://localhost:3000', ...config };
@@ -109,6 +110,7 @@ export function createHandler({ file, config = process.env, service, vectorClien
     }
   }
   const services = { store, delivery, companies, connector, auth, memory, providerActions, embedding, vectors, memoryPool, vectorIndex, dataSources, knowledgeImport, followThrough, reuse, learning, troubleshooting, privacy, systemHealth, config, limit, once, retain };
+  const externalChat = createExternalChat(services);
   const routes = {
     public: [createPublicRoutes(services)],
     company: [createCompanyRoutes(services)],
@@ -144,8 +146,10 @@ export function createHandler({ file, config = process.env, service, vectorClien
         await handleDemo(req, url, write);
         return;
       }
+      if (await externalChat.external({ req, url, write })) return;
       const session = auth.authenticate(req);
       const context = { req, res, url, endpoint, write, requestId, session };
+      if (await externalChat.manage(context)) return;
       auth.csrf(req, session);
       if (await auth.handle(req, endpoint, write, session)) return;
       for (const route of routes.public) if (await route(context)) return;

@@ -17,6 +17,7 @@ const config = {
   REQUIRE_EMAIL_VERIFICATION: 'false',
   REQUIRE_LIVE_INTEGRATIONS: 'true',
   ENABLE_OUTBOX_WORKER: 'false',
+  SUGGESTION_MODE: 'choose',
   RESEND_API_KEY: '',
   EMAIL_FROM: '',
   GOOGLE_CLIENT_ID: '',
@@ -83,9 +84,10 @@ try {
       memory: false,
     })
   ).ticketId;
-  const ask = (message = question, extra = {}) => b.api('chat', { ticketId: ticketB, message, ...extra });
+  const ask = (message = question, extra = {}) => b.api('chat', { ticketId: ticketB, message, retain: false, ...extra });
+  const containsFix = response => response.choices?.some(c => c.advice?.includes(solution)) || response.reply.includes(solution);
   const baseline = await ask(undefined,{retain:false});
-  check('No learned fix before specialist work', baseline.trace.learnedResolutions === 0, {
+  check('No learned fix before specialist work', !containsFix(baseline), {
     response: baseline,
   });
   const handoff = await a.api('handoff', {
@@ -110,7 +112,7 @@ try {
     confirmed: true,
     reviewedForPrivacy: true,
   });
-  check('Unconfirmed solution is not reused', (await ask(undefined,{retain:false})).trace.learnedResolutions === 0);
+  check('Unconfirmed solution is not reused', !containsFix(await ask(undefined,{retain:false})));
   const confirmation = await a.api('resolutions/confirm', {
     id: resolution.id,
     accepted: true,
@@ -128,7 +130,7 @@ try {
     const r = await ask(message);
     check(
       'Held-out paraphrase: ' + message,
-      r.trace.knowledge === 'Hindsight' && r.trace.learnedResolutions === 1 && r.reply.includes(solution),
+      r.trace.knowledge.startsWith('Company memory') && containsFix(r),
       { response: r },
     );
   }
@@ -140,14 +142,14 @@ try {
     const r = await ask(message);
     check(
       'Exclude unrelated or incompatible: ' + message,
-      r.trace.learnedResolutions === 0 && !r.reply.includes(solution),
+      !containsFix(r),
       { response: r },
     );
   }
   const off = await ask(questions[0], { memory: false });
   check(
     'Memory OFF excludes learned fix',
-    off.trace.learnedResolutions === 0 && !off.reply.includes(solution),
+    !containsFix(off),
     { response: off },
   );
   await other.api('auth/register', {
@@ -172,13 +174,13 @@ try {
   const isolated = await otherCustomer.api('chat', { ticketId: otherTicket, message: question });
   check(
     'Other company cannot retrieve resolution',
-    isolated.trace.learnedResolutions === 0 && !isolated.reply.includes(solution),
+    !containsFix(isolated),
   );
   await owner.api('operator/retire', { id: resolution.id, confirmed: true });
   const retired = await ask(questions[0]);
   check(
     'Retirement excludes fix in existing conversation',
-    retired.trace.learnedResolutions === 0 && !retired.reply.includes(solution),
+    !containsFix(retired),
     { response: retired },
   );
   report.passed = report.checks.every((c) => c.passed);

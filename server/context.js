@@ -135,6 +135,14 @@ export function tokens(text) {
 export function conceptTokens(text, { fuzzy = true } = {}) {
   return new Set([...normalize(text, fuzzy).found].filter((w) => w.length > 2 && !stop.has(w)));
 }
+// Components and timing (display, battery, startup...) do not establish the failure itself.
+// Reuse the same synonym/typo normalization as retrieval, and do not treat a denied symptom as evidence.
+const failureConcepts = new Set(['flicker', 'drain', 'disconnect', 'offline', 'rejected', 'silent', 'black', 'full', 'sync', 'crash', 'jam']);
+export function symptomConcepts(text) {
+  const { normalized, found } = normalize(text);
+  return new Set([...found].filter((c) => failureConcepts.has(c) &&
+    !new RegExp('\\b(?:not|no|never|without|isnt|isn.t|doesnt|doesn.t)\\s+(?:\\w+\\s+){0,2}' + c + '\\b').test(normalized)));
+}
 export function relevance(query, symptoms) {
   const q = tokens(query),
     s = tokens(symptoms);

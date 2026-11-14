@@ -8,14 +8,14 @@ Everything below is true of the code in this repository today. Every number says
 
 ## 3-minute script
 
-Run `npm run seed:sample` once, then `npm run serve:sample` (open `http://localhost:3300`). The sample company is synthetic and says so on screen. For the live demo page alone, no setup is needed: `npm start`, then `/demo`.
+Run `npm run seed:sample` once, then `npm run serve:sample` (open `http://localhost:3300`). The sample company is synthetic and says so on screen. This rehearsal disables the chat model, external memory, and neural embeddings; it demonstrates reviewed knowledge reuse with local matching. For the isolated offline demo page alone, no setup is needed: `npm start`, then `/demo`.
 
 | Time | Say | Show |
 |---|---|---|
 | 0:00 | "Support teams solve the same problem again and again, and the answer lives in one specialist's head." | Home page. Let the **Watch a fix teach the system** timeline play: fix fails → specialist solves → customer confirms → next customer helped. |
 | 0:25 | "Watch it happen." | `/demo` → **Play the walkthrough**. Click *Next step* through Customer A's flickering screen, the failed standard step, the specialist's fix, A's "It worked". Memory counter goes 0 → 1. |
 | 1:10 | "Customer B says the same thing in different words." | Step 5: B writes "the monitor keeps blinking whenever it boots" and gets A's fix straight away. |
-| 1:30 | "Why did it find it? Keyword search would not." | Scroll to **Same problem, different words** → *Blinking on boot*. Keyword search: nothing, only the device name matched. Meaning search: found, on *display, flicker, startup*. Then click *Unrelated: sticky key*: **neither** finds a fix. "It does not invent a match." |
+| 1:30 | "This offline example recognizes synonyms and checks the failure symptom." | Scroll to **Same problem, different words** → *Blinking on boot*. Compare literal keywords with **offline concept matching**. Then try a sticky key or a screen that stays black: neither should reuse the flicker fix. Explain that unfamiliar wording can be missed and incorrect matches remain possible outside tested cases. |
 | 2:00 | "Now the company's view." | Sign in as the sample owner. **How support is going**: *Repeat problems answered without a specialist*, 25% before the first reusable fix, 88% after, labelled **SYNTHETIC SAMPLE DATA**. |
 | 2:25 | "Trust and control." | Open the customer view: the progress strip (*standard step didn't help → company fix worked → specialist not needed*), the *Why this fits* line, *Where this came from*. Click **Take a 30-second tour**. |
 | 2:50 | "Nothing here is a black box, and nothing is claimed that we did not measure." | Close on the limits table below. |
@@ -34,16 +34,18 @@ If the network fails on stage, `npm start` on a laptop is enough: the `/demo` pa
 
 | Claim | Number | How it was measured | Does **not** prove |
 |---|---|---|---|
-| Right fix found for a reworded problem | Regression 20/20 · challenge 29/30 · held-out 28/30 · validation 25/30 · typo sets 22/30 and 24/30 | `node scripts/evaluate.js [--challenge\|--holdout\|--validation\|--informal\|--informal2]`, re-run on this tree | Real customers. These are invented wordings written by the authors. |
-| Never recommends a wrong or unsafe fix | **0 of 30 negatives recommended, in every set**; 0 memory-off leaks; 0 repeated failed fixes | Same runs: wrong device, missing environment, unrelated, hard near-miss negatives | That no wrong answer can exist; it shows none occurred in 180 negative questions. |
+| Right fix found for a reworded problem | Regression 20/20 · challenge 27/30 · held-out 29/30 · validation 20/30 · typo sets 20/30 and 18/30 | `node scripts/evaluate.js [--challenge\|--holdout\|--validation\|--informal\|--informal2]`; fresh query-only tickets; [record](evaluation/remediation-results.json) | Real customers. These are invented wordings written by the authors. |
+| Incorrect suggestions in tested negatives | **0 of 36 negatives recommended in each set**; 0 memory-off leaks; 0 repeated failed fixes | Wrong device, missing environment, unrelated questions and six same-device different-symptom cases | General accuracy or safety. The added six negatives repeat across sets; these are 216 evaluated cases, not 216 independent questions. |
 | Repeat problems answered without a specialist | **25% before the first reusable fix (1 of 4), 88% after (7 of 8)** | `npm run seed:sample` drives the real API (requests, chat, outcomes, hand-offs, confirmations) in that order | Anything about real customers: **synthetic**, tiny, and a before/after of different requests, not a controlled experiment. |
 | Scale | **10,000 stored fixes, 50 simultaneous chats: about 7 s to clear the whole round; one retrieval about 123 ms** (was 668 ms and about 23 s before this round's index and query-plan fix) | `npm run load-test`; in-process, one Node thread, offline embeddings, SQLite only | Network, browser or remote-embedding latency. It is roughly 7 chats per second per process: fine for a pilot, not for a large launch without more work. |
-| Automated checks | Over 400 tests; every test written this round passes | `npm test` | See "Known issue" below. |
+| Automated checks | Current results and skipped checks are recorded in [the remediation plan](docs/REMEDIATION-PLAN.md) | `npm test`, `npm run test:http`, `npm run test:browser` | Live service reliability or general answer accuracy. |
 | Accessibility | **0 axe violations** (WCAG 2.2 AA tags) on the owner overview, cases, knowledge and team views, the customer conversation, visits and activity views, and every step of the owner and customer tours (the scan caught a contrast failure in the new tour card, now fixed) | axe-core in the browser against the sample company | The specialist tour, public pages and the demo page were not scanned this round, and no manual screen-reader testing has been done. |
 
 ### Not done, on purpose and in the open
 
-- **Neural embeddings have not been run.** No embedding key is configured here, and the chat key (Groq) has no embeddings endpoint. The code, the benchmark (`npm run benchmark:semantic`) and the demo comparison all switch to a neural model when `EMBEDDING_API_KEY` is set; until then the figures above are for the offline concept embedding. The two paraphrase gaps found this round were fixed as general phrase patterns ("switch **it** on", "**losing** the wireless connection") and do not change any evaluation number.
+- **Offline generalisation is weak.** On the separate 32-paraphrase semantic corpus, the historical SQLite and Chroma-local recall@3 were 9.4% and 3.1%. After the conservative symptom gate, the current SQLite result is **3.1%**; current Chroma was unavailable. The higher six-set scores above use different, familiar vocabulary and do not establish general semantic quality. See [the measured record](evaluation/remediation-results.json).
+- **Neural embeddings remain unmeasured.** Configure a dedicated `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL` and `EMBEDDING_API_KEY`, then run `npm run benchmark:semantic` with Chroma running. Chat credentials are separate. The regular application supports neural embeddings; the isolated `/demo` always uses local matching. Better recall must be measured rather than assumed.
+- **Precision has a recall cost.** Under the same independent-query protocol the old code returned five wrong display suggestions per set. The new gate rejects those, but also withholds some valid unfamiliar descriptions. Historical pitch numbers used source-conditioned tickets and are not directly comparable.
 - **No real pilot yet.** The protocol is in [`docs/USER-PILOT.md`](docs/USER-PILOT.md) and `scripts/pilot-replay.js` replays real solved tickets. A few quotes from 3–5 real support people would be worth more than any feature here.
 - **Tickets still live in a JSON-collection store**, not proper SQL tables. That is the largest architectural gap and a project of its own.
 
@@ -51,7 +53,7 @@ If the network fails on stage, `npm start` on a laptop is enough: the `/demo` pa
 
 ## What was built to make the AI visible and safe
 
-- **Keyword vs meaning**, side by side, on the demo page, using the same device and safety checks for both so only the matching differs. Device words alone never count as a keyword match.
+- **Literal keywords vs offline concept matching**, side by side on the demo page. The concept matcher checks problem relevance, device compatibility and safety. Device words alone never count as a keyword match. This is a lexical baseline comparison, not a neural-model benchmark.
 - **"Why this fits"**: one grounded sentence per suggested fix. A model (when a key is configured) may only describe the stored text; the answer is rejected unless it is one short sentence with no new number, link, command, quote or unfamiliar words, and otherwise a template restates the stored fields. Customer text is scrubbed before it leaves, and credential-like text is never sent.
 - **Near-miss learning**: "Still need help" can say why (nothing changed / different problem / couldn't do a step / made it worse). The failure is stored with device and version facts only, never the customer, and lowers that fix's rank only for customers in a similar situation (a failure on firmware 5 says nothing about firmware 4). The effect is capped.
 - **Stale-fix detection**: a fix is flagged when its recent success rate drops, when it has not been reconfirmed for 180 days, or when several recent customers *on the same model* report a newer version than the fix covers. Nothing changes automatically.
@@ -70,9 +72,9 @@ If the network fails on stage, `npm start` on a laptop is enough: the `/demo` pa
 
 **"How would you scale it?"** Add the vector index (ChromaDB, already supported with an optional access token), move to more than one process, and move tickets into SQL tables. The load test shows where the limit is today instead of guessing.
 
-## Known issue at the time of writing
+## Current verification
 
-One existing test (`test/batched-sync.test.js`, "the per-run limit pauses the import…") fails on this working tree. It belongs to a database-source rewrite (`server/data-sources.js`, `source-adapters.js`, `knowledge-lifecycle.js`) that is uncommitted work from a separate session; the committed code passes it. It does not touch anything described above.
+The old batched-sync failure note is obsolete. Use [the remediation plan](docs/REMEDIATION-PLAN.md) for the current test record and deferred live checks. GitHub Actions runs regression/HTTP checks on Node 20 and 22, plus browser checks on the recommended Node version; local validation does not establish a remote CI result.
 
 ## Housekeeping a judge may ask about
 

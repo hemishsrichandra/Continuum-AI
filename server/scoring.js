@@ -4,11 +4,12 @@
 // application's retriever (server/memory-pool.js) and by the isolated learning
 // demo (server/demo-learning.js). All formulas are documented in docs/ARCHITECTURE.md
 // and unit-tested in test/scoring.test.js.
-import { tokens, conceptTokens, compatibility } from './context.js';
+import { tokens, conceptTokens, symptomConcepts, compatibility } from './context.js';
 import { evaluateConditions, conditionsFromText, describeCondition } from './applicability.js';
 
 export const THRESHOLDS = Object.freeze({
   retrieval: 0.7, // S_final below this is rejected
+  problemHybrid: 0.5, // compatibility and reliability cannot rescue weak problem similarity
   autoPublish: 0.75, // C_init required for overdue (unconfirmed) publication
   reliabilityFlag: 0.55, // W_reliability below this flags for review
   consecutiveFailures: 2, // consecutive failures that flag for review
@@ -177,6 +178,20 @@ export function reliability(cInit, successes = 0, failures = 0) {
 }
 /** S_final = 0.55*S_hybrid + 0.25*S_compat + 0.20*W_reliability. */
 export const finalScore = (hybrid, compat, w) => round(clamp01(0.55 * clamp01(hybrid) + 0.25 * clamp01(compat) + 0.2 * clamp01(w)));
+
+/** Independent problem evidence, applied before device/reliability ranking in both retrievers.
+ * For recognized failures, a component or startup match alone is insufficient. Unknown vocabulary
+ * still uses the text floor; this conservative offline check is not a general semantic classifier.
+ */
+export function problemRelevance({ text, symptoms, hybrid }) {
+  const expected = symptomConcepts(symptoms);
+  const stated = symptomConcepts(text);
+  const symptomMatch = !expected.size || [...expected].some((c) => stated.has(c));
+  const reasons = [];
+  if (hybrid < THRESHOLDS.problemHybrid) reasons.push('Insufficient problem similarity');
+  if (!symptomMatch) reasons.push('The stored failure symptom was not described');
+  return { eligible: reasons.length === 0, reasons };
+}
 
 /** Should an active passport be flagged for review after an outcome? */
 export function needsReviewFlag({ consecutiveFailures = 0, cInit = 0, successes = 0, failures = 0 }) {

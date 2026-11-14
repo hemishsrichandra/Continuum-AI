@@ -2,7 +2,7 @@
 
 `cases.js` contains ten fixed synthetic issues: display, wireless connectivity, battery, printer, VPN, audio, camera, storage, email, and application crashes. Each has a reviewed solution, environment restriction, and two differently worded customer questions.
 
-Run under WSL with Node 22:
+Run with Node 22 (recommended) on your operating system:
 
 ```sh
 npm run evaluate
@@ -11,9 +11,11 @@ npm run evaluate:live
 
 The first command is a deterministic regression using local memory and local response policies. The second uses the configured Hindsight and model services in a separate temporary database and Hindsight namespace. It obeys rate limits with bounded retries. Neither sends email, modifies Google calendars, or writes to a real business system.
 
-For each issue, the harness uses the real registration, ticket, handoff, assignment, specialist proposal, and customer acceptance APIs. It then tests two unseen query wordings with memory ON/OFF, an incompatible environment, missing environment details, an unrelated billing question, and feedback reporting that the reused fix failed.
+For each issue, the harness uses the real registration, ticket, handoff, assignment, specialist proposal, and customer acceptance APIs. Each query wording gets a fresh request containing only that wording and the environment; source symptoms/title and previous pending suggestions cannot answer the next query. It tests memory ON/OFF, an incompatible environment, missing environment details, an unrelated billing question, and feedback reporting that the reused fix failed. The built-in display case also includes six same-device, different-symptom negatives from `near-misses.js`.
 
-Metrics report correct verified-fix reuse for 20 positive questions, inappropriate recommendations for 30 negative questions, and repeated failed fixes across ten recovery cases. Source IDs, exact reviewed steps, and recovery state are checked. No latency savings or customer-impact percentages are invented. Reports state whether the backend was local or live and are saved under ignored `data/evaluation-*.json`.
+Metrics report correct verified-fix reuse for 20 positive questions, inappropriate recommendations for 36 negative questions, and repeated failed fixes across ten recovery cases. Source IDs, exact reviewed steps, and recovery state are checked. No latency savings or customer-impact percentages are invented. Reports state whether the backend was local or live and are saved under ignored `data/evaluation-*.json`.
+
+The 14 November independent-query protocol replaces historical source-conditioned ticket reuse. [remediation-results.json](remediation-results.json) compares the old and new code under the same independent protocol. The symptom gate eliminates the reproduced false matches but also abstains on some unfamiliar valid paraphrases: current scores are 20/20, 27/30, 29/30, 20/30, 20/30 and 18/30. All six runs produce 0/36 incorrect recommendations; the six added negatives repeat in every set, so the 216 evaluated negative cases are not independent questions. Recall tests were rebaselined explicitly for this protocol and conservative policy; no synonym rules were added to fit these misses.
 
 This dataset is a regression set, not an independent production accuracy benchmark. Validate additional business-specific issues and real customer outcomes before claiming general support accuracy.
 

@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createApi } from './app.js';
+import { randomBytes } from 'node:crypto';
+import { normalizeAddress, publicClientAddress, setClientAddress, trustedProxies } from './client-address.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 const requestedApiPort = Number(process.env.API_PORT || 5000);
@@ -11,6 +13,8 @@ const frontendPort = Number(process.env.FRONTEND_PORT || 3000);
 // the internal API listener always stays on loopback.
 const host = '127.0.0.1';
 const publicHost = process.env.HOST || host;
+const upstreamProxies = trustedProxies(process.env.TRUSTED_PROXY_IPS);
+const proxyToken = randomBytes(32).toString('hex');
 const routes = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/about': ['index.html', 'text/html; charset=utf-8'],
@@ -60,7 +64,7 @@ const routes = {
 if (process.env.NODE_ENV === 'production') delete routes['/style-guide'];
 // Per-page title and description, written into the HTML so search engines and link previews see them without JavaScript.
 const pageMeta = {
-  '/': ['Continuum — Support that remembers what works', 'Fixes your customers confirm and your team reviews become trusted answers for the next customer. Company-private, clearly labelled and safe by default.'],
+  '/': ['Continuum — Support that remembers what works', 'Your best fixes shouldn’t end with one conversation. Save what worked. Reuse it for the next customer.'],
   '/services': ['Product — Continuum', 'One calm workspace for every support request: the conversation, the customer’s context and every answer labelled with where it came from.'],
   '/about': ['How it works — Continuum', 'A customer reports a problem, a specialist solves it, the customer confirms, and the next customer with the same problem gets the verified fix.'],
   '/pricing': ['Pricing — Continuum', 'Simple per-seat plans for support teams of every size. Request access and we will set up your workspace with you.'],
@@ -94,11 +98,22 @@ if (auditEnabled) {
   routes['/axe.min.js'] = ['../node_modules/axe-core/axe.min.js', 'text/javascript; charset=utf-8'];
 }
 const backend = createApi({ file: process.env.DATABASE_FILE || process.env.DATA_FILE || fileURLToPath(new URL('../data/demo.json', import.meta.url)) });
+backend.prependListener('request', (req) => {
+  if (normalizeAddress(req.socket.remoteAddress) === host && req.headers['x-continuum-proxy-token'] === proxyToken)
+    setClientAddress(req, req.headers['x-continuum-client-address']);
+  delete req.headers['x-continuum-proxy-token'];
+  delete req.headers['x-continuum-client-address'];
+});
 const frontend = createServer(async (req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   if (path.startsWith('/api/')) {
-    const proxy = request({ host, port: backend.address().port, path: req.url, method: req.method, headers: req.headers }, (upstream) => {
+    const headers = { ...req.headers };
+    // Never pass client-controlled forwarding/internal identity headers through to the API.
+    for (const key of ['forwarded', 'x-forwarded-for', 'x-real-ip', 'x-continuum-proxy-token', 'x-continuum-client-address']) delete headers[key];
+    headers['x-continuum-proxy-token'] = proxyToken;
+    headers['x-continuum-client-address'] = publicClientAddress(req, upstreamProxies);
+    const proxy = request({ host, port: backend.address().port, path: req.url, method: req.method, headers }, (upstream) => {
       res.writeHead(upstream.statusCode, upstream.headers);
       upstream.pipe(res);
     });

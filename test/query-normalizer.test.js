@@ -25,6 +25,48 @@ test('synonyms map to one symptom; negations and device facts survive in the sea
   assert.deepEqual(normalizeWithRules('nothing technical here at all').symptoms, []);
 });
 
+test('camera unavailable wording is normalized without treating a different failure as the same symptom', () => {
+  for (const text of ['Webcam isnt working in M4 Mac', "The camera isn't working", 'Webcam is not turning on in MAC', 'Camera does not work']) {
+    const normalized = normalizeWithRules(text);
+    assert.ok(normalized.symptoms.includes('webcam not turning on'), text);
+    assert.ok(normalized.retrievalText.includes(text), 'keep the original words and device facts');
+  }
+  for (const text of ['The webcam freezes during calls', 'The camera works but the microphone does not work', 'The laptop is not turning on', 'The webcam is not failing to turn on'])
+    assert.ok(!normalizeWithRules(text).symptoms.includes('webcam not turning on'), text);
+});
+
+test('a confirmed webcam fix is offered to a second customer who says isnt working after supplying Mac M4 details', async (t) => {
+  const w = await world(t, { choose: true });
+  const alice = await w.customer('webcam-alice'), bob = await w.customer('webcam-bob');
+  const original = 'Webcam is not turning on in MAC';
+  const aliceTicket = await w.ticket(alice, original, 'Webcam issue');
+  const handoff = (await alice.api('handoff', {ticketId: aliceTicket, summary: original, confirmed: true})).data;
+  const ownerId = (await w.owner.api('auth/session')).data.profile.id;
+  assert.equal((await w.owner.api('operator/assign', {handoffId: handoff.id, assignedTo: ownerId, revision: 0, confirmed: true})).status, 200);
+  const proposed = await w.owner.api('operator/resolve', {handoffId: handoff.id, revision: 1, title: 'Webcam Not Working', environment: 'Mac, M4', solution: 'Reboot Mac > Clean Camera > Open Camera Lid', reviewedForPrivacy: true, confirmed: true});
+  assert.equal(proposed.status, 201);
+  assert.equal((await alice.api('resolutions/confirm', {id: proposed.data.id, accepted: true, confirmed: true})).status, 200);
+
+  const question = 'Webcam isnt working in M4 Mac';
+  const ticket = await w.ticket(bob, question, 'Webcam isnt working');
+  const first = (await w.ask(bob, ticket, question)).data;
+  assert.equal(first.workflow.stage, 'context');
+  const reply = await w.ask(bob, ticket, 'Here are my details.', {context: {environment: 'Mac, M4'}});
+  assert.equal(reply.status, 200);
+  assert.equal(reply.data.workflow.stage, 'learned_choices');
+  assert.ok(reply.data.choices.some(c => c.id === proposed.data.id));
+  assert.equal(w.db().prepare('SELECT COUNT(*) n FROM troubleshooting_attempts WHERE customer_id=? AND source=\'learned\'').get(bob.id).n, 0, 'a suggestion is not a tried fix');
+
+  const other = await w.ticket(bob, 'Webcam isnt working on Windows 11', 'Webcam issue');
+  const incompatible = (await w.ask(bob, other, 'Webcam isnt working on Windows 11', {context: {environment: 'Windows 11'}})).data;
+  assert.ok(!incompatible.choices?.some(c => c.id === proposed.data.id), 'Mac fix stays scoped to its environment');
+
+  const escalated = await w.ticket(bob, question, 'Already with specialist');
+  await bob.api('handoff', {ticketId: escalated, summary: question, confirmed: true});
+  const waiting = (await w.ask(bob, escalated, question, {context: {environment: 'Mac, M4'}})).data;
+  assert.equal(waiting.workflow.stage, 'human', 'do not silently remove an existing specialist handoff');
+});
+
 test('personal data is removed before anything reaches a provider', async () => {
   let seen = '';
   const provider = async (text) => { seen = text; return { retrievalText: text, symptoms: [] }; };

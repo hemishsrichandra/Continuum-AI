@@ -231,7 +231,7 @@ function accountMenu(p) {
   if (state.workspace.staff) items.push('<a class="menu-link" href="/operator">Specialist console</a>');
   if (p.role === 'owner') items.push('<a class="menu-link" href="/team">Company & team</a>');
   if (state.workspace.canSync) items.push(`<button data-action="sync" ${disabled()}>Import service records</button>`);
-  return `<details class="account-menu"><summary aria-label="Account menu"><span aria-hidden="true">⋯</span></summary><div class="menu">${items.join('')}<hr><button class="danger-item" data-action="switch" ${disabled()}>Sign out</button></div></details>`;
+  return `<details class="account-menu"><summary aria-label="Account menu"><span aria-hidden="true">⋯</span></summary><div class="menu">${items.join('')}</div></details><button class="button small" data-action="switch" ${disabled()}>Sign out</button>`;
 }
 document.addEventListener('click', (e) => { const m = document.querySelector('.account-menu[open]'); if (m && (!m.contains(e.target) || e.target.closest('.menu button, .menu a'))) m.removeAttribute('open'); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelector('.account-menu[open]')?.removeAttribute('open'); });
@@ -715,6 +715,9 @@ app.addEventListener('submit', async (event) => {
     fields.forEach((field) => (field.disabled = true));
     const { kind, id, key, proposalId, failedUseId } = form.dataset;
     let committed = false;
+    let createdRequestId = null;
+    let initialMessage = '';
+    let refreshed = false;
     const dialog = form.closest('dialog');
     const preventCancel = (e) => e.preventDefault();
     dialog.addEventListener('cancel', preventCancel);
@@ -743,6 +746,8 @@ app.addEventListener('submit', async (event) => {
       committed = true;
       if (kind === 'request') {
         state.ticketId = result.ticketId;
+        createdRequestId = result.ticketId;
+        initialMessage = (body.issueDesc || body.title || '').trim();
         state.tab = 'conversation';
         state.reflection = null;
         state.compare = null;
@@ -761,6 +766,7 @@ app.addEventListener('submit', async (event) => {
       state.error = '';
       dialog.close();
       await refresh();
+      refreshed = true;
     } catch (e) {
       if (committed)
         state.error =
@@ -777,6 +783,10 @@ app.addEventListener('submit', async (event) => {
       state.busy = false;
       if (committed && state.authenticated) render();
     }
+    // Reuse normal chat sending, including its pending state, safe retry and response rendering.
+    // Refresh first so the message belongs to the newly saved request, never the previously selected one.
+    if (refreshed && createdRequestId === state.ticketId && initialMessage && state.authenticated)
+      await send(initialMessage);
   }
 });
 if (location.pathname.replace(/\/+$/, '') === '/desk') {

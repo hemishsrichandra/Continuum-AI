@@ -39,6 +39,30 @@ test('field mapping validation rejects missing, unknown and injection-shaped map
   assert.deepEqual(validateMapping(MAPPING).fields.title, 'title');
 });
 
+test('long catalogue IDs use stable non-secret references without aborting CSV sync or bypassing review', async (t) => {
+  const {w, save} = await setup(t);
+  const id = 'CATALOG-SMARTPHONE10-APPS_NOTIFICATIONS-01';
+  const csv = `id,title,symptoms,steps,applies_to,safety\n${id},Delayed notifications,Notifications from one app arrive late,Check notification permission and background activity for that app.,Phone Aster10,None identified\nSHORT-2,Slow charging,Charging takes too long,Use the approved wall adapter and cable then check the charging estimate.,Phone Aster10,None identified\n`;
+  const created = await save({connection: {csv}, declaredVerified: false});
+  assert.equal(created.status, 201);
+  const source = created.data.source;
+  const preview = await w.owner.api(`company/data-sources/${source.id}/preview`, {});
+  assert.equal(preview.data.valid, 2);
+  assert.match(preview.data.sample[0].externalId, /^record\.(?:[a-f0-9]{16}\.){3}[a-f0-9]{16}$/);
+  assert.ok(!JSON.stringify(preview.data).includes(id));
+  const first = await w.owner.api(`company/data-sources/${source.id}/sync`, {confirmed: true});
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  assert.equal(first.data.result.inserted, 2);
+  const rows = w.db().prepare('SELECT * FROM memory_pool WHERE source_id=?').all(source.id);
+  assert.ok(rows.every(r => r.status === 'flagged_for_review' && r.customer_confirmed === 0));
+  assert.ok(rows.every(r => ![r.external_record_id,r.source_key,r.verification_evidence_json].join().includes(id)));
+  const second = await w.owner.api(`company/data-sources/${source.id}/sync`, {confirmed: true});
+  assert.equal(second.data.result.unchanged, 2);
+  assert.equal(w.db().prepare('SELECT COUNT(*) n FROM memory_pool WHERE source_id=?').get(source.id).n, 2);
+  const bad = mapRecord({id: 'sk-abcdefghijklmnopqrstuvwxyz1234567890',title:'Example',symptoms:'Example symptoms',steps:'Open the approved settings screen and test again.'}, MAPPING);
+  assert.ok(bad.issues.includes('contains a credential or secret'), 'explicit credentials are still rejected');
+});
+
 test('owner configures a CSV source, previews (dry run) and syncs into their own company pool only', async (t) => {
   const { w, bot, save } = await setup(t);
   const created = await save({ declaredVerified: true });

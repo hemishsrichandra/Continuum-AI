@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Synthetic company chatbot</title><script type="module" src="/chat.js"></script></head>
+<body><main><h1>Synthetic company chatbot</h1>
+<p>Separate external-chatbot prototype. Answers come from reviewed, approved knowledge already imported into Continuum. This page does not establish a live company database connection.</p>
+<form id="chat"><p><label>Question<br><textarea name="question" required maxlength="1400" rows="4" cols="60">The display flickers after startup.</textarea></label></p>
+<p><label>Environment facts (optional)<br><input name="environment" maxlength="300" size="60" placeholder="Model X firmware 4"></label></p><button>Ask company support</button><button type="button" id="new-conversation">New conversation</button></form>
+<p id="status" role="status"></p><section id="suggestions" aria-label="Suggestions"></section><section id="clarification" aria-label="Clarification"></section>
+<details open><summary>Actual Continuum API response</summary><pre id="response"></pre></details>
+<p>Suggestions are previews. Displaying one does not record an attempt or a successful outcome.</p></main></body></html>

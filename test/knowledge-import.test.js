@@ -170,6 +170,9 @@ test('end to end: drafts are previewed without saving, saved as waiting for appr
 
   const ok = await w.owner.api('operator/review-resolution', { id: charging.id, decision: 'keep', note: 'Checked against our runbook.', confirmed: true });
   assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  const reviewed = w.db().prepare('SELECT customer_confirmed,initial_confidence_score FROM memory_pool WHERE id=?').get(charging.id);
+  assert.equal(reviewed.customer_confirmed, 0, 'review is not customer confirmation');
+  assert.equal(reviewed.initial_confidence_score, charging.initial_confidence_score, 'approval does not manufacture confidence');
   const after = await w.h.memoryPool.retrieve({ companyId: w.company, chatbotId: bot, text: 'My Model X laptop is not charging and the battery stays at 0%', factsText: 'Model X' });
   assert.ok(after.eligible.some((e) => e.id === charging.id) || after.withheld.some((e) => e.id === charging.id), 'retrievable once approved');
 });
@@ -199,4 +202,24 @@ test('a large ticket export fits in one request (the general 16 KB body limit do
   const r = await w.owner.api('company/knowledge-import/draft', { chatbotId: w.botOf(w.company), kind: 'tickets', files: [{ name: 'big.csv', text: big }] });
   assert.equal(r.status, 200, JSON.stringify(r.data).slice(0, 300));
   assert.equal(r.data.drafts.length, 500, 'capped at 500 drafts per request');
+  assert.ok(r.data.skippedCount > 0, 'drafts beyond the limit are reported after duplicate-fix merging');
+  assert.match(r.data.skipped[0].reason, /Knowledge sources/);
+});
+
+test('uploaded and pasted structured CSVs bypass model drafting and retain explicit applicability and safety', async (t) => {
+  let calls = 0;
+  const w = await world(t, {config: {OPENAI_API_KEY: 'synthetic-test-key', KNOWLEDGE_DRAFTING: 'model', __knowledgeDraftFetch: async () => {calls++; throw new Error('A complete CSV must not call the model.');}}});
+  const text = 'record_id,model,title,symptoms,steps,applicability,safety\nCAT-1,Aster1,Network disconnects,The network disconnects every minute,Reconnect to the approved training network and test once.,Phone Aster1 firmware 4,Do not use if the phone is wet.\nCAT-2,Aster1,Network disconnects,The network disconnects every minute,Reconnect to the approved training network and test once.,Phone Aster1 firmware 4,Do not use with a swollen battery.\n';
+  for (const name of ['knowledge.csv', 'pasted text']) {
+    const response = await w.owner.api('company/knowledge-import/draft', {chatbotId: w.botOf(w.company), kind: 'articles', files: [{name, text}]});
+    assert.equal(response.status, 200, JSON.stringify(response.data));
+    assert.equal(response.data.drafts.length, 2, 'different safety restrictions must not be merged');
+    assert.equal(response.data.drafting.method, 'rules');
+    assert.equal(response.data.drafts[0].appliesTo, 'Phone Aster1 firmware 4');
+    assert.equal(response.data.drafts[0].sourceRef, 'CAT-1');
+    assert.equal(response.data.drafts[0].seenInTickets, 0, 'a knowledge table is not evidence of closed customer tickets');
+    assert.match(response.data.drafts[0].safety, /wet/);
+  }
+  assert.equal(calls, 0);
+  assert.equal(w.db().prepare("SELECT COUNT(*) n FROM memory_pool WHERE company_id=? AND origin_type='company_db_sync'").get(w.company).n, 0, 'drafting does not publish knowledge');
 });

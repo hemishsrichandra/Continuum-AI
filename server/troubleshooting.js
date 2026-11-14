@@ -357,7 +357,7 @@ export function createTroubleshooting(store, learning, reuse, providerActions, {
     // a service's topic word list can never be complete, but retrieval is gated by score and compatibility.
     const outOfTopic=!(worked||failed) && !(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length));
     const retrievable=outOfTopic && enabled && !missing.length && message.trim().length>=12 && (await nextSuggestion(p,t,context,message,{messageOnly:true})).eligible.length>0;
-    if(!retrievable && !(worked||failed) && !(missing.length && unavailable) && (!hasTopic(t.issue+' '+message,b.supportedTopics) || (!hasTopic(message,b.supportedTopics) && !related && !/\b(?:continue|troubleshoot|environment|model|firmware|version)\b/i.test(message) && !Object.keys(inputContext||{}).length)))
+    if(!retrievable && outOfTopic)
       return response(`${b.name} handles ${b.supportedTopics.join(', ')}. ${b.escalationRules.supportRoute}`,{action:b.allowedActions.includes('handoff')?{kind:'handoff',ticketId:t.id,summary:message}:null,workflow:{stage:'unsupported'}});
     if(missing.length) {
       if(unavailable) return response('That is okay. A specialist can help identify your device and check the problem. '+(b.allowedActions.includes('handoff')?'I have prepared a handoff; review it to send your case.':b.escalationRules.supportRoute),{

@@ -1,5 +1,6 @@
 /* Interactive Learning Demo. Self-contained styles on top of the shared tokens. */
-.demo-nav { border-bottom: 1px solid var(--line); background: var(--var(--surface)); position: sticky; top: 0; z-index: 20; }
+.demo-nav { border-bottom: 1px solid var(--line); background: var(--surface); position: sticky; top: 0; z-index: 20; }
+.demo-page .demo-scene { right: 0; max-width: 100%; }
 .demo-nav-inner { display: flex; align-items: center; gap: 16px; min-height: 64px; flex-wrap: wrap; }
 .demo-nav nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
 .demo-nav nav a:hover { text-decoration: underline; }

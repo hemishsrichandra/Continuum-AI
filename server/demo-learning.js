@@ -17,7 +17,7 @@ import { customerFacts } from './applicability.js';
 import {
   THRESHOLDS, localEmbedding, cosine, normBm25, bm25Raw, hybridScore, reliability, finalScore,
   compatibilityGate, rankCandidates, needsReviewFlag, passportCompleteness, diagnosticSimilarity,
-  authorReliability, initialConfidence,
+  authorReliability, initialConfidence, problemRelevance,
 } from './scoring.js';
 import { conditionsFromText } from './applicability.js';
 import { scrubPII, containsSecret, dangerousInstructions } from './privacy.js';
@@ -151,16 +151,17 @@ export function suggest(state, { description, device, triedIds = [] }) {
     const cos = cosine(qv, l.vector);
     const bm = normBm25({ raw: raw[i], rawBest: best, queryTokens: qTokens, docTokens: tokens(docs[i]) });
     const hybrid = hybridScore(cos, bm);
+    const problem = problemRelevance({ text: description, symptoms: l.symptoms || l.title, hybrid });
     const gate = compatibilityGate({ applicability: { environmentText: l.environment }, safety: l.safetyModel, facts, text: query, fields: { device: device || '' } });
     const w = reliability(l.cInit.score, l.successes, l.failures);
-    const final = gate.eligible ? finalScore(hybrid, gate.compat, w) : 0;
+    const final = gate.eligible && problem.eligible ? finalScore(hybrid, gate.compat, w) : 0;
     return {
-      id: l.id, learned: l, eligible: gate.eligible, gate, hybrid, finalScore: final, signature: l.steps,
+      id: l.id, learned: l, eligible: gate.eligible && problem.eligible, gate, problem, hybrid, finalScore: final, signature: l.steps,
       breakdown: { cosine: cos === null ? null : Math.round(cos * 1e4) / 1e4, normBm25: bm, S_hybrid: hybrid, S_compat: gate.compat, W_reliability: w, S_final: final },
     };
   });
   const top = rankCandidates(scored, 1)[0] || null;
-  const withheld = scored.filter((c) => c.gate.status === 'unknown' && finalScore(c.hybrid, 1, c.breakdown.W_reliability) >= THRESHOLDS.retrieval);
+  const withheld = scored.filter((c) => c.problem.eligible && c.gate.status === 'unknown' && finalScore(c.hybrid, 1, c.breakdown.W_reliability) >= THRESHOLDS.retrieval);
   return { top, withheld, scored };
 }
 function standardFor(description, triedIds) {
@@ -174,6 +175,12 @@ function toQueue(state, c, reason) {
   event(state, 'queued_for_specialist', c.user === 'A' ? 'User A' : 'User B', reason, { caseId: c.id });
 }
 function offer(state, c) {
+  // The demo's standard fallback must honour the same hazard gate as learned fixes.
+  const safety = compatibilityGate({ text: `${c.description}\n${c.device}` });
+  if (safety.status === 'safety_conflict') {
+    toQueue(state, c, 'A safety concern requires a specialist; no troubleshooting steps were suggested.');
+    return null;
+  }
   const tried = c.attempts.map((a) => a.suggestionId);
   const query = { description: c.description, device: c.device, triedIds: tried };
   const { top, withheld } = suggest(state, query);
@@ -365,7 +372,7 @@ ${dev}`, { names: [] }).text;
   return {
     comparison: {
       query: { description: query, device: dev },
-      embedding: 'Concept embedding that runs offline in this demo. A neural embedding model is used instead when one is configured.',
+      embedding: 'Offline concept matching in this isolated demo. It uses built-in synonyms and local vectors; configuring a neural model affects the regular application, not this demo.',
       keyword: { found: bestKeyword.matched.length > 0, title: bestKeyword.matched.length ? bestKeyword.l.title : null, matchedWords: bestKeyword.matched, deviceWordsOnly: bestKeyword.deviceMatched },
       meaning: { found: Boolean(top), title: top ? top.learned.title : null, matchedConcepts: concepts, confidence: top ? top.breakdown.S_final : null, checks: top ? top.gate.reasons : [] },
     },

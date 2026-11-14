@@ -42,7 +42,7 @@ function home() {
   return `<section class="wrap hero3d"><canvas id="scene" aria-hidden="true"></canvas><div class="copy">
     <div class="eyebrow"><span class="status-dot"></span> SUPPORT THAT REMEMBERS WHAT WORKS</div>
     <h1>Good support<br><span class="grad">remembers.</span></h1>
-    <p class="lead">Fixes your customers confirm and your team reviews become answers for the next customer. Kept by your company, never shared with another.</p>
+    <p class="lead">Your best fixes shouldn’t end with one conversation. Save what worked. Reuse it for the next customer.</p>
     <div class="actions">${link('Try the demo', '/demo', true)}${link('See how it works', '/about', false)}</div>
     <div class="fx-chips" aria-hidden="true"><span class="fx-chip"><span class="status-dot"></span>Fix confirmed by Customer A</span><span class="fx-chip">${ic('✦')}Matched for Customer B</span><span class="fx-chip">${ic('⛨')}Company-private</span></div>
   </div></section>

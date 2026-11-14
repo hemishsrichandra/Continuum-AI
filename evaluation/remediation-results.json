@@ -1,0 +1,365 @@
+{
+  "date": "2026-11-14",
+  "baselineCommit": "869e414",
+  "protocol": "Each positive wording is tested on a fresh ticket with only its environment, without source title/symptoms or another pending answer. Each set adds the same six display near misses to its original 30 negatives.",
+  "embedding": "local-hashed-concepts-v2 (offline, not neural)",
+  "synthetic": true,
+  "before": [
+    {
+      "mode": "regression",
+      "counts": {
+        "positiveQuestions": 20,
+        "correctMemoryOn": 20,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 20,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 5,
+        "failedFixRepeated": 0
+      }
+    },
+    {
+      "mode": "challenge",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 27,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 5,
+        "failedFixRepeated": 0
+      }
+    },
+    {
+      "mode": "holdout",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 29,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 5,
+        "failedFixRepeated": 0
+      }
+    },
+    {
+      "mode": "validation",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 24,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 5,
+        "failedFixRepeated": 0
+      }
+    },
+    {
+      "mode": "informal",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 22,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 5,
+        "failedFixRepeated": 0
+      }
+    },
+    {
+      "mode": "informal2",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 22,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 5,
+        "failedFixRepeated": 0
+      }
+    }
+  ],
+  "after": [
+    {
+      "mode": "regression",
+      "counts": {
+        "positiveQuestions": 20,
+        "correctMemoryOn": 20,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 20,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 0,
+        "failedFixRepeated": 0
+      },
+      "misses": []
+    },
+    {
+      "mode": "challenge",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 27,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 0,
+        "failedFixRepeated": 0
+      },
+      "misses": [
+        {
+          "id": "display",
+          "question": "Every time the computer starts, the picture rapidly alternates between bright and dark."
+        },
+        {
+          "id": "battery",
+          "question": "A full charge disappears far too soon, even when the computer is doing very little."
+        },
+        {
+          "id": "audio",
+          "question": "A video is playing but nothing can be heard from the built-in speakers."
+        }
+      ]
+    },
+    {
+      "mode": "holdout",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 29,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 0,
+        "failedFixRepeated": 0
+      },
+      "misses": [
+        {
+          "id": "email",
+          "question": "Fresh messages never arrive in my mailbox; the inbox is stuck."
+        }
+      ]
+    },
+    {
+      "mode": "validation",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 20,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 0,
+        "failedFixRepeated": 0
+      },
+      "misses": [
+        {
+          "id": "display",
+          "question": "Ever since the update my laptop panel shakes and twitches for the first minute after it turns on."
+        },
+        {
+          "id": "display",
+          "question": "The picture on my notebook is unstable when the machine starts up, it keeps wavering."
+        },
+        {
+          "id": "wireless",
+          "question": "My laptop repeatedly loses the office wifi signal and I have to join it again."
+        },
+        {
+          "id": "wireless",
+          "question": "Every so often the internet link breaks while I am on a video call."
+        },
+        {
+          "id": "battery",
+          "question": "Even in sleep mode the laptop empties its battery overnight."
+        },
+        {
+          "id": "battery",
+          "question": "The charge level collapses quickly when I am not using the computer."
+        },
+        {
+          "id": "printer",
+          "question": "Each print job fails because the paper gets stuck in the rollers."
+        },
+        {
+          "id": "audio",
+          "question": "There is no audio output from my laptop speakers at all."
+        },
+        {
+          "id": "storage",
+          "question": "My disk has run out of free room and I cannot save new files."
+        },
+        {
+          "id": "email",
+          "question": "The email app is stuck and the mailbox is not updating with recent messages."
+        }
+      ]
+    },
+    {
+      "mode": "informal",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 20,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 0,
+        "failedFixRepeated": 0
+      },
+      "misses": [
+        {
+          "id": "wireless",
+          "question": "internt keeps cuting out on my laptop"
+        },
+        {
+          "id": "battery",
+          "question": "my battry percentge falls quikly when idle"
+        },
+        {
+          "id": "printer",
+          "question": "the printe is jamed and wont print anymore"
+        },
+        {
+          "id": "vpn",
+          "question": "vpn login faling every time i try"
+        },
+        {
+          "id": "audio",
+          "question": "no sond coming from my speakrs at all"
+        },
+        {
+          "id": "audio",
+          "question": "cant here anything from the laptop speakers"
+        },
+        {
+          "id": "storage",
+          "question": "disk is ful and i cant save files anymore"
+        },
+        {
+          "id": "storage",
+          "question": "my drve is out of room cant save anything"
+        },
+        {
+          "id": "email",
+          "question": "mail aplication wont sych new emails"
+        },
+        {
+          "id": "application",
+          "question": "sofware closes by itslf immediatly after launching"
+        }
+      ]
+    },
+    {
+      "mode": "informal2",
+      "counts": {
+        "positiveQuestions": 30,
+        "correctMemoryOn": 18,
+        "correctMemoryOff": 0,
+        "memoryOffWithheld": 30,
+        "negativeQuestions": 36,
+        "incorrectRecommendations": 0,
+        "failedFixRepeated": 0
+      },
+      "misses": [
+        {
+          "id": "display",
+          "question": "the screan on my notbook shimers and jumps when it boots"
+        },
+        {
+          "id": "battery",
+          "question": "laptop battry dies so quik even when closed"
+        },
+        {
+          "id": "battery",
+          "question": "the batery level plumets overnight with nothing running"
+        },
+        {
+          "id": "battery",
+          "question": "chrage goes down way too fast when im not using it"
+        },
+        {
+          "id": "vpn",
+          "question": "cannot login to the vpn it just rejcts my password"
+        },
+        {
+          "id": "audio",
+          "question": "there is no sund at all from the laptop speakrs"
+        },
+        {
+          "id": "audio",
+          "question": "the compter audio is dead silnt"
+        },
+        {
+          "id": "camera",
+          "question": "webcamm shows nothing but a blck box on video calls"
+        },
+        {
+          "id": "storage",
+          "question": "harddrive is compeltely full cant store any more files"
+        },
+        {
+          "id": "storage",
+          "question": "no free storge on my pc anymore"
+        },
+        {
+          "id": "email",
+          "question": "new emals never show up my inbxo is frozen"
+        },
+        {
+          "id": "application",
+          "question": "my application closes unexpectdly right after it launches"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Authored synthetic wordings; sets overlap and the added six negatives repeat across all six runs.",
+    "Explicit symptom evidence prevents the reported false matches but withholds some valid unfamiliar paraphrases.",
+    "Historical pitch counts used a different ticket-context protocol and are not directly comparable.",
+    "No neural embedding provider or live Chroma benchmark was run."
+  ],
+  "semanticBenchmark": {
+    "generatedAt": "2026-11-14T05:42:33.817Z",
+    "corpus": {
+      "fixes": 16,
+      "positives": 32,
+      "forbidden": 18
+    },
+    "systems": [
+      {
+        "system": "A. SQLite only",
+        "embedding": "local-hashed-concepts-v2 (offline, not neural)",
+        "recallAt3": 0.031,
+        "positives": 32,
+        "forbiddenRecommendations": "0/18",
+        "unsafeOrIncompatibleRate": 0,
+        "medianMs": 1.5,
+        "p95Ms": 2.2,
+        "embeddingApiCalls": 0,
+        "textsEmbedded": 0,
+        "queryCacheHits": 0,
+        "missedTopics": [
+          "display",
+          "wifi",
+          "battery",
+          "login",
+          "audio",
+          "camera",
+          "disk",
+          "mail",
+          "crash",
+          "jam",
+          "bluetooth",
+          "fan",
+          "keyboard",
+          "vpn",
+          "update",
+          "touch"
+        ]
+      },
+      {
+        "system": "B. Chroma + local vectors",
+        "skipped": "ChromaDB not reachable at http://127.0.0.1:8000"
+      },
+      {
+        "system": "C. Chroma + neural embeddings",
+        "skipped": "not run: set EMBEDDING_MODEL and EMBEDDING_API_KEY"
+      }
+    ]
+  }
+}

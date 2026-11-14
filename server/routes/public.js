@@ -3,6 +3,7 @@
 import { fault, profiles } from '../providers.js';
 import { field, flags, json, submission, appointment } from '../requests.js';
 import { demoSlots, reserveDemo, manageDemo, timeZone } from '../scheduling.js';
+import { clientAddress } from '../client-address.js';
 
 export function createPublicRoutes(services) {
   const { store, delivery, auth, limit, once } = services;
@@ -24,7 +25,7 @@ export function createPublicRoutes(services) {
         emailConfigured: delivery.emailConfigured,
       });
     if (endpoint === 'POST /api/demo-bookings/manage') {
-      limit('manage:' + req.socket.remoteAddress, 40);
+      limit('manage:' + clientAddress(req), 40);
       const body = await json(req);
       flags(body, ['cancel', 'confirmed']);
       return write(
@@ -53,7 +54,7 @@ export function createPublicRoutes(services) {
       );
     }
     if (endpoint === 'POST /api/demo-bookings') {
-      limit('booking:' + req.socket.remoteAddress, 12);
+      limit('booking:' + clientAddress(req), 12);
       const body = await json(req);
       flags(body);
       if (body.confirmed !== true) throw fault(400, 'Confirm the reservation before submitting.');

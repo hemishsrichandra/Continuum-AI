@@ -21,6 +21,21 @@ const post = (h, s, route, body) => api(h, s, 'POST', route, body);
 const A = { user: 'A', ...S.userA };
 const proposal = (caseId) => ({ caseId, ...S.specialist, reviewedForPrivacy: true, safetyReviewed: true, confirmed: true });
 
+test('reported hazards bypass both learned fixes and the standard demo fallback', () => {
+  for (const taught of [false, true]) {
+    const id = demo.createSession();
+    try {
+      const state = demo.getSession(id);
+      if (taught) demo.runGuided(state);
+      const result = demo.createIssue(state, { user: 'B', description: 'My screen flickers and the laptop smells burning.', device: S.userB.device });
+      assert.equal(result.attempt, null);
+      assert.equal(result.case.status, 'queued');
+      assert.deepEqual(result.case.attempts, []);
+      assert.match(state.events.at(-1).detail, /safety concern/i);
+    } finally { demo.destroySession(id); }
+  }
+});
+
 /** Whole-database fingerprint: every table, every row. */
 function fingerprint(h) {
   const db = h.store.db;

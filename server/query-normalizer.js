@@ -6,6 +6,9 @@ import { extractMentions } from './applicability.js';
 
 // Canonical technical symptoms and the component they point to. Patterns are checked on the sanitized message.
 const SYMPTOMS = [
+  // A camera's unavailable state is often written as "isnt working" rather than "not turning on".
+  // Keep this component-specific: a freezing camera or a computer with no power is a different failure.
+  [/\b(?:webcam|camera)\s+(?:(?:is|does|will)\s+not|isn['’]?t|doesn['’]?t|won['’]?t|can['’]?t|cannot|not)\s+(?:work(?:ing)?|turn(?:ing)?\s+on|start(?:ing)?|open(?:ing)?|activat(?:e|ing))\b/i, 'webcam not turning on', 'webcam'],
   [/\b(?:won'?t|will not|wont|doesn'?t|does not|not|never|fails? to|unable to|can'?t|cannot)\s+(?:\w+\s+){0,2}(?:wake|waking|resume)\b|\bwon'?t wake\b|\bstuck (?:in|on) sleep\b/i, 'fails to wake from sleep', 'power'],
   [/\b(?:black|blank|dark)\s+screen\b|\bscreen (?:is|stays|remains|went|goes)\s+(?:black|blank|dark)\b|\bdisplay (?:is|stays|remains)\s+(?:black|blank)\b|\bnothing on (?:the )?(?:screen|display)\b/i, 'screen remains black', 'display'],
   [/\bflicker\w*|\bflash(?:es|ing)\s+(?:screen|display)\b|\bscreen (?:keeps )?flash\w*\b|\bblink\w*/i, 'screen flickers', 'display'],

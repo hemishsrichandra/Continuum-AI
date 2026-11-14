@@ -53,6 +53,7 @@ External company databases are off until the server owner allows them: `DATA_SOU
 ## Before public deployment
 
 - Set `NODE_ENV=production` and `APP_URL` to your HTTPS site origin. Keep your reverse proxy's original Host header.
+- Set `HOST=0.0.0.0` only when remote access is intended. The internal API remains on loopback. For an upstream reverse proxy, set `TRUSTED_PROXY_IPS` to its exact IP addresses (comma-separated IPv4/IPv6 literals; no CIDRs or wildcards). Leave it empty for direct connections. The proxy must append the actual source address to `X-Forwarded-For`, and direct public access must not bypass it. Untrusted forwarded headers are ignored; the public listener replaces internal identity headers before forwarding. Authentication and booking limits use this verified client address, with account limits still enforced separately. Users behind the same NAT still share an IP budget.
 - Use a verified email sender and a stable, securely stored 32-byte `INTEGRATION_ENCRYPTION_KEY`.
 - Add the deployed HTTPS callback URI to the Google OAuth client.
 - Provide persistent storage for SQLite and schedule backups using the online backup command. Keep encryption keys outside the database backup.

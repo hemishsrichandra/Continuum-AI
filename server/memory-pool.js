@@ -20,6 +20,7 @@ import {
   hybridScore,
   reliability,
   finalScore,
+  problemRelevance,
   compatibilityGate,
   rankCandidates,
   needsReviewFlag,
@@ -174,7 +175,7 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
     return result;
   }
 
-  async function retrieveOnce({ companyId, chatbotId, text, factsText, fields = {}, excludeIds = new Set(), excludeSignatures = new Set(), allowedOrigins = ORIGINS, limit = THRESHOLDS.maxSuggestions }, lexicalTopK, vectorTopK) {
+  async function retrieveOnce({ companyId, chatbotId, text, factsText, fields = {}, excludeIds = new Set(), excludeSignatures = new Set(), allowedOrigins = ORIGINS, permittedIds = null, limit = THRESHOLDS.maxSuggestions }, lexicalTopK, vectorTopK) {
     if (!companyId || !chatbotId) throw fault(403, 'A company and service scope is required.');
     const origins = allowedOrigins.filter((o) => ORIGINS.includes(o));
     if (!origins.length) return { eligible: [], withheld: [], rejected: [], backend: 'none' };
@@ -231,6 +232,9 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
     }
     // Candidate ids: union of the branches. Without the vector index a small pool is compared in full.
     const ids = new Set([...raw.keys(), ...cosines.keys(), ...facetHits.keys()]);
+    // An external audience has at most 100 explicitly approved records. Consider that bounded set in full,
+    // so unrelated internal knowledge cannot crowd it out of the shared index's candidate windows.
+    if (permittedIds) for (const id of permittedIds) ids.add(id);
     // Knowledge the index has not caught up with yet (new, edited or re-queued) is still covered semantically from
     // SQLite, so a lagging or rebuilding index never hides recent knowledge.
     const unindexed = new Set();
@@ -252,7 +256,7 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
       rows.push(...sql
         .prepare(`SELECT * FROM memory_pool WHERE +company_id=? AND +chatbot_id=? AND +status='active' AND +origin_type IN (${originSql}) AND id IN (${chunk.map(() => '?').join(',')})`)
         .all(companyId, chatbotId, ...origins, ...chunk)
-        .filter((r) => !excludeIds.has(r.id) && !excludeSignatures.has(signatureOf(parse(r.steps_json, [])))));
+        .filter((r) => (!permittedIds || permittedIds.has(r.id)) && !excludeIds.has(r.id) && !excludeSignatures.has(signatureOf(parse(r.steps_json, [])))));
     }
     if (!rows.length) return { eligible: [], withheld: [], rejected: [], backend: embedding.model, source };
 
@@ -318,10 +322,11 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
       const cos = cosines.has(r.id) ? cosines.get(r.id) : null;
       const bm = normBm25({ raw: raw.has(r.id) ? raw.get(r.id) : null, rawBest: rawBestAll, queryTokens, docTokens: tokens(r.title + ' ' + r.symptoms_text) });
       const hybrid = hybridScore(cos, bm);
+      const problem = problemRelevance({ text, symptoms: r.symptoms_text || r.title, hybrid });
       const gate = compatibilityGate({ applicability: parse(r.applicability_json, {}), safety: parse(r.safety_restrictions_json, {}), facts, text: gateText, fields });
       const w = reliability(r.initial_confidence_score, r.reuse_success_count, r.reuse_failure_count);
       // A partly confirmed generic environment needs a strong enough semantic match; mandatory conditions never reach this branch.
-      const usable = gate.eligible && (!gate.partial || hybrid >= THRESHOLDS.partialHybrid);
+      const usable = problem.eligible && gate.eligible && (!gate.partial || hybrid >= THRESHOLDS.partialHybrid);
       const penalty = usable ? nearMissPenalty(nearMisses.get(r.id), stated) : 0;
       const final = usable ? Math.max(0, Math.round((finalScore(hybrid, gate.compat, w) - penalty) * 1e4) / 1e4) : 0;
       return {
@@ -330,6 +335,7 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
         signature: signatureOf(parse(r.steps_json, [])),
         eligible: usable,
         gate,
+        problem,
         hybrid,
         finalScore: final,
         breakdown: { cosine: cos === null || cos === undefined ? null : Math.round(cos * 10000) / 10000, normBm25: bm, S_hybrid: hybrid, S_compat: gate.compat, W_reliability: w, S_final: final, C_init: r.initial_confidence_score, ...(penalty && { nearMissPenalty: penalty }) },
@@ -338,9 +344,9 @@ export function createMemoryPool(store, config = {}, { embedding = createEmbeddi
     const eligible = rankCandidates(scoredRows, limit);
     // Relevant candidates whose required facts are unknown: ask, never assume.
     const withheld = scoredRows
-      .filter((c) => c.gate.status === 'unknown' && finalScore(c.hybrid, 1, c.breakdown.W_reliability) >= THRESHOLDS.retrieval)
+      .filter((c) => c.problem.eligible && c.gate.status === 'unknown' && finalScore(c.hybrid, 1, c.breakdown.W_reliability) >= THRESHOLDS.retrieval)
       .map((c) => ({ id: c.id, title: c.row.title, missing: c.gate.reasons }));
-    const rejected = scoredRows.filter((c) => !eligible.includes(c)).map((c) => ({ id: c.id, status: c.gate.status, reasons: c.gate.reasons, S_final: c.finalScore }));
+    const rejected = scoredRows.filter((c) => !eligible.includes(c)).map((c) => ({ id: c.id, status: c.problem.eligible ? c.gate.status : 'irrelevant', reasons: [...c.problem.reasons, ...c.gate.reasons], S_final: c.finalScore }));
     // Another, wider pass is worthwhile only if this one was full AND turned away relevant fixes on compatibility.
     const saturated = raw.size >= lexicalTopK || facetHits.size >= Math.max(lexicalTopK, 50) || (source === 'chroma' && cosines.size >= vectorTopK);
     const turnedAwayRelevant = scoredRows.some((c) => !c.eligible && ['conflict', 'unknown'].includes(c.gate.status) && finalScore(c.hybrid, 1, c.breakdown.W_reliability) >= THRESHOLDS.retrieval);

@@ -1,5 +1,8 @@
 # Semantic search: SQLite + ChromaDB hybrid retrieval
 
+**14 November remediation update:** [remediation-results.json](../evaluation/remediation-results.json) records the current independent-query evaluation and semantic benchmark. The symptom-relevance gate rejects the reproduced same-device wrong matches, with reduced recall on unfamiliar descriptions. Current SQLite recall@3 on the hard semantic corpus is **0.031**; Chroma and neural rows were unavailable. The comparison table below is the historical 13 November run, not a current Chroma measurement. The isolated `/demo` always uses local vectors.
+
+
 SQLite remains the **source of truth**. ChromaDB is a **rebuildable index** that makes the semantic half of retrieval fast. If ChromaDB is missing, down or wiped, Continuum keeps answering from SQLite and rebuilds the index when it returns.
 
 ```

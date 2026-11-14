@@ -1,0 +1,4 @@
+id,title,symptoms,steps,environment,safety
+SYN-1,Display flicker adaptive refresh,Display flickers after startup,Disable adaptive refresh in Display settings and restart the laptop.,Model X firmware 4,None identified
+SYN-2,Display flicker driver update,Display flickers after startup and flashes,Install the approved display driver 4.2 from the vendor support site.,Model X firmware 4,None identified
+SYN-3,Display flicker power profile,Screen flickers after startup when on battery,Switch the power profile to Balanced in Power settings and test again.,Model X firmware 4,None identified
